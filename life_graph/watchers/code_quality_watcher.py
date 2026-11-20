@@ -148,7 +148,7 @@ class CodeQualityWatcher:
 
         try:
             repo = git_mod.Repo(repo_path)
-        except Exception as e:
+        except Exception as e:  # expected: not a git repository
             logger.warning("Cannot open repo %s: %s", repo_path, e)
             return None
 
@@ -187,11 +187,11 @@ class CodeQualityWatcher:
                             test_files_changed.add(filepath)
                         elif lower.endswith((".py", ".js", ".ts", ".go", ".rs", ".java")):
                             source_files_changed.add(filepath)
-                except Exception:
+                except Exception:  # best-effort: one unreadable commit diff is skipped
                     pass
 
         except Exception as e:
-            logger.warning("Error iterating commits in %s: %s", repo_path, e)
+            logger.warning("Error iterating commits in %s: %s", repo_path, e, exc_info=True)
 
         if commit_count == 0:
             return None

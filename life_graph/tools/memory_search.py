@@ -139,7 +139,9 @@ async def memory_search(query: str, limit: int = DEFAULT_LIMIT) -> str:
             results = [_to_row(memory) for memory, _score in hits]
         except Exception as exc:
             # Never the query text: a search can carry personal details.
-            logger.warning("memory_search failed (query of %d chars): %s", len(query), exc)
+            logger.warning(
+                "memory_search failed (query of %d chars): %s", len(query), exc, exc_info=True
+            )
             return json.dumps({"error": f"Memory search failed: {exc}"})
 
     logger.info("memory_search returned %d memories", len(results))
@@ -216,7 +218,7 @@ async def memory_forget(memory_id: str, reason: str = "") -> str:
             ).first()
             await session.commit()
     except Exception as exc:  # noqa: BLE001
-        logger.warning("memory_forget failed: %s", exc)
+        logger.warning("memory_forget failed: %s", exc, exc_info=True)
         return json.dumps({"error": f"Could not forget it: {exc}"})
     if row is None:
         return json.dumps({"error": "No active memory with that id."})
@@ -261,7 +263,7 @@ async def memory_about(name: str, limit: int = 15) -> str:
     try:
         found = await entities.about(tenant_id, name, limit=max(1, min(int(limit), 40)))
     except Exception as exc:  # noqa: BLE001
-        logger.warning("memory_about failed: %s", exc)
+        logger.warning("memory_about failed: %s", exc, exc_info=True)
         return json.dumps({"error": f"Could not look that up: {exc}"})
     if found is None:
         return json.dumps({"name": name, "known": False, "memories": []})
@@ -495,7 +497,7 @@ async def memory_save(
                 if will_replace is not None:
                     await _queue_replacement(tenant_id, old_id, row.id, will_replace, applied=False)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("memory_save failed (%d chars): %s", len(text_), exc)
+        logger.warning("memory_save failed (%d chars): %s", len(text_), exc, exc_info=True)
         return json.dumps({"error": f"Could not save it: {exc}"})
 
     try:

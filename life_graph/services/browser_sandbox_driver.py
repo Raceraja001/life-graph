@@ -1052,7 +1052,7 @@ class IsolatedBrowserDriver:
             return
         try:
             await asyncio.wait_for(proxy.stop(), timeout=self._timeout)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - best-effort: see below
             # The listener is on the loopback and dies with the process; a
             # failure to stop it is worth a line, not a second exception on
             # top of whatever is already being reported.

@@ -144,7 +144,7 @@ async def code_read(path: str, start_line: int = 1, end_line: int | None = None)
         )
     except ToolDeniedError as exc:
         return _err(exc)
-    except Exception as exc:
+    except Exception as exc:  # expected: the error is returned to the agent
         logger.warning("code_read failed for %s: %s", path, exc)
         return _err(exc)
 
@@ -288,7 +288,7 @@ async def code_edit(
         return json.dumps(result)
     except ToolDeniedError as exc:
         return _err(exc)
-    except Exception as exc:
+    except Exception as exc:  # expected: the error is returned to the agent
         logger.warning("code_edit failed for %s: %s", path, exc)
         return _err(exc)
 

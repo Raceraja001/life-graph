@@ -103,7 +103,11 @@ async def generate_embeddings_batch(
                     )
                 except Exception as exc:
                     logger.warning(
-                        "Failed to embed %d memories (chunk %d): %s", len(memories), i, exc
+                        "Failed to embed %d memories (chunk %d): %s",
+                        len(memories),
+                        i,
+                        exc,
+                        exc_info=True,
                     )
                     failed += len(memories)
                     continue

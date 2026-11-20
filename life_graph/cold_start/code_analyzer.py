@@ -464,7 +464,7 @@ class CodeAnalyzer:
                 **data.get("dependencies", {}),
                 **data.get("devDependencies", {}),
             }
-        except Exception:
+        except Exception:  # best-effort: an unreadable package.json lists no dependencies
             return []
 
         frameworks = [

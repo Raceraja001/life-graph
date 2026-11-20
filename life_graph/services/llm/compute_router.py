@@ -193,7 +193,7 @@ async def cloud_cooling() -> bool:
         return False
     try:
         return bool(await redis.exists(_CLOUD_COOLDOWN_KEY))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 - best-effort: no Redis means no cloud cooldown
         return False
 
 

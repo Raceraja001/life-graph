@@ -61,7 +61,7 @@ async def approvals_waiting() -> str:
                 .all()
             )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("approvals_waiting failed: %s", exc)
+        logger.warning("approvals_waiting failed: %s", exc, exc_info=True)
         return json.dumps({"error": f"Could not read the approvals: {exc}"})
     items = []
     for a in rows:

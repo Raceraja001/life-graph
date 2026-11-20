@@ -217,7 +217,7 @@ class ServerHealthWatcher:
                         }
                     )
         except Exception as e:
-            logger.warning("Disk usage check failed for %s: %s", server_name, e)
+            logger.warning("Disk usage check failed for %s: %s", server_name, e, exc_info=True)
 
         return events
 
@@ -260,6 +260,7 @@ class ServerHealthWatcher:
 
             return ""
         except Exception:
+            logger.warning("Disk growth projection failed for %s", mount, exc_info=True)
             return ""
 
     async def _get_cpu_load(self, conn: Any, server_name: str) -> list[dict[str, Any]]:
@@ -293,7 +294,7 @@ class ServerHealthWatcher:
                         }
                     )
         except Exception as e:
-            logger.warning("CPU check failed for %s: %s", server_name, e)
+            logger.warning("CPU check failed for %s: %s", server_name, e, exc_info=True)
 
         return events
 
@@ -335,7 +336,7 @@ class ServerHealthWatcher:
                     break
 
         except Exception as e:
-            logger.warning("Memory check failed for %s: %s", server_name, e)
+            logger.warning("Memory check failed for %s: %s", server_name, e, exc_info=True)
 
         return events
 

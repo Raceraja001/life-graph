@@ -166,7 +166,8 @@ def flush_spool(cfg: HookConfig, *, client=None, limit_seconds: float | None = N
     """
     try:
         queue = CaptureQueue(cfg.spool_path)
-    except Exception:
+    except Exception as exc:  # fail-open: a hook never fails the developer's session
+        log_debug(cfg, "spool unavailable", error=f"{type(exc).__name__}: {exc}")
         return 0
     deadline = _monotonic() + limit_seconds if limit_seconds is not None else None
 
@@ -177,7 +178,8 @@ def flush_spool(cfg: HookConfig, *, client=None, limit_seconds: float | None = N
 
     try:
         return queue.replay(send_fn)
-    except Exception:
+    except Exception as exc:  # fail-open: the rows stay spooled for the next flush
+        log_debug(cfg, "spool replay failed", error=f"{type(exc).__name__}: {exc}")
         return 0
 
 
@@ -203,7 +205,7 @@ def post_recall(context: dict[str, Any], cfg: HookConfig, *, client=None) -> dic
         if resp.status_code >= 300:
             return None
         body = resp.json()
-    except Exception:
+    except Exception:  # fail-open: recall is a nicety (see docstring)
         return None
     finally:
         if owns_client:
@@ -228,5 +230,5 @@ def log_debug(cfg: HookConfig, message: str, **fields: Any) -> None:
         line = json.dumps({"ts": _now_iso(), "msg": message, **fields}, default=str)
         with open(cfg.log_path, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
-    except Exception:
+    except Exception:  # best-effort: the debug log must never break the hook
         pass

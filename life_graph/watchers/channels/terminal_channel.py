@@ -57,5 +57,5 @@ class TerminalChannel:
                 sys.stdout.flush()
             return True
         except Exception as e:
-            logger.error("Terminal channel write failed: %s", e)
+            logger.error("Terminal channel write failed: %s", e, exc_info=True)
             return False

@@ -1,0 +1,13 @@
+{
+  "_comment": "Undocumented broad excepts per life_graph package that swallow the error silently or log it without a traceback. May go down, never up. Regenerate with: python scripts/exception_audit.py --update",
+  "packages": {
+    "drivers": {
+      "logged_no_tb": 0,
+      "silent": 2
+    },
+    "services": {
+      "logged_no_tb": 0,
+      "silent": 2
+    }
+  }
+}

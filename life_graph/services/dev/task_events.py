@@ -188,7 +188,7 @@ async def _insert_one(session, params: dict) -> int:
         try:
             async with session.begin_nested():
                 return (await session.execute(_INSERT, params)).scalar_one()
-        except Exception as exc:
+        except Exception as exc:  # best-effort: a dropped event row never fails the run
             if "uq_dev_task_events_task_seq" in str(exc) and attempt < 2:
                 continue
             if "foreign key" not in str(exc).lower():

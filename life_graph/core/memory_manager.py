@@ -648,6 +648,7 @@ class MemoryManager:
                 "Failed to queue contradiction approval for %s→%s",
                 str(old_id)[:8],
                 str(new_id)[:8],
+                exc_info=True,
             )
 
     async def _file_slot(self, fact: ExtractedFact) -> None:
@@ -809,7 +810,7 @@ class MemoryManager:
 
                 vector = await self._lm_client.embed(text)
                 return vector if vector else None
-            except Exception as exc:
+            except Exception as exc:  # fail-open: no vector; the caller carries on without one
                 logger.warning("LM Studio embedding failed: %s", exc)
                 return None
 
@@ -827,7 +828,7 @@ class MemoryManager:
         except ImportError:
             logger.debug("sentence-transformers not available, skipping embedding")
             return None
-        except Exception as exc:
+        except Exception as exc:  # fail-open: no vector; the caller carries on without one
             logger.warning("Embedding generation failed: %s", exc)
             return None
 

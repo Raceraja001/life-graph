@@ -103,7 +103,7 @@ async def get_model_catalog() -> list[dict]:
         # them over from the fallback list unconditionally so they don't
         # disappear just because the live fetch only covers OpenRouter.
         models += [m for m in FALLBACK_MODELS if not m["id"].startswith("openrouter/")]
-    except Exception as exc:
+    except Exception as exc:  # fail-open: serve the cached or built-in list
         logger.warning("model_catalog fetch failed: %s", exc)
         fallback = cached[1] if cached else FALLBACK_MODELS
         _CACHE[_CACHE_KEY] = (now, fallback, _FAILURE_CACHE_SECONDS)

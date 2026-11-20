@@ -132,7 +132,7 @@ class DigestGenerator:
             }
 
         except Exception as e:
-            logger.error("Failed to generate %s digest: %s", period, e)
+            logger.error("Failed to generate %s digest: %s", period, e, exc_info=True)
             return {"period": period, "events": 0, "sent": False, "error": str(e)}
 
     @staticmethod

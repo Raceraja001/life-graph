@@ -132,5 +132,5 @@ async def get_usage_count(tenant_id: str, resource: str = "requests") -> int:
         # redis-py types replies as Any (sync and async clients share stubs).
         count: int = await redis.zcount(key, now - 60, now)
         return count
-    except Exception:
+    except Exception:  # fail-open: usage is informational; check() logs Redis failures
         return 0

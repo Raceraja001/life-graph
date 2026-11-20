@@ -99,7 +99,7 @@ async def warm(chat_model: str, embedding_model: str) -> None:
                 f"{ollama_base()}/api/embed",
                 json={"model": embedding_model, "input": "warm", "keep_alive": keep_alive()},
             )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - best-effort warm-up
         logging.getLogger(__name__).warning("Warming local models failed: %s", exc)
 
 

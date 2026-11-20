@@ -799,6 +799,7 @@ async def runner_lock_alive(conn: AsyncConnection) -> bool:
         await conn.commit()
         return bool(held)
     except Exception:
+        logger.warning("Runner lock check failed; treating the lock as lost", exc_info=True)
         return False
 
 

@@ -56,6 +56,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 NOTIFY_CHANNEL = "lg_dev_tasks"
+# Consecutive lease-heartbeat failures before they are logged as a warning.
+HEARTBEAT_WARN_AFTER = 3
 
 _local_runner: DevTaskRunner | None = None
 
@@ -136,6 +138,7 @@ class DevTaskRunner:
         self._lock_alive = lock_alive
         self.lock_lost = False
         self._beats = 0
+        self._heartbeat_failures = 0
         self._running: dict[str, asyncio.Task] = {}
         self._unattended: set[str] = set()
         self._cancelling: set[str] = set()
@@ -331,13 +334,34 @@ class DevTaskRunner:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
+    async def _beat(self) -> None:
+        """One lease heartbeat; never raises.
+
+        A single failure is a blip (debug). HEARTBEAT_WARN_AFTER in a row is a
+        warning: the leases of running tasks are going stale, and another
+        runner may soon recover tasks that are still running here.
+        """
+        try:
+            await self.heartbeat()
+        except Exception:
+            self._heartbeat_failures += 1
+            if self._heartbeat_failures >= HEARTBEAT_WARN_AFTER:
+                logger.warning(
+                    "Lease heartbeat failed %d times in a row; running task leases are going stale",
+                    self._heartbeat_failures,
+                    exc_info=True,
+                )
+            else:
+                logger.debug("Lease heartbeat failed", exc_info=True)
+            return
+        if self._heartbeat_failures >= HEARTBEAT_WARN_AFTER:
+            logger.info("Lease heartbeat recovered after %d failures", self._heartbeat_failures)
+        self._heartbeat_failures = 0
+
     async def _heartbeat_loop(self) -> None:
         while True:
             await asyncio.sleep(max(1, settings.dev_runner_heartbeat_seconds))
-            try:
-                await self.heartbeat()
-            except Exception:
-                logger.debug("Lease heartbeat failed", exc_info=True)
+            await self._beat()
             await self._check_lock()
             self._beats += 1
             # Every few beats: recover runs whose lease went stale (a runner

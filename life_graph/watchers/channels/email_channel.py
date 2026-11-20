@@ -69,5 +69,5 @@ class EmailChannel:
             )
             return True
         except Exception as e:
-            logger.error("Email send failed: %s", e)
+            logger.error("Email send failed: %s", e, exc_info=True)
             return False

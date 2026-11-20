@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 async def scrape_github_trending(
@@ -49,5 +52,6 @@ async def scrape_github_trending(
                 }
                 for repo in items
             ]
-    except (httpx.HTTPError, Exception):
+    except Exception:  # best-effort: one source failing never stops the watch
+        logger.warning("GitHub trending scrape failed", exc_info=True)
         return []

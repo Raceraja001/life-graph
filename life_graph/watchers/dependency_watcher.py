@@ -141,7 +141,7 @@ async def _get_impact_analysis(
             temperature=0.3,
         )
         return response.choices[0].message.content
-    except Exception as exc:
+    except Exception as exc:  # best-effort: impact analysis is optional
         logger.debug("Impact analysis failed for %s: %s", package, exc)
         return None
 

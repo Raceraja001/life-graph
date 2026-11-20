@@ -105,7 +105,7 @@ async def list_drivers():
     for d in drivers:
         try:
             avail = await d.available()
-        except Exception:
+        except Exception:  # best-effort: a driver whose probe raises is listed as unavailable
             avail = False
 
         result.append(

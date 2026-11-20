@@ -337,7 +337,7 @@ class MultiModelAdvisor:
                 latency_ms=latency,
                 status="timeout",
             )
-        except Exception as exc:
+        except Exception as exc:  # expected: one model's error becomes its response
             latency = int((time.monotonic() - t0) * 1000)
             logger.warning("Model %s error: %s", model, exc)
             return ModelResponse(

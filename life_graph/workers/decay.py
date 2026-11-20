@@ -295,7 +295,7 @@ async def run_all_decay_sweeps(ctx: dict) -> dict:
         try:
             results[tid] = await run_decay_sweep(ctx, tid)
         except Exception as exc:
-            logger.error("Decay sweep failed for tenant %s: %s", tid, exc)
+            logger.error("Decay sweep failed for tenant %s: %s", tid, exc, exc_info=True)
             results[tid] = {"error": str(exc)}
 
     return {"tenants_processed": len(tenant_ids), "results": results}

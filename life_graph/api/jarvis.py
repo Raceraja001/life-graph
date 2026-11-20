@@ -232,7 +232,7 @@ async def _capture(
             await session.commit()
     except Exception as exc:  # noqa: BLE001
         # Never the text: it is personal.
-        logging.getLogger(__name__).warning("Jarvis capture failed: %s", exc)
+        logging.getLogger(__name__).warning("Jarvis capture failed: %s", exc, exc_info=True)
 
 
 @router.post("/chat", summary="Talk to Jarvis; the reply streams back (SSE)")

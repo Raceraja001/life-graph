@@ -255,7 +255,7 @@ class WebhookEventHandler:
             from life_graph.core.tenant import get_current_tenant_id
 
             tenant_id = get_current_tenant_id()
-        except Exception:
+        except Exception:  # best-effort: no tenant context is a system event, skipped
             return
 
         if self._arq_pool is None:

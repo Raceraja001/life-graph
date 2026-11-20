@@ -482,7 +482,7 @@ class SkillDistillationEngine:
             return []
         try:
             found = await self.query_engine.tri_search(query=query, limit=5, statuses=["active"])
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - best-effort: related skills are optional
             logger.debug("Related-skill search failed: %s", exc)
             return []
 
@@ -689,7 +689,7 @@ class SkillDistillationEngine:
                 service = get_embedding_service()
             vector = await service.embed_async(text)
             return list(vector) or None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - best-effort: no vector on failure
             logger.debug("Embedding a distilled skill failed: %s", exc)
             return None
 

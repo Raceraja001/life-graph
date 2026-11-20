@@ -192,7 +192,9 @@ class DriverStatsMixin:
                     "avg_duration_ms": (row[4] or 0) / total if total > 0 else 0,
                 }
         except Exception:
-            logger.debug("No stats for driver %s — using defaults", driver_name)
+            logger.warning(
+                "Driver stats unavailable for %s — using defaults", driver_name, exc_info=True
+            )
 
         return {"success_rate": 1.0, "total_tasks": 0}
 

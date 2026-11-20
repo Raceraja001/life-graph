@@ -245,7 +245,7 @@ def cmd_judgment_stats(args):
 
         try:
             calibration = fetch("/calibration")
-        except Exception:
+        except Exception:  # best-effort: calibration is an optional status section
             calibration = None
         if calibration:
             print("\n[*] Calibration")
@@ -353,14 +353,14 @@ def cmd_hooks_status(args):
         from life_graph.integrations.claude_code.policy import DailyCounter
 
         print(f"  Sent today (tool exhaust): {DailyCounter(cfg.counter_path).current()}")
-    except Exception:
+    except Exception:  # best-effort: a status line, never a failed command
         pass
     try:
         from life_graph.integrations.claude_code.transport import CaptureQueue
 
         if cfg.spool_path.exists():
             print(f"  Spooled (undelivered): {CaptureQueue(cfg.spool_path).pending_count()}")
-    except Exception:
+    except Exception:  # best-effort: a status line, never a failed command
         pass
 
 

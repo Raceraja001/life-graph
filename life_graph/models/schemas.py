@@ -93,7 +93,7 @@ class MemoryResponse(BaseModel):
                 adj_rate = 0.03 / max(1 + self.reinforced_count * 0.5, 1.0)
                 eff_conf = self.confidence * math.exp(-adj_rate * days)
                 self.needs_verification = eff_conf < 0.4
-            except Exception:
+            except Exception:  # best-effort: bad timestamps leave needs_verification as it was
                 pass
 
 

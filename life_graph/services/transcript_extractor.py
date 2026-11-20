@@ -379,7 +379,7 @@ class TranscriptExtractor:
             embedding = await self._embedding_service.embed_async(pref_text)
             if not embedding:
                 return None
-        except Exception:
+        except Exception:  # fail-open: skip the dedup check
             logger.debug("Embedding failed for dedup check, skipping")
             return None
 
@@ -486,7 +486,7 @@ class TranscriptExtractor:
             embedding = await self._embedding_service.embed_async(pref_text)
             if not embedding:
                 embedding = None
-        except Exception:
+        except Exception:  # fail-open: store without an embedding
             logger.debug("Embedding failed for new preference, storing without")
 
         async with self._session_factory() as session:

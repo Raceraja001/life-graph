@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 import httpx
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SUBREDDITS = [
     "programming",
@@ -40,7 +44,8 @@ async def scrape_subreddit(subreddit: str, limit: int = 25) -> list[dict]:
                 for p in posts
                 if p.get("kind") == "t3" and p["data"].get("title")
             ]
-    except (httpx.HTTPError, Exception):
+    except Exception:  # best-effort: one source failing never stops the watch
+        logger.warning("Reddit scrape failed", exc_info=True)
         return []
 
 

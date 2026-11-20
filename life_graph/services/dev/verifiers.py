@@ -111,6 +111,18 @@ class VerifierChain:
                 return VerifierResult(name, False, {"error": f"Unknown verifier: {name}"})
             try:
                 passed, evidence = await verifier(workdir, task_context)
+            except DiffUnavailableError as e:
+                # Fail closed: a check that cannot see the diff has not passed.
+                logger.warning("Verifier %s could not determine the diff", name, exc_info=True)
+                return VerifierResult(
+                    name,
+                    False,
+                    {
+                        "error": f"could not determine the diff: {e}",
+                        "hint": "The change was not checked. This is an environment "
+                        "problem (git), not a fault in the change.",
+                    },
+                )
             except Exception as e:
                 logger.warning("Verifier %s failed: %s", name, e, exc_info=True)
                 return VerifierResult(name, False, {"error": str(e)})
@@ -244,7 +256,11 @@ async def mechanical_autofix(workdir: Path, ctx: dict) -> dict:
     returned dict rather than raised — this must never be the reason a task
     fails when it otherwise wouldn't have.
     """
-    changed = _changed_python_files(workdir)
+    try:
+        changed = _changed_python_files(workdir)
+    except DiffUnavailableError as exc:
+        logger.warning("mechanical_autofix skipped: %s", exc, exc_info=True)
+        return {"ran": False, "note": f"could not determine the diff: {exc}"}
     if not changed:
         return {"ran": False, "note": "no changed .py files"}
 
@@ -306,6 +322,72 @@ def _missing_module(result: subprocess.CompletedProcess, module: str) -> bool:
 # The git queries below stay on the host (they only list files); a repo's
 # config must not make them execute anything.
 _HARDENED_GIT = ["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
+
+
+class DiffUnavailableError(RuntimeError):
+    """What changed in a git worktree could not be determined.
+
+    Raised instead of answering "nothing changed": a diff-scoped verifier
+    given an empty list passes vacuously, so a git hiccup would pass a task.
+    """
+
+
+def in_git_worktree(workdir: Path) -> bool:
+    """Whether *workdir* is inside a git repository (a ``.git`` dir or a
+    worktree's ``.git`` file in it or a parent). Needs no git binary."""
+    root = workdir.resolve()
+    return any((p / ".git").exists() for p in (root, *root.parents))
+
+
+def git_diff_query(workdir: Path, *args: str, timeout: int = 30) -> str:
+    """stdout of a read-only git query in *workdir*; raises
+    :class:`DiffUnavailableError` when git cannot run, times out or fails."""
+    try:
+        proc = subprocess.run(
+            [*_HARDENED_GIT, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=str(workdir),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DiffUnavailableError(
+            f"git {args[0]} could not run: {type(exc).__name__}: {exc}"
+        ) from exc
+    if proc.returncode != 0:
+        raise DiffUnavailableError(
+            f"git {args[0]} exited {proc.returncode}: {(proc.stderr or '').strip()[-300:]}"
+        )
+    return proc.stdout
+
+
+# git's well-known empty tree: what a repository with no commit yet diffs against.
+_EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
+def diff_base(workdir: Path) -> str:
+    """``HEAD``, or the empty tree in a repository with no commit yet (a new
+    project before its first commit): there every file is new, which is what
+    ``git diff HEAD`` failing silently used to amount to."""
+    try:
+        proc = subprocess.run(
+            [*_HARDENED_GIT, "rev-parse", "--verify", "--quiet", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(workdir),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DiffUnavailableError(
+            f"git rev-parse could not run: {type(exc).__name__}: {exc}"
+        ) from exc
+    if proc.returncode == 0:
+        return "HEAD"
+    if proc.returncode == 1:  # --verify --quiet: HEAD does not resolve (unborn branch)
+        return _EMPTY_TREE
+    raise DiffUnavailableError(
+        f"git rev-parse exited {proc.returncode}: {(proc.stderr or '').strip()[-300:]}"
+    )
 
 
 _DEFAULT_TEST_ARGV = [
@@ -723,9 +805,14 @@ async def _verify_build_ok(workdir: Path, ctx: dict) -> tuple[bool, dict]:
 
 def _changed_files(workdir: Path) -> list[Path]:
     """Files changed since HEAD (tracked modifications) UNION untracked new
-    files (``git ls-files --others``), resolved under ``workdir``. Empty
-    list (never raises) on any git failure — e.g. the scratch-temp-dir
-    fallback, which is never a git repo at all.
+    files (``git ls-files --others``), resolved under ``workdir``.
+
+    Empty for a directory that is not inside a git repository at all (the
+    scratch-temp-dir fallback): there is no diff, and nothing there can land.
+    Inside a repository a git failure (git missing, a timeout, a non-zero
+    exit) raises :class:`DiffUnavailableError` -- it used to return an empty
+    list, which made every diff-scoped verifier pass on a change it never
+    looked at. :class:`VerifierChain` turns the error into a failed result.
 
     Both tracked modifications AND new untracked files must be included —
     a change that only ADDS a file (no modification to any existing tracked
@@ -736,27 +823,16 @@ def _changed_files(workdir: Path) -> list[Path]:
     git-add tool, and LocalDriver never stages), so "new file" is the normal
     case, not an edge case.
     """
-    changed_names: set[str] = set()
-    try:
-        tracked = subprocess.run(
-            [*_HARDENED_GIT, "diff", "--name-only", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(workdir),
-        )
-        changed_names.update(f.strip() for f in tracked.stdout.strip().split("\n") if f.strip())
-        untracked = subprocess.run(
-            [*_HARDENED_GIT, "ls-files", "--others", "--exclude-standard"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(workdir),
-        )
-        changed_names.update(f.strip() for f in untracked.stdout.strip().split("\n") if f.strip())
-    except Exception:
+    if not in_git_worktree(workdir):
         return []
-    return [workdir / f for f in changed_names if (workdir / f).is_file()]
+    base = diff_base(workdir)
+    changed_names = set(git_diff_query(workdir, "diff", "--name-only", base).splitlines())
+    changed_names.update(
+        git_diff_query(workdir, "ls-files", "--others", "--exclude-standard").splitlines()
+    )
+    return [
+        workdir / f for f in {n.strip() for n in changed_names} if f and (workdir / f).is_file()
+    ]
 
 
 def _changed_python_files(workdir: Path) -> list[Path]:
@@ -1298,30 +1374,22 @@ _TEST_REMOVAL_ASKED = re.compile(
 def _held_tests(workdir: Path, rel: str) -> bool:
     """Whether the file at HEAD had any test or assertion in it."""
     try:
-        text = subprocess.run(
-            [*_HARDENED_GIT, "show", f"HEAD:{rel}"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(workdir),
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
-        return True  # unknown: count it
+        text = git_diff_query(workdir, "show", f"HEAD:{rel}")
+    except DiffUnavailableError:
+        return True  # unknown: count it (a failed git show used to read as "no tests")
     return any(_TEST_DEF_RE.search(ln) or _ASSERTION_RE.search(ln) for ln in text.splitlines())
 
 
 def _tracked_test_diff(workdir: Path) -> tuple[list[str], str]:
-    """(deleted test files, unified diff of changed tracked test files) vs HEAD."""
-    try:
-        status = subprocess.run(
-            [*_HARDENED_GIT, "diff", "--name-status", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(workdir),
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
+    """(deleted test files, unified diff of changed tracked test files) vs HEAD.
+
+    Nothing outside a git repository; inside one a git failure raises
+    :class:`DiffUnavailableError` (it used to read as "no test changed").
+    """
+    if not in_git_worktree(workdir):
         return [], ""
+    base = diff_base(workdir)
+    status = git_diff_query(workdir, "diff", "--name-status", base)
     deleted, modified = [], []
     for line in status.splitlines():
         parts = line.split("\t")
@@ -1335,16 +1403,7 @@ def _tracked_test_diff(workdir: Path) -> tuple[list[str], str]:
             modified.append(parts[-1])
     if not modified:
         return deleted, ""
-    try:
-        diff = subprocess.run(
-            [*_HARDENED_GIT, "diff", "--no-color", "-U0", "HEAD", "--", *modified],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(workdir),
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
-        diff = ""
+    diff = git_diff_query(workdir, "diff", "--no-color", "-U0", base, "--", *modified)
     return deleted, diff
 
 
