@@ -2,7 +2,11 @@
 
 All API responses use a consistent envelope format:
   - Success: {"data": ..., "meta": {...}}
-  - Error:   {"error": {"code": "...", "message": "...", "details": [...]}}
+  - Error:   {"error": {"code": "...", "message": "...", "details": [...],
+                        "request_id": "..."}, "detail": ...}
+
+``detail`` duplicates the message in FastAPI's older shape for clients that
+still read it (see ``http_error_body``).
 
 This module provides Pydantic models, helper functions, and
 pagination utilities for building responses.
@@ -10,6 +14,7 @@ pagination utilities for building responses.
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field
@@ -139,4 +144,76 @@ def error_response(
         body["error"]["details"] = details
     if request_id:
         body["error"]["request_id"] = request_id
+    return body
+
+
+# ── HTTP errors → the error envelope ─────────────────────────
+
+# Machine-readable code per HTTP status. Statuses not listed fall back to the
+# standard reason phrase (``HTTPStatus(n).name``), then to ``HTTP_<n>``.
+_STATUS_ERROR_CODES: dict[int, str] = {
+    400: "BAD_REQUEST",
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    405: "METHOD_NOT_ALLOWED",
+    409: "CONFLICT",
+    410: "GONE",
+    413: "PAYLOAD_TOO_LARGE",
+    422: "VALIDATION_ERROR",
+    429: "RATE_LIMITED",
+    500: "INTERNAL_ERROR",
+    502: "BAD_GATEWAY",
+    503: "SERVICE_UNAVAILABLE",
+    504: "GATEWAY_TIMEOUT",
+}
+
+
+def error_code_for_status(status_code: int) -> str:
+    """The envelope's ``error.code`` for an HTTP status."""
+    if status_code in _STATUS_ERROR_CODES:
+        return _STATUS_ERROR_CODES[status_code]
+    try:
+        return HTTPStatus(status_code).name
+    except ValueError:
+        return f"HTTP_{status_code}"
+
+
+def http_error_body(
+    status_code: int,
+    detail: Any,
+    request_id: str | None = None,
+    *,
+    code: str | None = None,
+) -> dict:
+    """The body for an ``HTTPException``: the error envelope plus ``detail``.
+
+    ``{"error": {code, message, request_id}}`` is what api/responses.py has
+    always documented and what the TypeScript SDK reads (audit M2). The
+    top-level ``detail`` is FastAPI's old shape, kept unchanged (string, list
+    or dict, whatever the route raised) because the dashboard, life-graph-ui,
+    the Android app and the Python SDK read ``detail`` first.
+
+    A dict ``detail`` may name its own ``code`` and ``message``.
+    """
+    message: str
+    if isinstance(detail, str):
+        message = detail
+    elif isinstance(detail, dict):
+        message = str(detail.get("message") or detail.get("error") or detail)
+        if code is None and isinstance(detail.get("code"), str):
+            code = detail["code"]
+    elif detail is None:
+        try:
+            message = HTTPStatus(status_code).phrase
+        except ValueError:
+            message = ""
+    else:
+        message = str(detail)
+    body = error_response(
+        code=code or error_code_for_status(status_code),
+        message=message,
+        request_id=request_id,
+    )
+    body["detail"] = detail
     return body
