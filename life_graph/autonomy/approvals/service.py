@@ -40,6 +40,7 @@ def _serialize(entry) -> dict:
         "status": entry.status,
         "priority": entry.priority,
         "resolved_by": entry.resolved_by,
+        "requested_by": getattr(entry, "requested_by", None),
         "resolution_note": entry.resolution_note,
         "resolved_at": entry.resolved_at,
         "expires_at": entry.expires_at,
@@ -106,6 +107,7 @@ class ApprovalService:
                 trigger_type=data.get("trigger_type", "manual"),
                 trigger_detail=data.get("trigger_detail", ""),
                 estimated_impact=data.get("estimated_impact"),
+                requested_by=data.get("requested_by"),
                 status="pending",
                 expires_at=expires_at,
                 created_at=datetime.now(UTC),
@@ -124,12 +126,15 @@ class ApprovalService:
         note: str | None,
         resolved_by: str,
         also_trust: bool = False,
+        guard=None,
     ):
         """Resolve an approval (approve or reject).
 
         Sets the queue row's resolution fields and updates the linked
         ``AutoAction`` (found via ``AutoAction.approval_id``) to
-        approved/rejected.
+        approved/rejected. *guard*, when given, is called with the entry's
+        ``requested_by`` before anything is written (the HTTP route's
+        self-approval check); if it raises, nothing changes.
         """
         from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
 
@@ -149,6 +154,9 @@ class ApprovalService:
 
             if entry.status != "pending":
                 raise ValueError(f"Approval already resolved: {entry.status}")
+
+            if guard is not None:
+                guard(getattr(entry, "requested_by", None))
 
             # Update approval
             await session.execute(
@@ -202,8 +210,16 @@ class ApprovalService:
         decision: str,
         note: str | None,
         resolved_by: str,
+        guard=None,
     ):
-        """Batch resolve approvals matching filter criteria."""
+        """Batch resolve approvals matching filter criteria.
+
+        An ``approval_ids`` list, even an empty one, limits the batch to those
+        ids (an empty list resolves nothing — it used to mean "no filter" and
+        resolve everything pending). *guard*, when given, is called with each
+        matched entry's ``requested_by`` before anything is written; if it
+        raises, nothing is resolved (the self-approval check).
+        """
         from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
 
         now = datetime.now(UTC)
@@ -214,7 +230,7 @@ class ApprovalService:
                 ApprovalQueueEntry.status == "pending",
             )
 
-            if filter_criteria.get("approval_ids"):
+            if filter_criteria.get("approval_ids") is not None:
                 ids = [str(i) for i in filter_criteria["approval_ids"]]
                 q = q.where(ApprovalQueueEntry.id.in_(ids))
             if filter_criteria.get("agent_id"):
@@ -226,6 +242,10 @@ class ApprovalService:
 
             result = await session.execute(q)
             entries = result.scalars().all()
+
+            if guard is not None:
+                for entry in entries:
+                    guard(getattr(entry, "requested_by", None))
 
             new_action_status = "pending" if decision == "approve" else "skipped"
             resolved_ids = []

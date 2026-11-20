@@ -28,6 +28,8 @@ class ApprovalResponse(BaseModel):
     status: str
     priority: int = 100
     resolved_by: str | None = None
+    # Who asked for the work (server-derived; None when not recorded).
+    requested_by: str | None = None
     resolution_note: str | None = None
     resolved_at: datetime | None = None
     expires_at: datetime | None = None
@@ -58,11 +60,20 @@ class BatchResolveRequest(BaseModel):
     agent_id: str | None = None
     project_id: str | None = None
     risk_level: str | None = None
+    # With no ids and no filter the batch would match every pending entry;
+    # that now has to be asked for in so many words.
+    all: bool = Field(False, description="Resolve every pending entry (needs no filter)")
     decision: str = Field(..., pattern="^(approve|reject)$")
     note: str | None = Field(None, max_length=500)
     resolved_by: str | None = Field(
         None, max_length=128, description="Ignored for identity; recorded as an unverified note"
     )
+
+    def has_filter(self) -> bool:
+        """True when ids (even an empty list) or any filter narrows the batch."""
+        return self.approval_ids is not None or any(
+            (self.agent_id, self.project_id, self.risk_level)
+        )
 
 
 class BatchResolveResponse(BaseModel):

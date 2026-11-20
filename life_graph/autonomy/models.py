@@ -268,6 +268,10 @@ class ApprovalQueueEntry(Base):
     resolved_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Who asked for the work, as the server saw the API caller
+    # (api/approval_identity.py ``resolver``); NULL when not recorded (older
+    # rows, in-process producers). Migration 061.
+    requested_by: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Batch & Timeout ───────────────────────────────────────
     also_trust: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
