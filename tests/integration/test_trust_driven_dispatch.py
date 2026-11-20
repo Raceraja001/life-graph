@@ -13,7 +13,22 @@ from tests.integration.conftest import skip_on_db_error
 TENANT = f"trust_dispatch_{uuid.uuid4().hex[:8]}"
 
 
+async def _approved_deploy_payload(tmp_path, command: str) -> dict:
+    """A driver_deploy payload for *command*, approved on a real project and pinned."""
+    from life_graph.kernel.project_registry import command_sha256
+
+    project_id = await _make_project({"deploy_command": command})
+    return {
+        "project_id": str(project_id),
+        "repo_path": str(tmp_path),
+        "deploy_command": command,
+        "command_sha256": {"deploy_command": command_sha256(command)},
+    }
+
+
 async def _make_project(scan_metadata: dict | None = None) -> uuid.UUID:
+    """A project whose host commands (if any) the owner saved, so approved."""
+    from life_graph.kernel.project_registry import approve_commands
     from life_graph.models.db import Project
     from life_graph.storage.database import async_session
 
@@ -25,7 +40,7 @@ async def _make_project(scan_metadata: dict | None = None) -> uuid.UUID:
                 tenant_id=TENANT,
                 name=f"proj-{project_id.hex[:6]}",
                 path="/tmp/does-not-need-to-exist",
-                scan_metadata=scan_metadata or {},
+                scan_metadata=approve_commands(scan_metadata or {}, "owner:test"),
             )
         )
         await s.commit()
@@ -550,6 +565,7 @@ async def test_apply_driver_deploy_runs_the_configured_command(tmp_path):
     from life_graph.tools._guards import confine_to
 
     marker = tmp_path / "deployed.txt"
+    payload = await _approved_deploy_payload(tmp_path, f"echo hi > {marker.name}")
     async with async_session() as s:
         appr = Approval(
             tenant_id=TENANT,
@@ -557,10 +573,7 @@ async def test_apply_driver_deploy_runs_the_configured_command(tmp_path):
             title="Deploy test",
             source="driver_deploy",
             source_ref=str(uuid.uuid4()),
-            payload={
-                "repo_path": str(tmp_path),
-                "deploy_command": f"echo hi > {marker.name}",
-            },
+            payload=payload,
         )
         s.add(appr)
         await s.commit()
@@ -584,6 +597,7 @@ async def test_apply_driver_deploy_failure_leaves_it_pending(tmp_path):
     from life_graph.storage.database import async_session
     from life_graph.tools._guards import confine_to
 
+    payload = await _approved_deploy_payload(tmp_path, "exit 1")
     async with async_session() as s:
         appr = Approval(
             tenant_id=TENANT,
@@ -591,7 +605,7 @@ async def test_apply_driver_deploy_failure_leaves_it_pending(tmp_path):
             title="Deploy test",
             source="driver_deploy",
             source_ref=str(uuid.uuid4()),
-            payload={"repo_path": str(tmp_path), "deploy_command": "exit 1"},
+            payload=payload,
         )
         s.add(appr)
         await s.commit()

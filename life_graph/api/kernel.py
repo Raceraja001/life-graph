@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
@@ -1563,6 +1563,26 @@ class ProjectLearn(BaseModel):
 # ── Project Endpoints ────────────────────────────────────────
 
 
+def _command_approver(request: Request) -> str | None:
+    """Who approves a host command set by this request: the owner, or nobody.
+
+    deploy/smoke/rollback/backup_check commands run as a shell on the host
+    (kernel/project_registry.py ``HOST_COMMAND_KEYS``), so only an owner key or
+    a paired device may set them (audit 2026-11-19, H2).
+    """
+    from life_graph.api.auth import ingress_for
+
+    ingress = ingress_for(request)
+    return ingress.actor if ingress.owner_verified else None
+
+
+def _project_for(request: Request, project: dict[str, Any]) -> dict[str, Any]:
+    """A project as this caller may see it: host command texts are owner-only."""
+    from life_graph.kernel.project_registry import redact_commands
+
+    return project if _command_approver(request) else redact_commands(project)
+
+
 @router.post(
     "/projects",
     status_code=status.HTTP_201_CREATED,
@@ -1570,20 +1590,27 @@ class ProjectLearn(BaseModel):
 )
 async def register_project(
     body: ProjectRegister,
+    request: Request,
     svc: Any = Depends(get_project_registry),
 ):
     """Register a new project and auto-scan it.
 
     Detects language, framework, git info, and file counts.
-    Returns 409 if name already exists.
+    Returns 409 if name already exists, 403 if a host command
+    (deploy/smoke/rollback/backup_check) is set by a non-owner caller.
     """
+    from life_graph.kernel.project_registry import CommandApprovalError
+
     tenant_id = get_current_tenant_id()
 
     try:
         project = await svc.register(
             tenant_id,
             body.model_dump(exclude_none=True),
+            approved_by=_command_approver(request),
         )
+    except CommandApprovalError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
         detail = str(exc)
         code = (
@@ -1594,7 +1621,7 @@ async def register_project(
             detail=detail,
         ) from exc
 
-    return success_response(data=project)
+    return success_response(data=_project_for(request, project))
 
 
 @router.post(
@@ -1603,6 +1630,7 @@ async def register_project(
 )
 async def scan_project(
     project_id: uuid.UUID,
+    request: Request,
     svc: Any = Depends(get_project_registry),
 ):
     """Re-scan a project for updated metadata."""
@@ -1618,7 +1646,7 @@ async def scan_project(
             detail=f"Project {project_id} not found",
         )
 
-    return success_response(data=result)
+    return success_response(data=_project_for(request, result))
 
 
 @router.get(
@@ -1651,9 +1679,13 @@ async def list_projects(
 )
 async def get_project(
     project_id: uuid.UUID,
+    request: Request,
     svc: Any = Depends(get_project_registry),
 ):
-    """Get full project details including scan data."""
+    """Get full project details including scan data.
+
+    Host command texts in scan_metadata are shown to the owner only.
+    """
     tenant_id = get_current_tenant_id()
 
     project = await svc.get_by_id(
@@ -1666,7 +1698,7 @@ async def get_project(
             detail=f"Project {project_id} not found",
         )
 
-    return success_response(data=project)
+    return success_response(data=_project_for(request, project))
 
 
 @router.patch(
@@ -1676,19 +1708,32 @@ async def get_project(
 async def update_project(
     project_id: uuid.UUID,
     body: ProjectUpdate,
+    request: Request,
     svc: Any = Depends(get_project_registry),
 ):
-    """Update description, git_url or the verifier sandbox setup command."""
+    """Update description, git_url or the verifier sandbox setup command.
+
+    Setting or changing deploy/smoke/rollback/backup_check commands needs the
+    owner (403 otherwise); clearing one is allowed with any key.
+    """
+    from life_graph.kernel.project_registry import CommandApprovalError
+
     tenant_id = get_current_tenant_id()
-    result = await svc.update_settings(
-        tenant_id, str(project_id), body.model_dump(exclude_unset=True)
-    )
+    try:
+        result = await svc.update_settings(
+            tenant_id,
+            str(project_id),
+            body.model_dump(exclude_unset=True),
+            approved_by=_command_approver(request),
+        )
+    except CommandApprovalError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
         )
-    return success_response(data=result)
+    return success_response(data=_project_for(request, result))
 
 
 @router.post(

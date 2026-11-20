@@ -7,11 +7,13 @@ context to agents for project-aware task execution.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import subprocess
 import uuid
 from datetime import UTC, datetime
+from hmac import compare_digest
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -116,6 +118,147 @@ _USER_META_KEYS = frozenset(
 )
 
 
+# ── Host shell commands (audit 2026-11-19, H2) ─────────────
+
+# The settings above that run as a shell on the HOST, as the worker user, in
+# the project's directory: deploy/smoke/rollback (services/approvals.py,
+# driver_deploy) and the daily backup check (watchers/app_uptime_watcher.py).
+# The sandbox_* commands are not here: they only ever run inside the verifier
+# container (services/dev/sandbox.py).
+HOST_COMMAND_KEYS = frozenset(
+    {"deploy_command", "smoke_command", "rollback_command", "backup_check_command"}
+)
+
+# scan_metadata[COMMAND_APPROVALS_KEY][field] = {"sha256", "approved_by", "approved_at"}:
+# the owner's approval of the exact text of each host command. Written only by
+# register/update_settings for an owner-verified caller, never from request
+# data, and kept across re-scans.
+COMMAND_APPROVALS_KEY = "command_approvals"
+
+OWNER_ONLY_COMMAND_DETAIL = (
+    "{fields}: host shell commands can only be set by the owner (an owner API key or a"
+    " paired device). Clearing one is allowed with any key."
+)
+
+
+class CommandApprovalError(PermissionError):
+    """A host command was set by a caller the server did not verify as the owner."""
+
+
+def command_sha256(command: str) -> str:
+    return hashlib.sha256(command.encode("utf-8")).hexdigest()
+
+
+def approved_command(meta: dict[str, Any] | None, field: str) -> str | None:
+    """*field*'s command, but only if the owner approved this exact text.
+
+    Every executor of a host command goes through here. A command with no
+    approval record (set before approvals existed, or written to the database
+    directly) or one whose text no longer matches the approved hash returns
+    None, and the caller must not run anything.
+    """
+    meta = meta or {}
+    command = meta.get(field)
+    if not command or not isinstance(command, str):
+        return None
+    record = (meta.get(COMMAND_APPROVALS_KEY) or {}).get(field)
+    if not isinstance(record, dict):
+        return None
+    if not compare_digest(str(record.get("sha256") or ""), command_sha256(command)):
+        return None
+    return command
+
+
+def unapproved_commands(meta: dict[str, Any] | None) -> list[str]:
+    """Host command fields that are set but would not run (no or stale approval)."""
+    meta = meta or {}
+    return sorted(k for k in HOST_COMMAND_KEYS if meta.get(k) and approved_command(meta, k) is None)
+
+
+def pinned_command_mismatch(meta: dict[str, Any] | None, payload: dict[str, Any]) -> str | None:
+    """Why the commands an approval carries may not run now, or None when they may.
+
+    *payload* holds the command texts and their ``command_sha256`` pins from
+    when the approval was filed; *meta* is the project's scan_metadata now.
+    Each command in the payload must still match its pin and still be the
+    owner-approved command for that field — the approval may be resolved days
+    after the project's command changed.
+    """
+    pins = payload.get("command_sha256") or {}
+    for field in sorted(HOST_COMMAND_KEYS):
+        command = payload.get(field)
+        if not command:
+            continue
+        pin = str(pins.get(field) or "")
+        if not pin or not compare_digest(pin, command_sha256(command)):
+            return f"{field} on this approval has no valid approval pin"
+        if approved_command(meta, field) != command:
+            return f"{field} changed or is no longer owner-approved since this approval was filed"
+    return None
+
+
+def apply_command_settings(
+    meta: dict[str, Any], data: dict[str, Any], approved_by: str | None
+) -> None:
+    """Apply the host command fields in *data* to *meta*, pinning each one set.
+
+    Setting or changing a command needs *approved_by* (the owner-verified
+    caller, api/auth.py ``ingress_for``); that write IS the approval, recorded
+    against the exact text. Re-sending a command that is already approved is
+    a no-op. Clearing one (empty value) is allowed for anyone: it can only stop
+    a command from running.
+
+    Raises:
+        CommandApprovalError: a command would be set or changed without an
+            owner; *meta* is left untouched.
+    """
+    fields = HOST_COMMAND_KEYS & data.keys()
+    changing = sorted(f for f in fields if data[f] and approved_command(meta, f) != data[f])
+    if changing and not approved_by:
+        raise CommandApprovalError(OWNER_ONLY_COMMAND_DETAIL.format(fields=", ".join(changing)))
+    approvals = dict(meta.get(COMMAND_APPROVALS_KEY) or {})
+    now = datetime.now(UTC).isoformat()
+    for field in fields:
+        if not data[field]:
+            meta.pop(field, None)
+            approvals.pop(field, None)
+        elif field in changing:
+            meta[field] = data[field]
+            approvals[field] = {
+                "sha256": command_sha256(data[field]),
+                "approved_by": approved_by,
+                "approved_at": now,
+            }
+    if approvals:
+        meta[COMMAND_APPROVALS_KEY] = approvals
+    else:
+        meta.pop(COMMAND_APPROVALS_KEY, None)
+
+
+def approve_commands(meta: dict[str, Any], approved_by: str) -> dict[str, Any]:
+    """*meta* with every host command in it approved as *approved_by* (for seeding/tests)."""
+    out = dict(meta)
+    apply_command_settings(out, {k: meta[k] for k in HOST_COMMAND_KEYS if meta.get(k)}, approved_by)
+    return out
+
+
+HIDDEN_COMMAND = "[hidden: owner only]"
+
+
+def redact_commands(project: dict[str, Any]) -> dict[str, Any]:
+    """*project* (a registry dict) with host command texts hidden.
+
+    For callers that are not the owner: a deploy or backup command can carry
+    a token or a host name. Whether one is set, and its approval record
+    (a hash), stay visible.
+    """
+    meta = project.get("scan_metadata")
+    if not isinstance(meta, dict) or not (HOST_COMMAND_KEYS & meta.keys()):
+        return project
+    hidden = {k: (HIDDEN_COMMAND if k in HOST_COMMAND_KEYS and v else v) for k, v in meta.items()}
+    return {**project, "scan_metadata": hidden}
+
+
 def _confined_project_path(path: str) -> str:
     """Resolve a project path under the host-tool guards.
 
@@ -152,9 +295,17 @@ async def _provision_uptime(session: Any, tenant_id: str, meta: dict[str, Any]) 
         )
 
 
-def _user_scan_metadata(data: dict[str, Any]) -> dict[str, Any]:
-    """Returns the user-set scan_metadata keys (such as sandbox_setup) present in the registration data."""
-    return {k: data[k] for k in _USER_META_KEYS if data.get(k)}
+def _user_scan_metadata(data: dict[str, Any], approved_by: str | None = None) -> dict[str, Any]:
+    """Returns the user-set scan_metadata keys (such as sandbox_setup) present in the registration data.
+
+    Host commands among them are pinned to *approved_by* (see
+    :func:`apply_command_settings`, which raises without one).
+    """
+    meta = {k: data[k] for k in _USER_META_KEYS - HOST_COMMAND_KEYS if data.get(k)}
+    apply_command_settings(
+        meta, {k: data[k] for k in HOST_COMMAND_KEYS if data.get(k)}, approved_by
+    )
+    return meta
 
 
 # ── Language Detection ─────────────────────────────────────
@@ -447,22 +598,27 @@ class ProjectRegistry:
         self,
         tenant_id: str,
         data: dict[str, Any],
+        *,
+        approved_by: str | None = None,
     ) -> dict[str, Any]:
         """Register a new project and auto-scan it.
 
         Args:
             tenant_id: Tenant scope.
             data: Project fields (name, path, etc.).
+            approved_by: The owner-verified caller, required to set any of
+                :data:`HOST_COMMAND_KEYS`.
 
         Returns:
             Dict of the registered project with scan data.
 
         Raises:
             ValueError: If name already exists or path invalid.
+            CommandApprovalError: A host command without *approved_by*.
         """
         name = data["name"]
         path = _confined_project_path(data["path"])
-        user_meta = _user_scan_metadata(data)
+        user_meta = _user_scan_metadata(data, approved_by)
 
         async with self._session_factory() as session:
             # Check uniqueness
@@ -604,7 +760,11 @@ class ProjectRegistry:
             path = project.path
             # Settings the user chose live alongside scan output; a re-scan
             # must not erase them.
-            kept = {k: v for k, v in (project.scan_metadata or {}).items() if k in _USER_META_KEYS}
+            kept = {
+                k: v
+                for k, v in (project.scan_metadata or {}).items()
+                if k in _USER_META_KEYS or k == COMMAND_APPROVALS_KEY
+            }
 
         # Run scan outside of DB session
         if not Path(path).is_dir():
@@ -675,15 +835,23 @@ class ProjectRegistry:
         tenant_id: str,
         project_id: str,
         data: dict[str, Any],
+        *,
+        approved_by: str | None = None,
     ) -> dict[str, Any] | None:
         """Update user-editable fields: description, git_url, and the verifier
         settings in :data:`_USER_META_KEYS`.
 
         A verifier setting set to an empty value (``""``, ``[]``, ``0``) clears
-        it, falling back to the sandbox default.
+        it, falling back to the sandbox default. Setting or changing a host
+        command (:data:`HOST_COMMAND_KEYS`) needs *approved_by*, the
+        owner-verified caller, and pins the approval to its exact text.
 
         Returns:
             Updated project dict, or None if not found.
+
+        Raises:
+            CommandApprovalError: A host command without *approved_by*;
+                nothing is written.
         """
         async with self._session_factory() as session:
             project = (
@@ -697,12 +865,14 @@ class ProjectRegistry:
             ).scalar_one_or_none()
             if project is None:
                 return None
+            meta = dict(project.scan_metadata or {})
+            # Before anything is set: a refused command leaves the project as it was.
+            apply_command_settings(meta, data, approved_by)
             for field in ("description", "git_url"):
                 if field in data:
                     setattr(project, field, data[field])
             if any(k in data for k in _USER_META_KEYS):
-                meta = dict(project.scan_metadata or {})
-                for key in _USER_META_KEYS & data.keys():
+                for key in (_USER_META_KEYS - HOST_COMMAND_KEYS) & data.keys():
                     if data[key]:
                         meta[key] = data[key]
                     else:

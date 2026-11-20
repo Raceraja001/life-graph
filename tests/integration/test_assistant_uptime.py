@@ -34,6 +34,7 @@ async def test_down_after_two_failures_files_one_fix_task_and_recovers(monkeypat
         tenant,
         pid,
         {"health_url": "http://shop.internal/health", "backup_check_command": "exit 3"},
+        approved_by="owner:test",  # a host command needs the owner (H2, audit 2026-11-19)
     )
     async with async_session() as s:
         cfg = (

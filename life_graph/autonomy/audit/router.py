@@ -97,12 +97,15 @@ async def rollback_from_audit(action_id: UUID):
     """Rollback an action referenced from audit log."""
     tenant_id = get_current_tenant_id()
 
+    from life_graph.autonomy.pipeline.service import RollbackNotApprovedError
     from life_graph.runtime import get_autofix_service
 
     service = get_autofix_service()
 
     try:
         result = await service.rollback(tenant_id, action_id)
+    except RollbackNotApprovedError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 

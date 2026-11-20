@@ -150,7 +150,7 @@ class AppUptimeWatcher(BaseWatcher):
             if meta.get("health_url"):
                 state = await self._check_health(pdict, meta["health_url"], state, now)
             if meta.get("backup_check_command"):
-                state = await self._check_backups(pdict, meta["backup_check_command"], state, now)
+                state = await self._check_backups(pdict, meta, state, now)
             states[pid] = state
 
         if config is not None:
@@ -213,9 +213,28 @@ class AppUptimeWatcher(BaseWatcher):
         return state
 
     async def _check_backups(
-        self, project: dict[str, Any], command: str, state: dict[str, Any], now: datetime
+        self, project: dict[str, Any], meta: dict[str, Any], state: dict[str, Any], now: datetime
     ) -> dict[str, Any]:
+        from life_graph.kernel.project_registry import approved_command
         from life_graph.services.approvals import _run_shell
+
+        # A host shell command: only the exact text the owner approved runs
+        # (audit 2026-11-19, H2). Unapproved or edited since: skip, say so once.
+        command = approved_command(meta, "backup_check_command")
+        if command is None:
+            self.logger.warning(
+                "Not running the backup check of %s: the command is not owner-approved",
+                project["name"],
+            )
+            if not state.get("backup_unapproved"):
+                self.emit_event(
+                    Severity.IMPORTANT,
+                    f"{project['name']}: backup check not run (command not approved)",
+                    details={"project_id": project["id"]},
+                    summary="Re-save backup_check_command with the owner key to approve it.",
+                )
+            return {**state, "backup_unapproved": True}
+        state = {k: v for k, v in state.items() if k != "backup_unapproved"}
 
         last = state.get("backup_checked_at")
         if last and now - datetime.fromisoformat(last) < BACKUP_EVERY:

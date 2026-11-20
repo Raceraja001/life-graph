@@ -30,6 +30,7 @@ def _status(state: dict[str, Any], has_url: bool) -> str:
 
 async def report(session: AsyncSession, tenant_id: str) -> list[dict[str, Any]]:
     """One entry per project that has a health URL or a backup check."""
+    from life_graph.kernel.project_registry import approved_command
     from life_graph.models.db import Project
     from life_graph.watchers.models import WatchConfig
 
@@ -71,8 +72,11 @@ async def report(session: AsyncSession, tenant_id: str) -> list[dict[str, Any]]:
                 "cert_days_left": state.get("cert_days"),
                 "backup": None
                 if not backup
+                # The watcher runs only the owner-approved text (H2, audit 2026-11-19).
                 else (
-                    "not checked yet"
+                    "not approved"
+                    if approved_command(meta, "backup_check_command") is None
+                    else "not checked yet"
                     if "backup_exit" not in state
                     else "failing"
                     if state.get("backup_failing")
@@ -96,5 +100,7 @@ def lines(apps: list[dict[str, Any]]) -> list[str]:
             bits.append(f"TLS expires in {a['cert_days_left']} days")
         if a["backup"] == "failing":
             bits.append("backup failing")
+        elif a["backup"] == "not approved":
+            bits.append("backup check not approved")
         out.append(f"{a['project']}: " + ", ".join(b for b in bits if b))
     return out
