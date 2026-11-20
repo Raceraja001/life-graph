@@ -15,7 +15,11 @@ from life_graph.models.schemas import (
     AgentTaskTree,
     AgentTaskUpdate,
 )
-from life_graph.services.delegation import DelegationEngine
+from life_graph.services.delegation import (
+    DelegationDepthError,
+    DelegationEngine,
+    ParentTaskNotFoundError,
+)
 
 router = APIRouter(prefix="/agent-tasks", tags=["Agent Tasks"])
 
@@ -26,8 +30,17 @@ async def create_task(
     tenant_id: str = Depends(get_current_tenant_id),
     engine: DelegationEngine = Depends(get_delegation_engine),
 ):
-    """Create a new agent task (optionally with parent for delegation)."""
-    task = await engine.create_task(tenant_id, data.model_dump(exclude_none=True))
+    """Create a new agent task (optionally with parent for delegation).
+
+    An unknown parent is a 404 and a child past the depth limit a 400; both
+    used to escape as ValueError and answer 500.
+    """
+    try:
+        task = await engine.create_task(tenant_id, data.model_dump(exclude_none=True))
+    except ParentTaskNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except DelegationDepthError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return success_response(data=AgentTaskResponse.model_validate(task))
 
 
