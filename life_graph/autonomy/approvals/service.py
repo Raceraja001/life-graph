@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select, update
 
 from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
+from life_graph.core.errors import ConflictError
 from life_graph.models.db import Approval
 
 if TYPE_CHECKING:
@@ -47,10 +48,12 @@ FEED_STATUS_FOR = {
 }
 
 
-class QueueConflictError(ValueError):
+class QueueConflictError(ConflictError):
     """The decision clashes with the entry's state or its feed copy (HTTP 409).
 
-    A ``ValueError`` so every caller that already catches that keeps working.
+    A ``core.errors.ConflictError`` (so a ``ValueError``): every caller that
+    already catches that keeps working, and main.py's domain-error handler
+    answers 409 if one ever escapes a route uncaught.
     """
 
 

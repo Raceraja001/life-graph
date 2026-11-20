@@ -375,9 +375,9 @@ async def test_ask_brain_abstention_is_unsupported_and_still_discloses_lineage(m
     monkeypatch.setattr("life_graph.services.memory.retrieval.retrieve", _retrieve)
     res = await ask_brain(AskRequest(question=QUESTION, min_confidence=0.8), **_ask_deps([row]))
 
-    assert res.abstained is True
-    assert res.epistemic_status == EPISTEMIC_UNSUPPORTED
-    assert [item["memory_id"] for item in res.source_lineage] == [str(row.id)]
+    assert res["data"].abstained is True
+    assert res["data"].epistemic_status == EPISTEMIC_UNSUPPORTED
+    assert [item["memory_id"] for item in res["data"].source_lineage] == [str(row.id)]
 
 
 async def test_ask_brain_without_memories_is_unsupported(monkeypatch):
@@ -387,6 +387,6 @@ async def test_ask_brain_without_memories_is_unsupported(monkeypatch):
     monkeypatch.setattr("life_graph.services.memory.retrieval.retrieve", _retrieve)
     res = await ask_brain(AskRequest(question=QUESTION), **_ask_deps([]))
 
-    assert res.abstained is True
-    assert res.epistemic_status == EPISTEMIC_UNSUPPORTED
-    assert res.source_lineage == []
+    assert res["data"].abstained is True
+    assert res["data"].epistemic_status == EPISTEMIC_UNSUPPORTED
+    assert res["data"].source_lineage == []

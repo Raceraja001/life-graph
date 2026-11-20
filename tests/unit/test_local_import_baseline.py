@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[2] / "life_graph"
 # model imports to module level.
 BASELINE = {
     "agents": 4,
-    "api": 264,
+    "api": 263,
     "autonomy": 53,
     "cli": 23,
     "cold_start": 6,

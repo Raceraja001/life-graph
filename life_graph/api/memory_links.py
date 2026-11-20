@@ -14,6 +14,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query, status
 
 from life_graph.api.responses import success_response
+from life_graph.core.errors import DomainError
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import MemoryLinkCreate, MemoryLinkResponse
 from life_graph.services.memory import links as link_service
@@ -55,19 +56,11 @@ async def create_link(
             strength=body.strength,
             tenant_id=tenant_id,
         )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-    except Exception as exc:
-        # Catch unique constraint violations
-        if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Link already exists between these memories with this type",
-            ) from exc
-        raise
+    except DomainError as exc:
+        # A bad link type is 400, a duplicate link 409 (SQLSTATE 23505) and a
+        # missing memory 404 — chosen by the exception's type, never by the
+        # words in a database message (audit L3).
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     return success_response(data=MemoryLinkResponse.model_validate(link))
 

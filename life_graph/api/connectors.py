@@ -24,6 +24,7 @@ from life_graph.config import settings
 from life_graph.connectors import google_oauth, secrets
 from life_graph.connectors.base import AUTH_OAUTH, ConnectorError
 from life_graph.connectors.runtime import AccountError, get_runtime
+from life_graph.core.errors import DomainError
 from life_graph.core.tenant import get_current_tenant_id
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,9 @@ class GoogleClient(BaseModel):
 
 
 def _bad(exc: Exception) -> HTTPException:
-    status = 404 if "not found" in str(exc) else 400
+    # The exception's type picks the status (core/errors.py), never its text:
+    # a plugin message that happens to say "not found" is still a 400.
+    status = exc.status_code if isinstance(exc, DomainError) else 400
     return HTTPException(status_code=status, detail=str(exc))
 
 

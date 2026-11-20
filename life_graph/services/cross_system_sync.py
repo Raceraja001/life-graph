@@ -7,21 +7,29 @@ Includes exponential backoff retry logic and memory ingestion.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
+from life_graph.core.trust import classify_surface
 from life_graph.models.db import CrossSystemSync, Memory, Preference
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+    from life_graph.models.schemas import AnalyticsBatch
+
 logger = logging.getLogger(__name__)
+
+# The capture surface these memories come from (core/trust.py maps it).
+SOURCE_TYPE = "uzhavu_sync"
 
 
 class CrossSystemSyncService:
@@ -137,49 +145,75 @@ class CrossSystemSyncService:
     async def receive_analytics(
         self,
         tenant_id: str,
-        data: dict,
+        batch: AnalyticsBatch,
     ) -> CrossSystemSync:
-        """Receive analytics from Uzhavu and store as memories."""
+        """Receive analytics from Uzhavu and store them as pending memories.
+
+        ``batch`` is validated at the route (importance 0-1, bounded strings,
+        at most ANALYTICS_MAX_ITEMS items). Each memory is ``pending`` — it
+        goes through the same review queue as every other ingested memory
+        instead of being written straight to ``active`` (audit M10) — and is
+        inserted in its own SAVEPOINT, so one item the database refuses is
+        counted as failed without rolling back the rest of the batch. The old
+        per-item try only wrapped ``session.add``, which never touches the
+        database, so a bad row failed the whole batch at commit.
+        """
+        trust_tier = classify_surface(SOURCE_TYPE).value
         async with self._sf() as session:
             sync_record = CrossSystemSync(
                 tenant_id=tenant_id,
                 direction="inbound",
                 sync_type="analytics",
                 target_system="uzhavu",
-                request_payload=data,
-                records_sent=len(data.get("items", [])),
+                request_payload=batch.model_dump(mode="json"),
+                records_sent=len(batch.items),
                 started_at=datetime.now(UTC),
             )
             session.add(sync_record)
+            await session.flush()
 
-            synced = 0
+            stored: list[dict[str, str]] = []
             failed = 0
-            for item in data.get("items", []):
+            for item in batch.items:
+                memory = Memory(
+                    tenant_id=tenant_id,
+                    content=item.content,
+                    content_hash=hashlib.sha256(item.content.strip().lower().encode()).hexdigest(),
+                    source_type=SOURCE_TYPE,
+                    source=item.source,
+                    importance=item.importance,
+                    properties=item.properties,
+                    tags=item.tags,
+                    status="pending",
+                    trust_tier=trust_tier,
+                )
                 try:
-                    memory = Memory(
-                        tenant_id=tenant_id,
-                        content=item.get("content", ""),
-                        source_type="uzhavu_sync",
-                        source=item.get("source", "uzhavu"),
-                        importance=item.get("importance", 0.5),
-                        properties=item.get("properties", {}),
-                        tags=item.get("tags"),
-                    )
-                    session.add(memory)
-                    synced += 1
-                except Exception:
+                    async with session.begin_nested():
+                        session.add(memory)
+                except SQLAlchemyError:
                     failed += 1
-                    logger.warning(
-                        "Failed to ingest analytics item",
-                        exc_info=True,
+                    logger.warning("Failed to ingest analytics item", exc_info=True)
+                else:
+                    # id is assigned by the flush on leaving the savepoint;
+                    # read it now rather than off a row after commit.
+                    stored.append(
+                        {
+                            "id": str(memory.id),
+                            "source_type": SOURCE_TYPE,
+                            "preview": item.content[:80],
+                            "tenant_id": tenant_id,
+                        }
                     )
 
             sync_record.status = "completed"
-            sync_record.records_synced = synced
+            sync_record.records_synced = len(stored)
             sync_record.records_failed = failed
             sync_record.completed_at = datetime.now(UTC)
             await session.commit()
             await session.refresh(sync_record)
+
+            await self._announce_pending(stored)
+            synced = len(stored)
 
             await event_bus.emit(
                 EventType.SYNC_COMPLETED,
@@ -191,3 +225,13 @@ class CrossSystemSyncService:
                 source="cross_system_sync",
             )
             return sync_record
+
+    @staticmethod
+    async def _announce_pending(stored: list[dict[str, str]]) -> None:
+        """MEMORY_PENDING per stored memory, as PostgresMemoryStore.store() emits,
+        so these reach the review queue's notifications like any other."""
+        for payload in stored:
+            try:
+                await event_bus.emit(EventType.MEMORY_PENDING, payload, source="cross_system_sync")
+            except Exception:  # events must never break the sync
+                logger.warning("MEMORY_PENDING emit failed", exc_info=True)
