@@ -11,8 +11,9 @@ Tests the Watcher API layer:
 - POST /api/v1/watchers/notification-channels (create channel)
 - GET /api/v1/watchers/notification-channels (list channels)
 
-Follows existing test patterns: httpx AsyncClient + ASGITransport,
-defensive assertions accepting 500 if DB unreachable.
+Follows existing test patterns: httpx AsyncClient + ASGITransport.
+Each response is checked for its exact status with ``assert_ok``; an
+unreachable database is a skip (``skip_on_db_error``), never a 500 pass.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 # Fresh tenant per run. Several rows here are unique-constrained on
 # (tenant_id, <semantic value>) — task_type, channel_type, action_name —
@@ -55,14 +56,11 @@ class TestListWatcherConfigs:
     async def test_list_watcher_configs(self, client: AsyncClient):
         """Listing watcher configs returns 200 with data array."""
         response = await client.get("/api/v1/watchers/configs")
-        assert response.status_code in (200, 500), (
-            f"Expected 200 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
 
 class TestUpdateWatcherConfig:
@@ -76,9 +74,7 @@ class TestUpdateWatcherConfig:
             "/api/v1/watchers/configs/nonexistent_watcher",
             json={"enabled": False},
         )
-        assert response.status_code in (404, 500), (
-            f"Expected 404 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 404)
 
 
 class TestListWatchEvents:
@@ -89,12 +85,11 @@ class TestListWatchEvents:
     async def test_list_watch_events(self, client: AsyncClient):
         """Listing watch events returns 200 with data array."""
         response = await client.get("/api/v1/watchers/events")
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -104,7 +99,7 @@ class TestListWatchEvents:
             "/api/v1/watchers/events",
             params={"severity": "critical", "acknowledged": "false"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
 
 class TestAcknowledgeEvent:
@@ -119,7 +114,7 @@ class TestAcknowledgeEvent:
             f"/api/v1/watchers/events/{fake_id}/acknowledge",
             json={"acknowledged_by": "test"},
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
 
 class TestBulkAcknowledge:
@@ -133,12 +128,11 @@ class TestBulkAcknowledge:
             "/api/v1/watchers/events/acknowledge-all",
             json={"acknowledged_by": "test"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert "acknowledged_count" in body["data"]
+        body = response.json()
+        assert "data" in body
+        assert "acknowledged_count" in body["data"]
 
 
 class TestEventSummary:
@@ -149,16 +143,15 @@ class TestEventSummary:
     async def test_event_summary(self, client: AsyncClient):
         """Event summary returns 200 with aggregated counts."""
         response = await client.get("/api/v1/watchers/events/summary")
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            data = body["data"]
-            assert "total" in data
-            assert "by_severity" in data
-            assert "by_watcher" in data
-            assert "unacknowledged" in data
+        body = response.json()
+        assert "data" in body
+        data = body["data"]
+        assert "total" in data
+        assert "by_severity" in data
+        assert "by_watcher" in data
+        assert "unacknowledged" in data
 
 
 class TestTechRadarList:
@@ -169,12 +162,11 @@ class TestTechRadarList:
     async def test_tech_radar_list(self, client: AsyncClient):
         """Tech radar list returns 200 with data array."""
         response = await client.get("/api/v1/watchers/tech-radar")
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -184,7 +176,7 @@ class TestTechRadarList:
             "/api/v1/watchers/tech-radar",
             params={"min_score": 0.5, "days": 30},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
 
 class TestCreateNotificationChannel:
@@ -203,14 +195,11 @@ class TestCreateNotificationChannel:
                 "enabled": True,
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 201)
 
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert data["channel_type"] == "terminal"
-            assert "id" in data
+        data = response.json()["data"]
+        assert data["channel_type"] == "terminal"
+        assert "id" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -220,7 +209,7 @@ class TestCreateNotificationChannel:
             "/api/v1/watchers/notification-channels",
             json={"name": "Invalid"},
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
 
 class TestListNotificationChannels:
@@ -231,12 +220,11 @@ class TestListNotificationChannels:
     async def test_list_notification_channels(self, client: AsyncClient):
         """Listing notification channels returns 200 with data array."""
         response = await client.get("/api/v1/watchers/notification-channels")
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
 
 class TestListNotifications:
