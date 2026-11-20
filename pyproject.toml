@@ -212,6 +212,12 @@ dev = [
     "pytest-cov>=5.0",
     "pytest-xdist>=3.6",  # pytest -n auto; test ids must be the same in every worker
     "ruff==0.16.1",  # pinned: an unpinned linter breaks CI with no code change
+    # Pinned for the same reason: each mypy release adds checks, so a new
+    # version would move the committed error baseline (mypy-api-baseline.txt)
+    # with no code change. Raise it in a PR of its own and re-record
+    # .github/mypy-api-strict-baseline.txt there. Unrelated to the verifier image's mypy (docker/verifier),
+    # which checks agent projects, not this one.
+    "mypy==2.4.1",
     # No httpx here: it is a core dependency already. No testcontainers
     # either: nothing imported it (the integration job runs its own Postgres).
     "pip-audit>=2.7",  # powers the no_vulnerable_deps_in_diff verifier
@@ -404,3 +410,71 @@ addopts = "-v --tb=short"
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+# ── mypy (audit M11, phase 2) ───────────────────────────────────────────────
+# Typing is switched on package by package. Everything under life_graph is
+# followed (so types flow across packages) but its errors are silenced except
+# in the packages that have been brought up to a level:
+#   life_graph.core  -- every flag `mypy --strict` turns on
+#   life_graph.api   -- a non-strict baseline; the strict error count is
+#                       ratcheted by scripts/mypy_ratchet.py against
+#                       .github/mypy-api-strict-baseline.txt (may only fall)
+# Run it as CI does (the `typecheck` job): `mypy` with no arguments (the
+# targets are in `files`), then `python scripts/mypy_ratchet.py`.
+# SQLAlchemy 2.0 ships its own annotations (Mapped[...]), so no SQLAlchemy
+# plugin -- the old sqlalchemy.ext.mypy plugin is deprecated for 2.0 models.
+[tool.mypy]
+python_version = "3.12"
+files = ["life_graph/core", "life_graph/api"]
+plugins = ["pydantic.mypy"]
+warn_unused_configs = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[[tool.mypy.overrides]]
+module = ["life_graph.*"]
+ignore_errors = true
+
+# Every per-module flag `--strict` enables (strict = true itself is global-only
+# in mypy; warn_unused_configs / warn_redundant_casts are set globally above).
+[[tool.mypy.overrides]]
+module = ["life_graph.core", "life_graph.core.*"]
+ignore_errors = false
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+extra_checks = true
+no_implicit_reexport = true
+strict_equality = true
+warn_return_any = true
+warn_unused_ignores = true
+
+# The api baseline. Only these flags are set here, so `mypy --strict` from the
+# command line (the ratchet) still turns every other strict check on for api.
+[[tool.mypy.overrides]]
+module = ["life_graph.api", "life_graph.api.*"]
+ignore_errors = false
+check_untyped_defs = true
+warn_unused_ignores = true
+
+# Route modules other work is changing right now (2026-11-20); they join the
+# baseline once that lands. Their errors are listed in the PR that added this.
+[[tool.mypy.overrides]]
+module = ["life_graph.api.admin", "life_graph.api.jarvis", "life_graph.api.kernel"]
+ignore_errors = true
+
+# Third-party packages with no type information. Missing from the lock
+# (types-PyYAML is not a dependency) or from the typecheck job's install
+# (the local-nlp / multimodal extras are not synced there).
+[[tool.mypy.overrides]]
+module = ["yaml", "sentence_transformers"]
+ignore_missing_imports = true
