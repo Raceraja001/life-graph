@@ -168,9 +168,11 @@ async def test_patch_with_a_service_key_cannot_set_a_command(registry, field):
 
 
 async def test_patch_with_a_service_key_still_sets_other_settings(registry):
+    # A harmless setting. (This used health_url; setting one is now owner-only
+    # as well, since the host probes it hourly: test_project_safety_settings.py.)
     svc, row, _ = registry()
-    await _patch(svc, row, SERVICE_KEY, description="x", health_url="https://shop.example")
-    assert row.scan_metadata == {"health_url": "https://shop.example"}
+    await _patch(svc, row, SERVICE_KEY, description="x", sandbox_test_timeout=600)
+    assert row.scan_metadata == {"sandbox_test_timeout": 600}
 
 
 async def test_patch_with_a_service_key_may_clear_a_command(registry):
