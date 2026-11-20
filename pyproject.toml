@@ -522,6 +522,9 @@ asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-v --tb=short"
+# network: live tests that need the internet; tests/no_network.py (loaded by
+# CI unit job) skips them, as the dev-agent verifier sandbox has no network.
+markers = ["network: live test that needs the internet"]
 
 [tool.ruff.format]
 quote-style = "double"

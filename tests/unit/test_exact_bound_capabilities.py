@@ -41,7 +41,7 @@ from sqlalchemy import text
 from life_graph.autonomy.approvals import capability as cap
 from life_graph.autonomy.approvals.capability import CapabilityStore
 from life_graph.services import browser_errand as be
-from life_graph.services import vault
+from life_graph.services import destination_validator, vault
 
 TENANT = "t1"
 OTHER_TENANT = "t2"
@@ -53,6 +53,19 @@ SELECTOR = "#confirm-transfer"
 #: Enough threads to lose a race that is only guarded by a lock, and all of
 #: them released at once by a barrier.
 RACERS = 16
+
+
+@pytest.fixture(autouse=True)
+def _public_dns(monkeypatch):
+    """Answer every name with one public address, without touching the network.
+
+    The errand resolves each navigate target (destination_validator) before
+    the browser goes there. With real DNS these tests passed on a networked
+    machine but failed in the dev-agent's verifier sandbox, which has no
+    network, so every dev task on this repo failed its tests_pass check. The
+    validator's own rules still run on the answer; only the lookup is fixed.
+    """
+    monkeypatch.setattr(destination_validator, "_getaddrinfo", lambda host, port: ["93.184.215.14"])
 
 
 # ── A browser that is not a browser ──────────────────────────────────────
