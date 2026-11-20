@@ -40,6 +40,7 @@ def decode_cursor(cursor: str) -> dict[str, str]:
     """
     try:
         payload = base64.urlsafe_b64decode(cursor.encode()).decode()
-        return json.loads(payload)
+        data: dict[str, str] = json.loads(payload)
+        return data
     except Exception as exc:
         raise InvalidCursorError("Invalid cursor format") from exc
