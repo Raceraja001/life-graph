@@ -34,6 +34,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from life_graph.config import settings
 from life_graph.models.assistant import ReviewCard, StudyReview
+from life_graph.storage.database import end_transaction
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -286,6 +287,8 @@ async def generate(
         source = await memories_about(session, tenant_id, topic)
         if not source:
             return {"written": 0, "added": 0, "note": f"No approved memories mention {topic!r}."}
+    # The model call can take minutes: no read transaction held across it.
+    await end_transaction(session)
     cards, failure = await write_cards_checked(source, client=client)
     added = await add_cards(
         session,
@@ -394,6 +397,8 @@ async def draft(
             "drafts": [],
             "note": f"Nothing to study in that {source}.",
         }
+    # The model call can take minutes: no read transaction held across it.
+    await end_transaction(session)
     cards, failure = await write_cards_checked(body, client=client)
     ids = await stage_drafts(
         session,

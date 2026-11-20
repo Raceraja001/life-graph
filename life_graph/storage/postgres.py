@@ -1177,6 +1177,11 @@ class PostgresMemoryStore:
                     valid_from=now,
                 )
                 session.add(replacement)
+                # The new row must exist before the old one points at it
+                # (memories_superseded_by_fkey): setting superseded_by in the
+                # same flush wrote the UPDATE first and the route answered
+                # 500. Same transaction, so it still lands all or nothing.
+                await session.flush()
                 old.superseded_by = new_id
 
             await session.commit()

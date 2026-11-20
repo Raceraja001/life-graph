@@ -40,6 +40,21 @@ async_session = async_sessionmaker(
 )
 
 
+async def end_transaction(session: AsyncSession) -> None:
+    """Commit *session*'s open transaction, if it has one, before a slow call.
+
+    The read -> close -> call -> reopen pattern for code that is handed a
+    session: a model call or a subprocess must not run while the session sits
+    "idle in transaction" holding a snapshot and its locks. The next
+    statement on the same session begins a fresh transaction. ORM objects
+    survive (``expire_on_commit=False`` above). A session with no transaction
+    open, or a test's mock, is left alone.
+    """
+    in_transaction = getattr(session, "in_transaction", None)
+    if callable(in_transaction) and in_transaction() is True:
+        await session.commit()
+
+
 async def get_session() -> AsyncSession:
     """Dependency for FastAPI routes to get a database session."""
     async with async_session() as session:

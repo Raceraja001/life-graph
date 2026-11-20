@@ -122,15 +122,26 @@ class ConversationService:
                 {"role": m.role, "content": m.content} for m in reversed(prior.scalars().all())
             ]
 
-            # 1. retrieve: active memories that answer the question, or none
-            memories = await self._retrieve(question, history)
+        # Retrieval (an embedding) and synthesis (an LLM call, seconds to
+        # minutes) run with no session open: holding the read transaction
+        # across them left a connection idle in transaction for the whole
+        # answer (p2db scan). The turns are written in a fresh one below.
 
-            # 2. synthesize — synthesis.py filters memories with empty/missing
-            # ids BEFORE numbering, so the citations it returns are already
-            # in lockstep with the [Memory J] tokens in the answer text; no
-            # post-hoc filtering needed (or safe to do) here.
-            result = await self._synthesis.synthesize(question, memories, history=history or None)
-            citations = result.get("citations", [])
+        # 1. retrieve: active memories that answer the question, or none
+        memories = await self._retrieve(question, history)
+
+        # 2. synthesize — synthesis.py filters memories with empty/missing
+        # ids BEFORE numbering, so the citations it returns are already
+        # in lockstep with the [Memory J] tokens in the answer text; no
+        # post-hoc filtering needed (or safe to do) here.
+        result = await self._synthesis.synthesize(question, memories, history=history or None)
+        citations = result.get("citations", [])
+
+        async with self._session_factory() as session:
+            # Re-read: the conversation may have been deleted meanwhile.
+            conv = await session.get(Conversation, conversation_id)
+            if conv is None or conv.tenant_id != tenant_id:
+                raise ConversationNotFoundError("Conversation not found")
 
             # 3. persist both turns
             user_turn = ConversationMessage(

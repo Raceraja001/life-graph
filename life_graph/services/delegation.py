@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, select
 
+from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
+from life_graph.autonomy.kill_switch import revoke_live_capabilities
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import AgentTask
 
@@ -53,6 +55,27 @@ class DelegationDepthError(ValueError):
     """Delegating would nest a task deeper than DelegationEngine.MAX_DEPTH."""
 
 
+class CapabilityRevokeError(RuntimeError):
+    """The cancel is committed, but its live capabilities could not be revoked.
+
+    Not a ValueError on purpose: the route must not answer 404 for it.
+    """
+
+    def __init__(self, task: AgentTask, cause: Exception) -> None:
+        super().__init__(
+            f"Task {task.id} is cancelled, but its live capabilities could not be revoked: {cause}"
+        )
+        self.task = task
+
+
+# A task in one of these is finished; anything else (queued, running, or a
+# status added later) is still open and must be cancelled with its parent.
+# AgentTask rows start "queued" (models/agents.py): the cascade used to match
+# only pending|running, so a queued child -- every child not yet picked up --
+# survived its parent's cancel and ran anyway.
+TERMINAL_TASK_STATUSES = frozenset({"completed", "failed", "cancelled", "timeout"})
+
+
 class DelegationEngine:
     """Manages hierarchical agent task delegation."""
 
@@ -81,14 +104,18 @@ class DelegationEngine:
                 assigned_agent=data.get("assigned_agent"),
                 created_by_agent=data.get("created_by_agent"),
                 project_id=data.get("project_id"),
-                priority=data.get("priority", "medium"),
+                # low|normal|high|critical (AgentTaskPriority); "medium" was
+                # outside that set and failed the response model's Literal.
+                priority=data.get("priority") or "normal",
                 timeout_seconds=data.get("timeout_seconds", 3600),
                 max_retries=data.get("max_retries", 2),
                 on_child_failure=data.get("on_child_failure", "continue"),
                 deadline=data.get("deadline"),
                 tags=data.get("tags"),
                 properties=data.get("properties", {}),
-                status_history=[{"status": "pending", "at": datetime.now(UTC).isoformat()}],
+                # The row's real first status (the column default), not "pending".
+                status="queued",
+                status_history=[{"status": "queued", "at": datetime.now(UTC).isoformat()}],
             )
 
             parent_id = data.get("parent_task_id")
@@ -159,7 +186,7 @@ class DelegationEngine:
                 parent = await session.get(AgentTask, task.parent_task_id)
                 if parent and parent.on_child_failure == "abort":
                     for s in siblings:
-                        if s.status in ("pending", "running"):
+                        if s.status not in TERMINAL_TASK_STATUSES:
                             s.status = "cancelled"
                             s.cancel_reason = "Parent aborted on child failure"
                     await session.commit()
@@ -203,26 +230,42 @@ class DelegationEngine:
             history.append({"status": "cancelled", "at": now.isoformat(), "reason": reason})
             task.status_history = history
 
-            children = (
-                (
-                    await session.execute(
-                        select(AgentTask).where(
-                            and_(
-                                AgentTask.parent_task_id == task_id,
-                                AgentTask.tenant_id == tenant_id,
-                                AgentTask.status.in_(["pending", "running"]),
+            # Every open descendant, not just direct children: a grandchild
+            # under an already-finished child would otherwise keep running.
+            frontier = [task_id]
+            stopped = [task_id]
+            while frontier:
+                children = (
+                    (
+                        await session.execute(
+                            select(AgentTask).where(
+                                and_(
+                                    AgentTask.parent_task_id.in_(frontier),
+                                    AgentTask.tenant_id == tenant_id,
+                                )
                             )
                         )
                     )
+                    .scalars()
+                    .all()
                 )
-                .scalars()
-                .all()
-            )
-
-            for child in children:
-                child.status = "cancelled"
-                child.cancel_reason = f"Parent {task_id} cancelled"
-                child.completed_at = now
+                frontier = [c.id for c in children]
+                for child in children:
+                    if child.status in TERMINAL_TASK_STATUSES:
+                        continue
+                    child.status = "cancelled"
+                    child.cancel_reason = f"Parent {task_id} cancelled"
+                    child.completed_at = now
+                    child_history = list(child.status_history or [])
+                    child_history.append(
+                        {
+                            "status": "cancelled",
+                            "at": now.isoformat(),
+                            "reason": child.cancel_reason,
+                        }
+                    )
+                    child.status_history = child_history
+                    stopped.append(child.id)
 
             await session.commit()
             await session.refresh(task)
@@ -232,7 +275,21 @@ class DelegationEngine:
                 {"task_id": str(task_id), "tenant_id": tenant_id, "reason": reason},
                 source="delegation",
             )
-            return task
+
+        # Stop first, revoke second (autonomy/kill_switch.py): the cancel is
+        # committed above and stands whatever happens here. A cancelled task,
+        # and each descendant this cancel stopped, must not leave a live
+        # capability (errand mandate) behind. Cancelling an already-cancelled
+        # task revokes again -- that is how a failed revocation is retried.
+        try:
+            for stopped_id in stopped:
+                await revoke_live_capabilities(tenant_id, str(stopped_id))
+        except StoreUnavailableError as exc:
+            logger.error(
+                "Task %s cancelled, but revoking live capabilities failed: %s", task_id, exc
+            )
+            raise CapabilityRevokeError(task, exc) from exc
+        return task
 
     async def get_task_tree(self, root_task_id: uuid.UUID, tenant_id: str) -> dict:
         """Build a recursive task tree from root."""

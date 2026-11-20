@@ -25,6 +25,7 @@ from sqlalchemy.orm import selectinload
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.utils import utcnow as _utcnow
+from life_graph.models.db import WorkflowStep, WorkflowStepRun
 
 logger = logging.getLogger(__name__)
 
@@ -352,13 +353,21 @@ class WorkflowEngine:
             output: Step output data.
             error: Error message if failed.
         """
-        from life_graph.models.db import WorkflowStepRun
+        from life_graph.models.db import WorkflowRun, WorkflowStep, WorkflowStepRun
 
         async with self._session_factory() as session:
+            # The run link is workflow_run_id and the key lives on
+            # WorkflowStep: this filtered on run_id / step_key, which are not
+            # columns, so no step could ever be completed (same fix as the
+            # GET route in api/agent_workflows.py, #303).
             result = await session.execute(
-                select(WorkflowStepRun).where(
-                    WorkflowStepRun.run_id == run_id,
-                    WorkflowStepRun.step_key == step_key,
+                select(WorkflowStepRun)
+                .join(WorkflowStep, WorkflowStep.id == WorkflowStepRun.workflow_step_id)
+                .join(WorkflowRun, WorkflowRun.id == WorkflowStepRun.workflow_run_id)
+                .where(
+                    WorkflowStepRun.workflow_run_id == run_id,
+                    WorkflowStep.step_key == step_key,
+                    WorkflowRun.tenant_id == tenant_id,
                 )
             )
             step_run = result.scalar_one_or_none()
@@ -395,23 +404,30 @@ class WorkflowEngine:
 
     # ── Internal Methods ─────────────────────────────────────
 
+    @staticmethod
+    async def _step_runs_by_key(session, run_id: uuid.UUID) -> dict[str, Any]:
+        """This run's step runs keyed by their step's ``step_key``.
+
+        WorkflowStepRun carries only workflow_step_id; the key is on
+        WorkflowStep, so it is read through a join.
+        """
+        result = await session.execute(
+            select(WorkflowStepRun, WorkflowStep.step_key)
+            .join(WorkflowStep, WorkflowStep.id == WorkflowStepRun.workflow_step_id)
+            .where(WorkflowStepRun.workflow_run_id == run_id)
+        )
+        return {key: sr for sr, key in result.all()}
+
     async def _advance_dag(self, run_id: uuid.UUID, tenant_id: str) -> None:
         """Find steps with all dependencies satisfied and start them.
 
         If all steps are completed/skipped, complete the run.
         """
-        from life_graph.models.db import (
-            WorkflowRun,
-            WorkflowStep,
-            WorkflowStepRun,
-        )
+        from life_graph.models.db import WorkflowRun, WorkflowStep
 
         async with self._session_factory() as session:
             # Load all step runs for this run
-            result = await session.execute(
-                select(WorkflowStepRun).where(WorkflowStepRun.run_id == run_id)
-            )
-            all_step_runs = {sr.step_key: sr for sr in result.scalars().all()}
+            all_step_runs = await self._step_runs_by_key(session, run_id)
 
             # Check if all steps are in a terminal state
             terminal = {"completed", "failed", "skipped", "cancelled"}
@@ -474,10 +490,7 @@ class WorkflowEngine:
         # Re-check for completion after starting new steps
         # (in case all remaining steps were skipped)
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(WorkflowStepRun).where(WorkflowStepRun.run_id == run_id)
-            )
-            all_step_runs_refreshed = result.scalars().all()
+            all_step_runs_refreshed = (await self._step_runs_by_key(session, run_id)).values()
             terminal = {"completed", "failed", "skipped", "cancelled"}
             if all(sr.status in terminal for sr in all_step_runs_refreshed):
                 await self._complete_run(run_id, tenant_id)
@@ -490,21 +503,30 @@ class WorkflowEngine:
         step_run.status = "running"
         step_run.started_at = _utcnow()
 
+        # WorkflowStep's columns are assigned_agent and properties (the step's
+        # config); agent_name / config do not exist, and create_task takes
+        # (tenant_id, data), so every step used to fail to start.
+        config = step.properties or {}
         try:
             task = await self._delegation_engine.create_task(
-                tenant_id=tenant_id,
-                task_name=f"workflow:{run.workflow_id}:{step.step_key}",
-                agent_name=step.agent_name,
-                input_data=step.config.get("input", {}),
-                priority=step.config.get("priority", "normal"),
-                timeout_seconds=step.timeout_seconds,
-                metadata={
-                    "workflow_run_id": str(run.id),
-                    "workflow_step_id": str(step.id),
-                    "step_key": step.step_key,
+                tenant_id,
+                {
+                    "task_name": f"workflow:{run.workflow_id}:{step.step_key}",
+                    "title": step.name or step.step_key,
+                    "agent_name": step.assigned_agent or "unassigned",
+                    "assigned_agent": step.assigned_agent,
+                    "instructions": step.instructions,
+                    "priority": config.get("priority", "normal"),
+                    "timeout_seconds": step.timeout_seconds,
+                    "properties": {
+                        "input": config.get("input", {}),
+                        "workflow_run_id": str(run.id),
+                        "workflow_step_id": str(step.id),
+                        "step_key": step.step_key,
+                    },
                 },
             )
-            step_run.task_id = task.id
+            step_run.agent_task_id = task.id
 
             logger.info(
                 "Started step %s (task %s) in run %s",
@@ -524,7 +546,7 @@ class WorkflowEngine:
 
     async def _complete_run(self, run_id: uuid.UUID, tenant_id: str) -> None:
         """Mark a workflow run as completed and emit event."""
-        from life_graph.models.db import WorkflowRun, WorkflowStepRun
+        from life_graph.models.db import WorkflowRun
 
         async with self._session_factory() as session:
             run_result = await session.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
@@ -533,15 +555,12 @@ class WorkflowEngine:
                 return
 
             # Aggregate outputs
-            step_result = await session.execute(
-                select(WorkflowStepRun).where(WorkflowStepRun.run_id == run_id)
-            )
-            step_runs = step_result.scalars().all()
+            step_runs = await self._step_runs_by_key(session, run_id)
 
             output_summary = {}
             has_failures = False
-            for sr in step_runs:
-                output_summary[sr.step_key] = {
+            for step_key, sr in step_runs.items():
+                output_summary[step_key] = {
                     "status": sr.status,
                     "output": sr.output or {},
                 }
@@ -582,8 +601,12 @@ class WorkflowEngine:
             await session.execute(
                 update(WorkflowStepRun)
                 .where(
-                    WorkflowStepRun.run_id == run_id,
+                    WorkflowStepRun.workflow_run_id == run_id,
                     WorkflowStepRun.status.in_(["pending", "running"]),
+                    # Only this tenant's run (the route passes the caller's).
+                    WorkflowStepRun.workflow_run_id.in_(
+                        select(WorkflowRun.id).where(WorkflowRun.tenant_id == tenant_id)
+                    ),
                 )
                 .values(
                     status="cancelled",
@@ -593,11 +616,18 @@ class WorkflowEngine:
             )
 
             # Update run
-            run_result = await session.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
+            run_result = await session.execute(
+                select(WorkflowRun).where(
+                    WorkflowRun.id == run_id, WorkflowRun.tenant_id == tenant_id
+                )
+            )
             run = run_result.scalar_one_or_none()
             if run:
                 run.status = final_status
-                run.error = reason
+                # WorkflowRun has no error column: setting run.error was never
+                # persisted. The reason lives in properties, where GET
+                # /workflows/{id}/runs/{run_id} reads it.
+                run.properties = {**(run.properties or {}), "error": reason}
                 run.completed_at = _utcnow()
 
             await session.commit()

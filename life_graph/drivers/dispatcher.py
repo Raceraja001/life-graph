@@ -427,7 +427,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 },
             )
 
-            # Step 4: Dispatch with workdir, then the two post-run guards
+            # Step 4: Dispatch with workdir, then the two post-run guards.
+            # No transaction stays open across the agent run (_end_transaction).
+            await self._end_transaction(session)
             await self._run_driver(run)
             await self._check_worktree_link(run)
             await self._check_files_changed(run)
@@ -606,6 +608,28 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         return row is not None
 
     # ── dispatch_task steps, in pipeline order ──────────────────────────
+
+    @staticmethod
+    async def _end_transaction(session: Any) -> None:
+        """Commit the dispatch session's open transaction before a slow step.
+
+        The session's first read (the WIP check) begins a transaction that
+        used to stay open for the whole dispatch: the agent run, the verifier
+        chain, the bounce, the second-opinion review and the git landing --
+        10+ minutes holding a snapshot, its locks, and any row written so far
+        (a verification run). Postgres never killed it only because the
+        dispatcher's own statements kept resetting the idle timer.
+
+        Committing here ends that transaction; the next statement on the same
+        session begins a fresh one. What was written before this point is
+        durable from here on, as the checkpoints (``_persist_checkpoint``,
+        own session) already are. ORM objects survive it: the app's session
+        factories use ``expire_on_commit=False``. A session that is not in a
+        transaction (or a test's mock) is left alone.
+        """
+        in_transaction = getattr(session, "in_transaction", None)
+        if callable(in_transaction) and in_transaction() is True:
+            await session.commit()
 
     async def _persist_checkpoint(self, run: _DispatchRun) -> None:
         """Flush the run's stage trail into the task row's properties.
@@ -961,6 +985,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             **{k: run.packet.project_context.get(k) for k in SANDBOX_SETTINGS},
             "acceptance_tests": run.acceptance_tests or [],
         }
+        # The checks run the project's build/tests: minutes, no transaction.
+        await self._end_transaction(run.session)
         v_results = await verifier_chain.run_chain(run.verify_chain, run.workdir, task_context)
 
         # Step 5b: a mechanical auto-fix pass -- ruff --fix/--format,
@@ -1199,6 +1225,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             EventType.VERIFICATION_PASSED,
             {"task_id": run.task_id, "driver": driver.name},
         )
+        await self._end_transaction(run.session)  # an LLM review follows
         diff_text = await diff_against_head(run.workdir)
         verdict = await self._reviewer.review(run.task_type, run.instruction, diff_text)
         if not (verdict.ran and not verdict.approved):
@@ -1259,6 +1286,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             and worktree_intact(run.worktree, run.worktree_origin)
         ):
             return
+        await self._end_transaction(run.session)  # git commit + branch follow
         landed_branch = await preserve_verified_work(
             worktree=run.worktree,
             repo_path=run.worktree_origin,
@@ -1494,7 +1522,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             },
         )
 
-        # Re-dispatch
+        # Re-dispatch. The attempt-1 verification row is committed first: no
+        # transaction stays open across the second agent run.
+        await self._end_transaction(session)
         bounce_result = await driver.dispatch(
             bounced_packet, workdir, timeout=_driver_timeout(driver, run)
         )
