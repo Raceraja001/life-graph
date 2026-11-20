@@ -33,6 +33,7 @@ from life_graph.services.memory.recall import RecallEngine
 from life_graph.services.synthesis import SynthesisService
 from life_graph.storage.database import async_session
 from life_graph.storage.postgres import PostgresMemoryStore
+from life_graph.workers.settings import parse_redis_settings
 
 
 @lru_cache(maxsize=1)
@@ -584,9 +585,8 @@ async def get_arq_pool() -> ArqRedis:
     async with _arq_pool_lock[0]:
         if _arq_pool is not None and _arq_pool_loop is loop:
             return _arq_pool
+        # Looked up at call time so tests can patch arq.create_pool.
         from arq import create_pool
-
-        from life_graph.workers.settings import parse_redis_settings
 
         _arq_pool = await create_pool(parse_redis_settings())
         _arq_pool_loop = loop
