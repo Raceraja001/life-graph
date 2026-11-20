@@ -107,6 +107,17 @@ def offered(kind: str, action: str) -> bool:
     return any(a == action for a, _ in ACTIONS.get(kind, []))
 
 
+#: The (kind, action) pairs that decide an authorization rather than tidy a
+#: reminder: Approve mints a capability, Reject refuses one. The route gates
+#: these like any approval (api/approval_identity.py). Every other button
+#: (paid, done, snooze, drop, listen) only changes the owner's own list.
+AUTHORITY_ACTIONS = frozenset({(ERRAND_APPROVAL, "approve"), (ERRAND_APPROVAL, "reject")})
+
+
+def grants_authority(kind: str, action: str) -> bool:
+    return (kind, action) in AUTHORITY_ACTIONS
+
+
 def snooze_until(action: str, now: datetime, tz: Any) -> datetime:
     """When a snoozed item comes back: an hour from now, or 09:00 tomorrow."""
     if action == "snooze_1h":
@@ -137,9 +148,19 @@ def result_for(action: str, *, at: datetime | None, now: datetime, tz: Any) -> s
 
 
 async def perform(
-    session: AsyncSession, tenant_id: str, notification: Any, action: str, now: datetime, tz: Any
+    session: AsyncSession,
+    tenant_id: str,
+    notification: Any,
+    action: str,
+    now: datetime,
+    tz: Any,
+    *,
+    decided_by: str | None = None,
 ) -> str:
     """Take *action* on *notification* (already this tenant's, locked by the caller).
+
+    *decided_by* is who tapped, as the server recognised them
+    (api/approval_identity.py ``resolver``); it is recorded as ``action.by``.
 
     Returns the result sentence; raises ActionRefusedError (409) or ActionNotFoundError
     (404). The caller commits.
@@ -172,6 +193,8 @@ async def perform(
         at = snooze_until(action, now, tz)
         meta = snooze_metadata(meta, at, notification.id)
     meta["action"] = {"id": action, "at": now.astimezone(UTC).isoformat()}
+    if decided_by:
+        meta["action"]["by"] = decided_by
     notification.extra_metadata = meta  # a new dict, so the JSONB change is saved
     notification.is_read = True
     return result_for(action, at=at, now=now, tz=tz)

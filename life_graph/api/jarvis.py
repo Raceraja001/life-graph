@@ -64,7 +64,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -1295,20 +1295,40 @@ async def _own_notification(session, tenant_id: str, notification_id: str, *, lo
 
 
 @router.post("/notifications/{notification_id}/action", summary="Tap a notification's button")
-async def notification_action(notification_id: str, body: NotificationAction):
+async def notification_action(notification_id: str, body: NotificationAction, request: Request):
     """Mark a bill paid, a reminder done, or snooze; the notification is then read.
 
     404 when the notification (or what it is about) is not yours; 409 when the
     button is not offered for it or was already used.
+
+    Approve/Reject on a paused browser errand issues an authorization (an
+    ``AuthorizationCapability``), so it is decided like any other approval
+    (api/approval_identity.py): with ``approvals_require_owner`` on only the
+    owner may tap it (403 otherwise), a caller may never decide an errand it
+    asked for itself, and who decided is recorded from the server's view of
+    the caller (``action.by``), never from the body.
     """
+    from life_graph.api.approval_identity import refuse_self_approval, require_owner, resolver
     from life_graph.connectors.tools import user_tz
     from life_graph.services.notifications import actions as na
 
     tenant_id = get_current_tenant_id()
     async with async_session() as session:
         row = await _own_notification(session, tenant_id, notification_id, lock=True)
+        meta = row.extra_metadata or {}
+        if na.grants_authority(na.kind_of(row.source_type, meta), body.action):
+            require_owner(request)
+            refuse_self_approval(request, meta.get("requested_by"))
         try:
-            result = await na.perform(session, tenant_id, row, body.action, na.utcnow(), user_tz())
+            result = await na.perform(
+                session,
+                tenant_id,
+                row,
+                body.action,
+                na.utcnow(),
+                user_tz(),
+                decided_by=resolver(request),
+            )
         except na.ActionRefusedError as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
         except na.ActionNotFoundError as exc:

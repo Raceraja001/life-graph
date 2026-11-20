@@ -29,6 +29,8 @@ def _auth_on(monkeypatch):
     from life_graph.services import devices
 
     monkeypatch.setattr(settings, "service_api_keys", KEY)
+    # Pairing a phone needs the owner (api/devices.py): this key is the owner's.
+    monkeypatch.setattr(settings, "owner_api_keys", KEY)
     monkeypatch.setattr(settings, "api_key", "")
     monkeypatch.setattr(devices, "pairing_limiter", devices.PairingLimiter())
     devices._cache.clear()
