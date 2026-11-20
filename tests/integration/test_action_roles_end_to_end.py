@@ -235,6 +235,7 @@ async def test_approve_feed_row_resolves_and_executes_pending_action(monkeypatch
         decision="approve",
         note=None,
         resolved_by="tester",
+        close_feed=False,
     )
     autofix.execute_pending.assert_awaited_once_with(TENANT, "action-1")
 
@@ -265,5 +266,6 @@ async def test_reject_feed_row_never_executes(monkeypatch):
         decision="reject",
         note=None,
         resolved_by="tester",
+        close_feed=False,
     )
     autofix.execute_pending.assert_not_awaited()

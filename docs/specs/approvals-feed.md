@@ -136,6 +136,61 @@ transaction (memory merges, archives, contradictions, promotions, entity
 aliases, model adoption) take no claim: a crash rolls their effect back with
 the status.
 
+### Which store is authoritative per kind (added 2026-11-20, audit H9)
+
+Three tables hold approval-shaped state. Each kind has exactly one place
+where its decision is made and one where its side effect runs:
+
+| Kind / item | Decision recorded in | Side effect runs from | Copy elsewhere |
+|---|---|---|---|
+| `promotion`, `merge`, `archive`, `contradiction`, `entity_alias`, `model_adoption` | `approvals` | `approvals` resolve, same transaction | none |
+| `driver_pr`, `driver_merge`, `driver_deploy`, `driver_plan` | `approvals` | `approvals` resolve, with the execution claim | none |
+| autonomy action with an `AutoAction` (pipeline queue, notify-before) | `approval_queue` (the decision of record; the `approvals` copy says the same) | **only** the `approvals` approve of its `kind="autonomous_action"` copy (claim + command pin + kill switch, `AutoFixService.execute_pending`) | `approvals` row, `source_ref` = queue id |
+| autonomy queue entry with no action (dev-task "review task …", driver verification failed/unavailable) | `approval_queue` | nothing runs | none |
+| errand step mandates | `capabilities` (autonomy/approvals/capability.py) | the errand executor spends them | none |
+
+Rules that keep the two copies of an autonomy action in step:
+
+- **Queue → feed.** Every resolution on the queue side closes the copy in the
+  same transaction: `ApprovalService.resolve`, `batch_resolve`,
+  `expire_stale` (status mapping: approved/batch_approved → `approved`;
+  rejected/expired/stale → `rejected`; `resolved_by` copied; the note starts
+  "Resolved in autonomy queue (<status>)"). Lock order is copy first, then
+  queue row, the same order the feed side takes, so the two cannot deadlock.
+  If the copy is locked or carries a running execution claim, the queue side
+  answers 409 (single/batch) or leaves the entry for the next pass (cron).
+- **Feed → queue.** Resolving the copy resolves the queue entry
+  (`_apply_autonomous_action`, with `close_feed=False` because the copy is the
+  row being resolved), then on approve runs the action.
+- **The queue routes hand off.** `POST /autonomy/approvals/{id}/resolve` and
+  `/batch` decide an entry that has a pending copy naming an `AutoAction`
+  through the copy (`resolve_feed_copy`), so approving from either list runs
+  the action the same way. Before 2026-11-20 approving in the queue marked it
+  approved and ran nothing, and the copy stayed pending. In a batch, such
+  entries are decided one by one after the plain entries' single
+  transaction; per-entry failures come back in `failed`.
+- **Disagreement is a conflict, not a success.** Deciding the copy when the
+  queue already decided the other way answers 409
+  (`ApprovalConflictError`): approve after the queue rejected or went stale,
+  or reject after the queue approved. One exception: rejecting a copy whose
+  own earlier attempt approved the queue and then failed or never reported
+  (it carries an execution claim) is the owner abandoning that attempt, as
+  in the at-most-once rules above; the queue entry stays approved as that
+  attempt left it. Deciding the same way again is a harmless repeat.
+- **No timer approves anything.** A notify-before entry's window
+  (`expires_at`, 5 min) ending no longer auto-approves it: the window is
+  cleared, the entry and its copy stay pending, and the owner is notified
+  (CHARTER.md §5, fail-closed). The 14-day stale rule still applies.
+- **Repair.** `reconcile_feed_copies` (every 5 min, with the timeout cron)
+  closes copies left pending by entries resolved before these rules,
+  except an approved entry whose action is still `pending`: approving its
+  copy runs it.
+- **Stops revoke mandates.** Pausing autonomy and cancelling a dev task
+  revoke the live capabilities of that tenant / task
+  (`revoke_live_capabilities`). The stop is committed first; if the
+  capability store is down the route answers 503 saying the stop happened
+  and the revocation did not (pause/cancel again to retry).
+
 ---
 
 ## Events — `core/events.py`

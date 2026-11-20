@@ -593,7 +593,9 @@ async def cancel_dev_task(task_id: str):
     """Queued: cancelled at once. Running: the runner (in whichever process
     holds the runner lock) stops the agent -- its process group or container
     -- and records ``cancelled``; poll the task to see it land. 409 when the
-    task already finished."""
+    task already finished. The task's live capabilities are revoked too; if
+    the capability store cannot be reached the cancel still stands and the
+    answer is 503 saying so (cancel again to retry the revocation)."""
     from life_graph.services.dev import tasks as dev_tasks
 
     try:
@@ -603,6 +605,15 @@ async def cancel_dev_task(task_id: str):
     state = await dev_tasks.request_cancel(async_session, get_current_tenant_id(), task_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Dev task not found")
+    if state.get("revoke_error"):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Dev task is {state['status']} (cancel {state['cancel']}), but its live"
+                f" capabilities could not be revoked ({state['revoke_error']})."
+                " Cancel again to retry the revocation."
+            ),
+        )
     if state["cancel"] == "not_cancellable":
         raise HTTPException(status_code=409, detail=f"Dev task is already {state['status']}")
     return success_response(data=state)

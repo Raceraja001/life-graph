@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ApprovalResponse(BaseModel):
@@ -50,7 +50,29 @@ class ResolveRequest(BaseModel):
     resolved_by: str | None = Field(
         None, max_length=128, description="Ignored for identity; recorded as an unverified note"
     )
-    also_trust: bool = Field(False, description="Also update trust score")
+    # Deprecated 2026-11-20. It was accepted and silently ignored (the
+    # service never read it). Changing trust is the owner's alone and has its
+    # own route, POST /autonomy/trust/override; an approval does not do it on
+    # the side. ``false`` (or leaving it out) is still accepted so old clients
+    # keep working; ``true`` is refused rather than ignored.
+    also_trust: bool = Field(
+        False,
+        deprecated=True,
+        description=(
+            "Deprecated, must be false. Use POST /autonomy/trust/override (owner only)"
+            " to change trust."
+        ),
+    )
+
+    @field_validator("also_trust")
+    @classmethod
+    def _also_trust_unsupported(cls, value: bool) -> bool:
+        if value:
+            raise ValueError(
+                "also_trust is no longer supported: approving does not change trust."
+                " Use POST /autonomy/trust/override (owner only)."
+            )
+        return value
 
 
 class BatchResolveRequest(BaseModel):
@@ -81,3 +103,6 @@ class BatchResolveResponse(BaseModel):
 
     resolved_count: int
     resolved_ids: list[str]
+    # Entries decided through the approvals feed (they run an action) whose
+    # decision did not go through: [{"id", "status_code", "error"}].
+    failed: list[dict] = Field(default_factory=list)

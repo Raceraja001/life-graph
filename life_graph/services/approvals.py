@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
+from life_graph.autonomy.approvals.service import FEED_STATUS_FOR
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_scoped
 from life_graph.models.db import Approval, Memory, Project
@@ -58,6 +59,17 @@ class ApprovalNeedsRetryError(ApprovalAlreadyResolvedError):
     plain approve is refused; the owner checks what happened and approves
     again with ``retry=True``. A subclass of the "already resolved" error so
     every caller already answers it as a conflict (409 / "Already ...").
+    """
+
+
+class ApprovalConflictError(ApprovalAlreadyResolvedError):
+    """The other approval store already decided this item the other way.
+
+    An ``autonomous_action`` row copies an autonomy-queue entry; when that
+    entry was already rejected (or went stale) an approve here, or already
+    approved a reject here, would report a decision that did not happen.
+    Answered as 409 like an already-resolved item; the message says which
+    store decided what.
     """
 
 
@@ -256,6 +268,8 @@ class ApprovalService:
 
         approve = decision == "approve"
         _check_execution(appr, approve, retry)
+        if appr.kind == "autonomous_action":
+            await self._check_queue_agrees(tenant_id, appr, approve)
         if approve and durable_claim and appr.kind in DURABLE_CLAIM_KINDS:
             return await self._resolve_claimed(tenant_id, appr, note, resolved_by)
 
@@ -1277,9 +1291,13 @@ class ApprovalService:
         ``resolve()`` then raises "already resolved" (see
         ``life_graph.autonomy.approvals.service.ApprovalService.resolve``,
         which raises ``ValueError(f"Approval already resolved: {status}")``)
-        — swallow exactly that case (not any other ``ValueError``, e.g. "not
-        found") and continue to ``execute_pending`` so the retry can still
-        run the action. Symmetrically, if the action already executed on a
+        — tolerate exactly that case (not any other ``ValueError``, e.g. "not
+        found"), and only when the queue decided the same way, and continue
+        to ``execute_pending`` so the retry can still run the action. A queue
+        that decided the other way is a conflict (``ApprovalConflictError``,
+        409), except a reject that abandons this row's own failed attempt.
+        :meth:`_check_queue_agrees` refuses the same before anything runs.
+        Symmetrically, if the action already executed on a
         prior attempt, ``execute_pending`` raises
         ``ValueError(f"Cannot execute action in status: {status}")`` (see
         ``life_graph.autonomy.pipeline.service.AutoFixService.execute_pending``)
@@ -1298,7 +1316,7 @@ class ApprovalService:
         underlying execution succeeded or failed — a failed-but-completed
         agent_task is still a *resolved* approval.
         """
-        from life_graph.runtime import get_approval_service, get_autofix_service
+        get_approval_service, get_autofix_service = _autonomy_services()
 
         payload = appr.payload or {}
         autonomy_approval_id = payload.get("approval_id")
@@ -1313,10 +1331,31 @@ class ApprovalService:
                 decision="approve" if approve else "reject",
                 note=appr.resolution_note,
                 resolved_by=resolved_by,
+                # This row is the copy being resolved (and locked) right here.
+                close_feed=False,
             )
         except ValueError as exc:
             if "already resolved" not in str(exc):
                 raise
+            # "Already resolved" is a harmless repeat only when the queue
+            # decided the same way. It used to be swallowed whatever it said,
+            # so a reject here after the queue had approved reported
+            # "rejected" over an approved action (audit H9).
+            status = getattr(exc, "status", None) or str(exc).rsplit(":", 1)[-1].strip()
+            if not approve and _execution(appr) and _queue_outcome(status) == "approved":
+                # Abandoning an attempt this row started (it approved the
+                # queue entry, then failed part-way or never reported): the
+                # owner's reject only closes this row; nothing runs it again.
+                logger.info(
+                    "Autonomous action approval %s: rejected after attempt %s; the queue"
+                    " entry stays approved as that attempt left it",
+                    autonomy_approval_id,
+                    _execution(appr).get("attempt"),
+                )
+                return
+            problem = _queue_disagreement(status, approve, claimed=False)
+            if problem:
+                raise ApprovalConflictError(problem) from None
             logger.info(
                 "Autonomous action approval %s: autonomy side already resolved "
                 "(%s) — retry-tap, continuing",
@@ -1336,6 +1375,26 @@ class ApprovalService:
                     auto_action_id,
                     exc,
                 )
+
+    async def _check_queue_agrees(self, tenant_id: str, appr: Approval, approve: bool) -> None:
+        """409 before anything runs when the autonomy queue already decided otherwise.
+
+        The queue entry's status is read without a lock:
+        ``_apply_autonomous_action`` re-checks under the queue's own lock, so
+        a decision that lands in between still ends in a conflict, not a
+        wrong report.
+        """
+        get_approval_service, _ = _autonomy_services()
+
+        queue_id = (appr.payload or {}).get("approval_id")
+        if not queue_id:
+            return
+        status = await get_approval_service().status_of(tenant_id, str(queue_id))
+        if not isinstance(status, str) or status == "pending":
+            return
+        problem = _queue_disagreement(status, approve, claimed=bool(_execution(appr)))
+        if problem:
+            raise ApprovalConflictError(problem)
 
 
 async def _exempt_from_idle_timeout(session: Any) -> None:
@@ -1369,6 +1428,82 @@ def _execution(appr: Any) -> dict:
     """The execution claim on *appr* (``payload["execution"]``), or ``{}``."""
     value = (getattr(appr, "payload", None) or {}).get("execution")
     return value if isinstance(value, dict) else {}
+
+
+def _autonomy_services() -> tuple[Any, Any]:
+    """``(get_approval_service, get_autofix_service)`` from ``life_graph.runtime``.
+
+    Imported on use: ``runtime`` wires this service, so a module-level import
+    would be a cycle.
+    """
+    from life_graph.runtime import get_approval_service, get_autofix_service
+
+    return get_approval_service, get_autofix_service
+
+
+def _queue_outcome(queue_status: str) -> str:
+    """An ``approval_queue.status`` as the feed's approved/rejected."""
+
+    return FEED_STATUS_FOR.get(queue_status, "rejected")
+
+
+def _queue_disagreement(queue_status: str, approve: bool, *, claimed: bool) -> str | None:
+    """Why deciding an ``autonomous_action`` row would contradict its queue entry, or None.
+
+    ``claimed``: this row carries an execution claim, i.e. its own earlier
+    attempt approved the queue entry; rejecting then abandons that attempt
+    and is not a contradiction.
+    """
+    outcome = _queue_outcome(queue_status)
+    if approve and outcome == "rejected":
+        return (
+            f"{queue_status} in the autonomy queue; approving it here would report"
+            " an approval that did not happen. Ask the agent again if it is still wanted"
+        )
+    if not approve and outcome == "approved" and not claimed:
+        return (
+            "approved in the autonomy queue; rejecting it here would not undo that."
+            " Approve it here to run it, or leave it"
+        )
+    return None
+
+
+async def resolve_feed_copy(
+    session_factory,
+    tenant_id: str,
+    feed_id: str,
+    decision: str,
+    note: str | None,
+    resolved_by: str | None,
+) -> dict[str, Any]:
+    """Resolve one feed row in its own transaction, as ``POST /approvals/{id}/...`` does.
+
+    Used by the autonomy queue's routes for an entry with a feed copy, so that
+    approving from either list runs the action the same way (with the
+    at-most-once claim) and resolves both stores. Raises the service's errors
+    (``LookupError``, ``ApprovalAlreadyResolvedError`` and subclasses,
+    ``ApprovalActionError``); emits ``APPROVAL_RESOLVED`` after the commit.
+    """
+    async with session_factory() as session:
+        try:
+            result = await ApprovalService(session).resolve(
+                tenant_id, feed_id, decision, note=note, resolved_by=resolved_by
+            )
+        except ApprovalActionError:
+            await session.rollback()
+            raise
+        await session.commit()
+    await event_bus.emit(
+        EventType.APPROVAL_RESOLVED,
+        {
+            "id": result["id"],
+            "kind": result["kind"],
+            "status": result["status"],
+            "tenant_id": tenant_id,
+        },
+        source="approvals",
+    )
+    return result
 
 
 def _new_claim(appr: Any, by: str | None) -> dict:

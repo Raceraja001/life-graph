@@ -137,8 +137,10 @@ class TestApprovalQueue:
             f"/api/v1/autonomy/approvals/{approval_id}/resolve",
             json={"decision": "approve", "resolved_by": "tester"},
         )
-        # Already-resolved → ValueError → 404 (never a double side-effect).
-        assert again.status_code == 404, again.text
+        # Already resolved → 409 conflict (QueueAlreadyResolvedError; it was a
+        # 404 before PR #306), never a double side-effect.
+        assert again.status_code == 409, again.text
+        assert "already resolved" in again.json()["detail"]
 
     @skip_on_db_error
     async def test_resolve_missing_returns_404(self, client: AsyncClient):

@@ -8,17 +8,25 @@ from tests.unit.fakes import FakeSession, session_factory, sql
 
 
 async def test_old_pending_entries_become_stale_and_their_actions_skipped():
-    session = FakeSession([("a1", "raja"), ("a2", "raja")], None)
+    old = [("a1", "raja"), ("a2", "raja")]
+    # The candidates, their feed copies (none), the candidates again under a
+    # row lock, then the writes.
+    session = FakeSession(old, [], old, None)
     service = ApprovalService(session_factory(session))
 
     count = await service.expire_stale(14)
 
     assert count == 2
     assert session.commits == 1
-    select_stmt, *updates = session.statements
+    select_stmt, copies_stmt, locked_stmt, *updates = session.statements
     assert "status = 'pending'" in sql(select_stmt)
     assert "created_at <=" in sql(select_stmt)
-    assert len(updates) == 4  # entry + its auto action, twice
+    assert "'autonomous_action'" in sql(copies_stmt)
+    assert "FOR UPDATE" in sql(locked_stmt)
+    assert len(updates) == 5  # entry + its auto action, twice; then the feed copies
+    feed_update = sql(updates[4])
+    assert "UPDATE approvals" in feed_update
+    assert "'rejected'" in feed_update and "'approved'" not in feed_update
     entry_update = sql(updates[0])
     assert "'stale'" in entry_update
     assert "'approved'" not in entry_update

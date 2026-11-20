@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.api.approval_identity import owner_only, resolver
 from life_graph.api.responses import success_response
+from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
+from life_graph.autonomy.kill_switch import revoke_live_capabilities
 from life_graph.autonomy.safety.classifier import ActionClassifier
 from life_graph.autonomy.safety.schemas import (
     ClassifyRequest,
@@ -220,7 +222,16 @@ async def pause_kill_switch(
     session: AsyncSession = Depends(get_session),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Immediately stop all autonomous action execution for this tenant."""
+    """Immediately stop all autonomous action execution for this tenant.
+
+    Then revoke the tenant's live capabilities (errand mandates), so nothing
+    approved before the pause can still be spent. The pause is committed
+    first and stands whatever happens next: if the capability store cannot
+    be reached the answer is 503 saying exactly that — autonomy IS paused,
+    the revocation did not happen, pause again to retry it (pausing is
+    idempotent). A 200 that hid the failure would claim a stop that left
+    mandates live; failing the pause itself would leave autonomy running.
+    """
     from datetime import UTC, datetime
 
     from life_graph.autonomy.kill_switch import invalidate_autonomy_pause_cache
@@ -233,7 +244,22 @@ async def pause_kill_switch(
     config.autonomy_paused_at = datetime.now(UTC)
     await session.commit()
     invalidate_autonomy_pause_cache(tenant_id)
-    return success_response(_kill_switch_response(config))
+    try:
+        revoked = await revoke_live_capabilities(tenant_id)
+    except StoreUnavailableError as exc:
+        logger.error(
+            "Autonomy paused for tenant %s, but revoking live capabilities failed: %s",
+            tenant_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Autonomy is paused, but its live capabilities could not be revoked"
+                f" ({exc}). Pause again to retry the revocation."
+            ),
+        ) from exc
+    return success_response({**_kill_switch_response(config), "capabilities_revoked": revoked})
 
 
 @router.post("/kill-switch/resume")

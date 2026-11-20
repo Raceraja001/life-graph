@@ -6,6 +6,11 @@ from ``resolved_by`` in the body; with ``approvals_require_owner`` on, only the
 owner may resolve, singly or in a batch. Whatever the setting, a caller that
 is not the owner cannot decide an entry it asked for itself (``requested_by``,
 migration 061), and a batch with no ids and no filter must say ``all: true``.
+
+An entry with a linked action is decided through its copy in the unified
+feed (``_decide_in_feed``), the single path that runs the action; both
+stores then hold the same decision (docs/specs/approvals-feed.md, "Which
+store is authoritative per kind"). Conflicts answer 409.
 """
 
 from __future__ import annotations
@@ -28,7 +33,7 @@ from life_graph.autonomy.approvals.schemas import (
     BatchResolveResponse,
     ResolveRequest,
 )
-from life_graph.autonomy.approvals.service import _serialize
+from life_graph.autonomy.approvals.service import QueueConflictError, _serialize
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
 
@@ -69,26 +74,71 @@ async def list_approvals(
     )
 
 
+async def _decide_in_feed(
+    tenant_id: str, feed_id: str, decision: str, note: str | None, resolved_by: str
+) -> dict:
+    """Decide an entry through its feed copy; HTTP errors as the feed's routes give them.
+
+    An entry with a linked action has a copy in the unified feed, and the
+    feed's approve is the one path that runs the action (with the
+    at-most-once claim, services/approvals.py); it resolves this queue entry
+    too. Approving here directly used to mark the entry approved and run
+    nothing, and its copy stayed pending (audit H9).
+    """
+    from life_graph.services.approvals import (
+        ApprovalActionError,
+        ApprovalAlreadyResolvedError,
+        resolve_feed_copy,
+    )
+
+    try:
+        return await resolve_feed_copy(
+            async_session, tenant_id, feed_id, decision, note, resolved_by
+        )
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Approval not found") from None
+    except ApprovalAlreadyResolvedError as exc:
+        raise HTTPException(status_code=409, detail=f"Approval already {exc}") from None
+    except ApprovalActionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
 @router.post("/{approval_id}/resolve", response_model=None)
 async def resolve_approval(approval_id: str, body: ResolveRequest, request: Request):
-    """Resolve (approve/reject) an approval entry."""
+    """Resolve (approve/reject) an approval entry.
+
+    An entry with a linked action is decided through its feed copy (approve
+    runs the action there); anything else is resolved here. Either way both
+    stores end with the same decision.
+    """
     require_owner(request)
     tenant_id = get_current_tenant_id()
 
     from life_graph.runtime import get_approval_service
 
     service = get_approval_service()
+    note = note_with_claim(body.note, body.resolved_by)
+    who = resolver(request)
+
+    copies = await service.pending_feed_copies(tenant_id, [approval_id])
+    if approval_id in copies:
+        entries = await service.match_pending(tenant_id, {"approval_ids": [approval_id]})
+        for entry in entries:
+            refuse_self_approval(request, getattr(entry, "requested_by", None))
+        result = await _decide_in_feed(tenant_id, copies[approval_id], body.decision, note, who)
+        return success_response(data={"id": approval_id, "status": result["status"]})
 
     try:
         await service.resolve(
             tenant_id=tenant_id,
             approval_id=approval_id,
             decision=body.decision,
-            note=note_with_claim(body.note, body.resolved_by),
-            resolved_by=resolver(request),
-            also_trust=body.also_trust,
+            note=note,
+            resolved_by=who,
             guard=lambda requested_by: refuse_self_approval(request, requested_by),
         )
+    except QueueConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
@@ -115,24 +165,54 @@ async def batch_resolve(body: BatchResolveRequest, request: Request):
     from life_graph.runtime import get_approval_service
 
     service = get_approval_service()
+    note = note_with_claim(body.note, body.resolved_by)
+    who = resolver(request)
+    filter_criteria = {
+        "approval_ids": body.approval_ids,
+        "agent_id": body.agent_id,
+        "project_id": body.project_id,
+        "risk_level": body.risk_level,
+    }
 
-    result = await service.batch_resolve(
-        tenant_id=tenant_id,
-        filter_criteria={
-            "approval_ids": body.approval_ids,
-            "agent_id": body.agent_id,
-            "project_id": body.project_id,
-            "risk_level": body.risk_level,
-        },
-        decision=body.decision,
-        note=note_with_claim(body.note, body.resolved_by),
-        resolved_by=resolver(request),
-        guard=lambda requested_by: refuse_self_approval(request, requested_by),
-    )
+    # The self-approval check covers every matched entry before anything is
+    # decided, as before; entries with a linked action then go through the
+    # feed one by one (each may run its action), the rest in one transaction.
+    entries = await service.match_pending(tenant_id, filter_criteria)
+    for entry in entries:
+        refuse_self_approval(request, getattr(entry, "requested_by", None))
+    copies = await service.pending_feed_copies(tenant_id, [str(e.id) for e in entries])
+    plain = [str(e.id) for e in entries if str(e.id) not in copies]
+
+    resolved_ids: list[str] = []
+    if not copies or plain:
+        try:
+            result = await service.batch_resolve(
+                tenant_id=tenant_id,
+                # Unchanged when nothing goes through the feed; otherwise
+                # exactly the entries that do not.
+                filter_criteria={"approval_ids": plain} if copies else filter_criteria,
+                decision=body.decision,
+                note=note,
+                resolved_by=who,
+                guard=lambda requested_by: refuse_self_approval(request, requested_by),
+            )
+        except QueueConflictError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        resolved_ids.extend(result["resolved_ids"])
+
+    failed: list[dict] = []
+    for entry_id, feed_id in copies.items():
+        try:
+            await _decide_in_feed(tenant_id, feed_id, body.decision, note, who)
+        except HTTPException as exc:
+            failed.append({"id": entry_id, "status_code": exc.status_code, "error": exc.detail})
+            continue
+        resolved_ids.append(entry_id)
 
     return success_response(
         data=BatchResolveResponse(
-            resolved_count=result["resolved_count"],
-            resolved_ids=result["resolved_ids"],
+            resolved_count=len(resolved_ids),
+            resolved_ids=resolved_ids,
+            failed=failed,
         ).model_dump(mode="json"),
     )
