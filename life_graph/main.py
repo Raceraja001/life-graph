@@ -6,6 +6,7 @@ service-to-service auth, API versioned under /api/v1/, and middleware pipeline:
 """
 
 import logging
+from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -108,11 +109,7 @@ def startup_step(report: StartupReport, name: str):
         report.record(name, ok=True)
 
 
-async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
-    """Startup for the domains beyond the memory engine (profile ``full``).
-
-    Moved out of ``lifespan`` unchanged on 2026-10-29, in the order it ran.
-    """
+async def _step_durable_authorization(app: FastAPI, report: StartupReport) -> None:
     # The owner's authority moves into Postgres before anything that can
     # issue or verify a mandate runs. Attaching is unconditional once the
     # setting is on and needs no probe: each operation reconnects and fails
@@ -126,6 +123,8 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
             attach_durable_stores()
             logger.info("Authorization store: durable (capabilities, standing_rules)")
 
+
+async def _step_agent_tools(app: FastAPI, report: StartupReport) -> None:
     # Startup — register agent tools (import triggers @tool decorator)
     with startup_step(report, "agent_tools"):
         from life_graph.tools.load import register_all
@@ -140,6 +139,8 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         registry.add_post_exec_hook(ToolObservationHook())
         logger.info("Tool-exhaust observation hook registered")
 
+
+async def _step_mcp_bridge(app: FastAPI, report: StartupReport) -> None:
     # Startup — connect configured external MCP servers (bridge)
     with startup_step(report, "mcp_bridge"):
         from life_graph.services.mcp_bridge import connect_all
@@ -147,6 +148,8 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         bridged_count = await connect_all(app.state.mcp_exit_stack)
         logger.info("MCP bridge: %d external tool(s) registered", bridged_count)
 
+
+async def _step_connectors(app: FastAPI, report: StartupReport) -> None:
     # Startup — connectors (calendar, email): discover plugins, register tools
     if settings.connectors_enabled:
         with startup_step(report, "connectors"):
@@ -156,6 +159,8 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
             get_runtime()
             register_tools()
 
+
+async def _step_webhook_handler(app: FastAPI, report: StartupReport) -> None:
     # Startup — wire webhook event handler
     with startup_step(report, "webhook_handler"):
         from life_graph.integrations.webhook import WebhookEventHandler
@@ -175,13 +180,15 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
             webhook_handler.set_arq_pool(arq_pool)
             logger.info("Webhook ARQ pool connected")
 
-    # Every seeded tenant, not just "default". A tenant with no rows in
-    # action_safety_rules is not an unconfigured tenant that falls back to
-    # something sensible — the classifier calls an action it cannot match
-    # dangerous, so such a tenant can do nothing autonomously and the logs
-    # never mention it. LIFE_GRAPH_SEED_TENANTS is the list.
-    seed_tenants = settings.seed_tenants_list
 
+async def _step_seed_personas(app: FastAPI, report: StartupReport) -> None:
+    # Every seeded tenant, not just "default" (this and the two seed steps
+    # after it). A tenant with no rows in action_safety_rules is not an
+    # unconfigured tenant that falls back to something sensible — the
+    # classifier calls an action it cannot match dangerous, so such a tenant
+    # can do nothing autonomously and the logs never mention it.
+    # LIFE_GRAPH_SEED_TENANTS is the list.
+    seed_tenants = settings.seed_tenants_list
     # Startup — seed kernel personas
     with startup_step(report, "seed_personas"):
         from life_graph.runtime import get_persona_service
@@ -209,6 +216,9 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
                 if n:
                     logger.info("Seeded/reconciled %d built-in personas for %s", n, persona_tenant)
 
+
+async def _step_seed_ambient_jobs(app: FastAPI, report: StartupReport) -> None:
+    seed_tenants = settings.seed_tenants_list
     # Startup — seed ambient scheduled jobs
     with startup_step(report, "seed_ambient_jobs"):
         from life_graph.kernel.ambient import seed_ambient_jobs
@@ -219,6 +229,9 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
             if seeded_jobs:
                 logger.info("Seeded %d ambient scheduled jobs for tenant=%s", seeded_jobs, tenant)
 
+
+async def _step_seed_ambient_autonomy(app: FastAPI, report: StartupReport) -> None:
+    seed_tenants = settings.seed_tenants_list
     # Startup — seed ambient project safety rules + L1 autonomy level (Sub-project B)
     with startup_step(report, "seed_ambient_autonomy"):
         from life_graph.autonomy.safety.ambient_rules import seed_ambient_autonomy
@@ -227,6 +240,8 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
             await seed_ambient_autonomy(tenant)
             logger.info("Seeded ambient autonomy safety rules + L1 level for tenant=%s", tenant)
 
+
+async def _step_scheduler_outcomes(app: FastAPI, report: StartupReport) -> None:
     # Startup — wire schedule outcome reconciliation
     with startup_step(report, "scheduler_outcomes"):
         from life_graph.runtime import get_scheduler_service
@@ -242,6 +257,9 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         get_scheduler_service().subscribe()
         logger.info("Scheduler outcome reconciliation enabled (via EventBus)")
 
+
+async def _step_event_subscribers(app: FastAPI, report: StartupReport) -> None:
+    """The EventBus listeners: judgment, brief delivery, approvals, findings, autonomy."""
     # Startup — wire judgment engine
     with startup_step(report, "judgment_engine"):
         from life_graph.services.judgment import judgment_service
@@ -286,12 +304,16 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         autonomous_approval_producer.subscribe()
         logger.info("Autonomous action bridges enabled (web)")
 
+
+async def _step_agent_drivers(app: FastAPI, report: StartupReport) -> None:
     # Startup — register agent drivers
     with startup_step(report, "agent_drivers"):
         from life_graph.drivers.setup import register_default_drivers
 
         logger.info("Agent drivers registered: %s", register_default_drivers())
 
+
+async def _step_adopted_models(app: FastAPI, report: StartupReport) -> None:
     # Free models adopted through a model_adoption approval join the cloud
     # model list (services/llm/offers.py, compute_router.set_adopted).
     with startup_step(report, "adopted_models"):
@@ -303,6 +325,8 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         if adopted:
             logger.info("Adopted free models: %s", adopted)
 
+
+async def _step_dev_task_runner_lock(app: FastAPI, report: StartupReport) -> None:
     # Only the process holding the runner lock recovers and runs dev tasks, so
     # a second instance on the same database (a preview from another worktree)
     # can neither claim queued tasks nor fail the real runner's in-flight one.
@@ -324,8 +348,14 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
                 )
         else:
             logger.info("Dev-task runner disabled (LIFE_GRAPH_DEV_TASK_RUNNER_ENABLED=false)")
-    is_dev_task_runner = app.state.dev_task_runner_lock is not None
 
+
+def _is_dev_task_runner(app: FastAPI) -> bool:
+    return app.state.dev_task_runner_lock is not None
+
+
+async def _step_dev_tasks_recovery(app: FastAPI, report: StartupReport) -> None:
+    is_dev_task_runner = _is_dev_task_runner(app)
     with startup_step(report, "dev_tasks_recovery"):
         from life_graph.services.dev.tasks import fail_interrupted
 
@@ -334,6 +364,9 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
             if interrupted:
                 logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
 
+
+async def _step_dev_task_runtime_sweep(app: FastAPI, report: StartupReport) -> None:
+    is_dev_task_runner = _is_dev_task_runner(app)
     with startup_step(report, "dev_task_runtime_sweep"):
         # After recovery, so the tasks it just re-queued count as not running:
         # their containers, networks and staged tokens are leftovers now.
@@ -342,6 +375,8 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
 
             await sweep_orphans(async_session)
 
+
+async def _step_dev_recorders(app: FastAPI, report: StartupReport) -> None:
     with startup_step(report, "dev_outcome_recorder"):
         from life_graph.services.dev.outcomes import dev_outcome_recorder
 
@@ -355,6 +390,9 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         # the dev task: that is this one, the runner-lock holder.
         trajectory_recorder.subscribe()
 
+
+async def _step_dev_task_queue(app: FastAPI, report: StartupReport) -> None:
+    is_dev_task_runner = _is_dev_task_runner(app)
     app.state.dev_task_queue = None
     with startup_step(report, "dev_task_queue"):
         import asyncio
@@ -371,6 +409,44 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
             # Lost the lock race at startup: keep trying, so start buttons
             # don't depend on whichever process happened to win.
             app.state.dev_task_standby = asyncio.create_task(_dev_runner_standby(app))
+
+
+# The extended-domain startup, in the order it has always run (it was one
+# 260-line function, moved out of ``lifespan`` unchanged on 2026-10-29 and
+# split into these steps on 2026-11-20, audit M15). Order matters: tools
+# before the MCP bridge adds to them, personas before the jobs that run as
+# them, the runner lock before recovery, the sweep and the queue that only
+# its holder may run. tests/unit/test_startup_steps.py pins the sequence of
+# recorded step names.
+_EXTENDED_STARTUP: tuple[Callable[[FastAPI, StartupReport], Awaitable[None]], ...] = (
+    _step_durable_authorization,
+    _step_agent_tools,
+    _step_mcp_bridge,
+    _step_connectors,
+    _step_webhook_handler,
+    _step_seed_personas,
+    _step_seed_ambient_jobs,
+    _step_seed_ambient_autonomy,
+    _step_scheduler_outcomes,
+    _step_event_subscribers,
+    _step_agent_drivers,
+    _step_adopted_models,
+    _step_dev_task_runner_lock,
+    _step_dev_tasks_recovery,
+    _step_dev_task_runtime_sweep,
+    _step_dev_recorders,
+    _step_dev_task_queue,
+)
+
+
+async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
+    """Startup for the domains beyond the memory engine (profile ``full``).
+
+    Each step records its own outcome(s) on *report*; a failed step is logged
+    and startup carries on, as it always has (see :func:`startup_step`).
+    """
+    for step in _EXTENDED_STARTUP:
+        await step(app, report)
 
 
 async def _dev_runner_standby(app: FastAPI) -> None:
