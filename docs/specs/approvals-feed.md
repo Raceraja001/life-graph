@@ -92,7 +92,7 @@ CREATE UNIQUE INDEX uq_approvals_source_ref ON approvals (tenant_id, source, sou
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | GET | `/approvals` | `?status=pending\|all&limit=100` | `success_response([{id,kind,title,detail,status,source,created_at}])` |
-| POST | `/approvals/{id}/approve` | `{note?, resolved_by?}` | `success_response({id,status:'approved'})` |
+| POST | `/approvals/{id}/approve` | `{note?, resolved_by?, retry?}` | `success_response({id,status:'approved'})` |
 | POST | `/approvals/{id}/reject` | `{note?, resolved_by?}` | `success_response({id,status:'rejected'})` |
 
 - Tenant via `Depends(get_current_tenant_id)`; DB via `async_session()`; responses via `success_response`.
@@ -108,6 +108,33 @@ CREATE UNIQUE INDEX uq_approvals_source_ref ON approvals (tenant_id, source, sou
 - `reconcile_promotions(tenant_id)` — read `optimization_runs` where `status='needs_review'`; for each, `INSERT … ON CONFLICT (tenant_id,source,source_ref) DO NOTHING` an approval with `kind='promotion'`, `source='self_improving'`, `source_ref=run.id`, title/detail from run fields, `payload={candidate_version_id, previous_version_id, candidate_accuracy_pct}`. **Verify real column names against `self_improving/models.py` at build time** (the explorer flagged a field/method mismatch in the existing review router — do not trust it; read the model).
 - `resolve(tenant_id, approval_id, decision, note, resolved_by)` — guard already-resolved (409); on approve+`kind='promotion'` call the prompt-version activate method (confirm its real name — `activate` vs `activate_version`) and mark the run; emit event.
 - Side-effect dispatch keyed by `kind` so follow-up producers slot in.
+
+### At-most-once execution (added 2026-11-20, audit P0)
+
+Kinds whose approve side effect lives outside the approval's transaction
+(`driver_pr`, `driver_merge`, `driver_deploy`, `driver_plan`,
+`autonomous_action`) commit an execution claim before the effect runs:
+`payload.execution = {state: "started", attempt_id, attempt, started_at, by}`.
+`status` stays `pending` until the effect finishes, so every client keeps
+listing the item. Then:
+
+- success: `status='approved'`, `execution.state='done'`;
+- the effect raised `ApprovalActionError`: `state='failed'` (with `error`);
+  anything else: `state='unknown'`; the item stays pending;
+- the process died before the commit: `state` stays `started`; the 15-minute
+  `sync_dev_task_prs` job (`flag_stale_claims`) turns a claim older than the
+  longest possible run (1 h; more for a deploy with a long smoke timeout) into
+  `unknown` and notifies the owner.
+
+While `started` (not stale), approve and reject both answer 409 "being
+applied". After `failed`/`unknown`, reject is allowed; approve runs again only
+if that is harmless (`driver_pr`, `driver_merge`: re-runs find the PR open or
+already merged; `driver_plan` after a `failed` pre-check), otherwise 409 until
+the owner sends `{"retry": true}`. The auto-merge sweep never retries a row
+whose claim is `started` or `unknown`. Kinds that only change rows in the same
+transaction (memory merges, archives, contradictions, promotions, entity
+aliases, model adoption) take no claim: a crash rolls their effect back with
+the status.
 
 ---
 

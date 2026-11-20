@@ -213,6 +213,11 @@ class ApprovalFilingMixin:
                 "approve",
                 note=f"Approved automatically: {decision.summary}.",
                 resolved_by="auto: small trusted plan",
+                # The approval was filed in this same, still-open transaction:
+                # nothing committed to claim, and committing here would commit
+                # the dispatch's other work early. If it rolls back, the
+                # approval never existed and cannot be approved twice.
+                durable_claim=False,
             )
             logger.info("Plan %s auto-approved (%s)", appr.id, decision.summary)
             return True

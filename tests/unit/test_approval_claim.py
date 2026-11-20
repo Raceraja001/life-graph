@@ -157,7 +157,14 @@ async def test_the_api_answers_409_while_the_item_is_being_resolved(monkeypatch)
     assert info.value.detail == "Approval already being resolved"
 
 
-# ── The claimed transaction is exempt from the idle timeout ──────────────
+# ── No idle-timeout exemption any more ───────────────────────────────────
+#
+# #278 exempted the claimed transaction from the engine's 600 s
+# idle-in-transaction timeout (SET LOCAL ... = 0) because a deploy ran while
+# it held the row lock. Since P0 (2026-11-20) the kinds with long side effects
+# commit an execution claim first and run outside that transaction
+# (tests/unit/test_approval_once.py), and the other kinds only touch rows in
+# the same short transaction: nothing needs the exemption.
 
 
 class _BoundSession(_Session):
@@ -182,19 +189,14 @@ class _BoundSession(_Session):
 SET_LOCAL = "SET LOCAL idle_in_transaction_session_timeout = 0"
 
 
-async def test_on_postgres_the_lock_is_followed_by_set_local_idle_timeout_off(side_effects):
-    """storage/database.py gives every connection a 600 s idle-in-transaction
-    timeout. A claimed approval idles in its transaction on purpose while a
-    deploy runs (up to DEPLOY_TIMEOUT_SECONDS plus smoke and rollback), so
-    without this a slow but successful deploy lost its connection, the commit
-    failed and a retry deployed again."""
+async def test_on_postgres_the_lock_is_not_followed_by_set_local(side_effects):
     appr = _approval()
     session = _BoundSession(appr, "postgresql")
 
     await approvals_mod.ApprovalService(session).resolve("t", str(appr.id), "approve")
 
-    assert session.events == ["lock", SET_LOCAL]
-    assert side_effects == [appr.id]  # and the side effect ran after both
+    assert session.events == ["lock"]
+    assert side_effects == [appr.id]
 
 
 async def test_no_set_local_when_the_lock_was_refused(side_effects):

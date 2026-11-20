@@ -22,7 +22,11 @@ from typing import TYPE_CHECKING, Any
 
 from life_graph.config import settings
 from life_graph.scoring.ranking import to_index
-from life_graph.services.approvals import ApprovalAlreadyResolvedError, ApprovalService
+from life_graph.services.approvals import (
+    ApprovalActionError,
+    ApprovalAlreadyResolvedError,
+    ApprovalService,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -233,6 +237,12 @@ async def _confirm(chat_id: int, tenant_id: str, session: AsyncSession, reply) -
         return
     except ApprovalAlreadyResolvedError as exc:
         await reply(chat_id, f"Already {exc.args[0] if exc.args else 'resolved'}.")
+        return
+    except ApprovalActionError as exc:
+        # The side effect failed; the item stays pending (the failed attempt
+        # is recorded on it). Used to escape as an unhandled error.
+        await session.rollback()
+        await reply(chat_id, f"Could not do it: {exc}")
         return
 
     await session.commit()

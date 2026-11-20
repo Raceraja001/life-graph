@@ -241,6 +241,12 @@ class _Session:
     async def flush(self):
         pass
 
+    async def commit(self):
+        pass  # the execution claim is committed before the side effect
+
+    async def rollback(self):
+        pass
+
 
 async def test_failed_pr_raises_so_approval_stays_retryable(monkeypatch):
     async def boom(payload):

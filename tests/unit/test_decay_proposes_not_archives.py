@@ -187,7 +187,7 @@ async def test_a_malformed_payload_is_survivable():
 def test_resolve_routes_the_archive_kind():
     from life_graph.services.approvals import ApprovalService
 
-    src = _source(ApprovalService.resolve)
+    src = _source(ApprovalService._apply)  # resolve()'s per-kind dispatch
     assert '"archive"' in src, "resolve() must dispatch the kind decay queues"
 
 
