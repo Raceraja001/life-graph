@@ -9,7 +9,8 @@ Get Life Graph running locally in under 5 minutes.
 | Requirement | Version | Notes |
 |---|---|---|
 | **Docker + Docker Compose** | Latest | Required for Option 1; also needed for Postgres/Redis in Option 2 |
-| **Python** | 3.11+ | Required for Option 2 (local development) |
+| **Python** | 3.12 (3.11 still resolves) | Required for Option 2 (local development); CI and the Docker image use 3.12 |
+| **uv** | 0.12.14 | Installs the locked dependencies in Option 2 (`pip install uv==0.12.14`) |
 | **LM Studio** | Any | _Optional_ — only needed if you want local LLM inference |
 
 ---
@@ -77,38 +78,49 @@ curl http://localhost:8000/health
 
 Use this when you want hot-reload, breakpoints, or are actively developing.
 
-### 1. Create & activate a virtual environment
+### 1–2. Create the environment and install the locked dependencies
+
+The exact versions live in `uv.lock`; CI, the Docker image and releases all
+install from it, so a development environment should too. With
+[uv](https://docs.astral.sh/uv/) (CI uses 0.12.14):
 
 ```bash
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-
-# Linux / Mac
-source .venv/bin/activate
+uv sync --locked --python 3.12 --extra dev --extra local-nlp   # creates .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+uv pip install "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85"
 ```
 
-### 2. Install dependencies
+- `--locked` refuses to install when `pyproject.toml` and `uv.lock` disagree.
+  After changing a dependency, run `uv lock` and commit both files together
+  (the CI `lockfile` job checks this).
+- `uv sync` makes the venv match the lock exactly, so it removes the spaCy
+  model (which is not on PyPI, hence not in the lock); re-run the last line
+  after every sync. `python -m spacy download` does not work here — a uv venv
+  has no pip.
+- Other extras: `--extra multimodal`, `cold-start`, `watchers`,
+  `browser-sandbox`, or `--extra all` for everything.
 
-```bash
-pip install -e ".[dev,local-nlp]"
-python -m spacy download en_core_web_sm
-```
-
-`local-nlp` carries spaCy and sentence-transformers. They are optional because
-between them they pull the CUDA torch stack (~4.5 GB), but without them there is
+`local-nlp` carries spaCy and sentence-transformers. Without them there is
 no in-process embedding model, so the app refuses to start unless some backend
 is configured — a remote one via `LIFE_GRAPH_USE_LOCAL_LLM=true`, or an explicit
 opt-out via `LIFE_GRAPH_REQUIRE_EMBEDDING_BACKEND=false`. The check is a
 configuration check, not a reachability probe: a backend that is configured but
-offline still fails per-call rather than at boot. On a CPU-only machine install the
-smaller torch build first:
+offline still fails per-call rather than at boot.
+
+The lock pins torch to the **CPU** build on Linux and Windows (~200 MB instead
+of the ~4.5 GB CUDA stack; see `[tool.uv.sources]` in `pyproject.toml`). On a
+GPU machine that wants CUDA embeddings, put the CUDA build over the synced
+environment — and note the next `uv sync` puts the CPU build back:
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install -e ".[dev,local-nlp]"
+# cuXXX = the CUDA index for your driver, see https://pytorch.org/get-started/locally/
+uv pip install torch==<the locked version, without +cpu> --index-url https://download.pytorch.org/whl/cuXXX
 ```
+
+Without uv, `pip install -e ".[dev,local-nlp]"` still works, but it resolves
+the ranges afresh instead of using the tested versions (and pulls CUDA torch
+unless you first run
+`pip install torch --index-url https://download.pytorch.org/whl/cpu`).
 
 ### 3. Start infrastructure services
 
@@ -241,8 +253,8 @@ All configuration is managed through environment variables prefixed with `LIFE_G
 ## 🧪 Running Tests
 
 ```bash
-# Install dev dependencies (if you haven't already)
-pip install -e ".[dev]"
+# Install dev dependencies from the lock (if you haven't already; see above)
+uv sync --locked --python 3.12 --extra dev --extra local-nlp
 
 # Run all tests
 pytest tests/ -v

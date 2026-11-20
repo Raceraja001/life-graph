@@ -12,7 +12,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 
 @pytest_asyncio.fixture
@@ -35,8 +35,7 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"query": "test", "status": "active"},
         )
-        assert r.status_code != 422, f"status filter caused validation error: {r.text}"
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -46,8 +45,7 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"query": "test", "status": "archived"},
         )
-        assert r.status_code != 422
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -57,8 +55,7 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"query": "test", "source_type": "manual"},
         )
-        assert r.status_code != 422
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -68,8 +65,7 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"query": "test", "created_after": "2024-01-01T00:00:00Z"},
         )
-        assert r.status_code != 422
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -79,8 +75,7 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"query": "test", "created_before": "2030-01-01T00:00:00Z"},
         )
-        assert r.status_code != 422
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -99,8 +94,7 @@ class TestSearchFilters:
                 "limit": 5,
             },
         )
-        assert r.status_code != 422
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -110,12 +104,11 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"query": "test"},
         )
-        if r.status_code == 200:
-            body = r.json()
-            data = body.get("data", body)
-            assert "memories" in data
-            assert "total_count" in data
-            assert "query_time_ms" in data
+        body = assert_ok(r, 200)
+        data = body.get("data", body)
+        assert "memories" in data
+        assert "total_count" in data
+        assert "query_time_ms" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -125,7 +118,7 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"status": "active"},
         )
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -135,7 +128,7 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"query": ""},
         )
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -145,7 +138,7 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"query": "test", "created_after": "not-a-date"},
         )
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -155,4 +148,4 @@ class TestSearchFilters:
             "/api/v1/search/",
             json={"query": "test", "min_importance": 2.0},
         )
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)

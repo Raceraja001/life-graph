@@ -21,7 +21,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test_scheduler_tenant",
@@ -245,7 +245,7 @@ class TestCreateSchedule:
                 "agent_name": "cody",
             },
         )
-        assert response.status_code in (400, 500)
+        assert_ok(response, 400)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -261,7 +261,7 @@ class TestCreateSchedule:
                 "agent_name": "cody",
             },
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -277,7 +277,7 @@ class TestCreateSchedule:
                 "agent_name": "cody",
             },
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -295,14 +295,13 @@ class TestCreateSchedule:
             "/api/v1/kernel/schedules",
             json=payload,
         )
-        if first.status_code != 201:
-            pytest.skip("DB unavailable")
+        assert_ok(first, 201)
 
         second = await client.post(
             "/api/v1/kernel/schedules",
             json=payload,
         )
-        assert second.status_code in (409, 500)
+        assert_ok(second, 409)
 
 
 # ── List Schedules Endpoint ──────────────────────────────────
@@ -321,12 +320,11 @@ class TestListSchedules:
         response = await client.get(
             "/api/v1/kernel/schedules",
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            data = response.json()["data"]
-            assert "schedules" in data
-            assert "total" in data
+        data = response.json()["data"]
+        assert "schedules" in data
+        assert "total" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -339,7 +337,7 @@ class TestListSchedules:
             "/api/v1/kernel/schedules",
             params={"include_inactive": "true"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
 
 # ── Get Schedule Detail ──────────────────────────────────────
@@ -359,7 +357,7 @@ class TestGetSchedule:
         response = await client.get(
             f"/api/v1/kernel/schedules/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -371,7 +369,7 @@ class TestGetSchedule:
         response = await client.get(
             "/api/v1/kernel/schedules/not-a-uuid",
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
 
 # ── Update Schedule ──────────────────────────────────────────
@@ -392,7 +390,7 @@ class TestUpdateSchedule:
             f"/api/v1/kernel/schedules/{fake_id}",
             json={"description": "Updated"},
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -410,15 +408,14 @@ class TestUpdateSchedule:
                 "agent_name": "cody",
             },
         )
-        if resp.status_code != 201:
-            pytest.skip("DB unavailable")
+        assert_ok(resp, 201)
 
         sid = resp.json()["data"]["id"]
         update = await client.patch(
             f"/api/v1/kernel/schedules/{sid}",
             json={"cron_expression": "bad"},
         )
-        assert update.status_code in (400, 500)
+        assert_ok(update, 400)
 
 
 # ── Delete Schedule ──────────────────────────────────────────
@@ -438,7 +435,7 @@ class TestDeleteSchedule:
         response = await client.delete(
             f"/api/v1/kernel/schedules/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -455,14 +452,13 @@ class TestDeleteSchedule:
                 "agent_name": "cody",
             },
         )
-        if resp.status_code != 201:
-            pytest.skip("DB unavailable")
+        assert_ok(resp, 201)
 
         sid = resp.json()["data"]["id"]
         del_resp = await client.delete(
             f"/api/v1/kernel/schedules/{sid}",
         )
-        assert del_resp.status_code in (200, 500)
+        assert_ok(del_resp, 200)
         data = del_resp.json()["data"]
         assert data["message"] == "Schedule removed"
 

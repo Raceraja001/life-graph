@@ -1,8 +1,13 @@
 """Phones paired with Jarvis (services/devices.py, docs/design/12_android_app_plan.md).
 
-``POST /devices/codes`` (service key) shows the owner a one-time code;
+``POST /devices/codes`` (owner key) shows the owner a one-time code;
 ``POST /devices/pair`` (no credential: the code is it) trades it for a device
 token; ``GET /devices`` lists them and ``DELETE /devices/{id}`` revokes one.
+
+A paired phone IS the owner to the server (api/auth.py ``ingress_for``), so a
+code is a way to become the owner: only the owner may ask for one. Any service
+key could, before, and so turn itself into the owner past every owner-only
+gate (host commands, safety settings, provenance, approvals).
 """
 
 from __future__ import annotations
@@ -12,11 +17,17 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from life_graph.api.auth import ingress_for
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
 
 router = APIRouter(prefix="/devices", tags=["devices"])
+
+OWNER_ONLY_PAIRING = (
+    "A paired phone acts as the owner, so only the owner can create a pairing code:"
+    " use an owner API key (LIFE_GRAPH_OWNER_API_KEYS)."
+)
 
 
 class PairRequest(BaseModel):
@@ -27,9 +38,11 @@ class PairRequest(BaseModel):
 @router.post(
     "/codes", status_code=status.HTTP_201_CREATED, summary="A one-time code to pair a phone"
 )
-async def create_code():
+async def create_code(request: Request):
     from life_graph.services import devices
 
+    if not ingress_for(request).is_owner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, OWNER_ONLY_PAIRING)
     async with async_session() as session:
         row = await devices.issue_code(session, get_current_tenant_id())
         await session.commit()

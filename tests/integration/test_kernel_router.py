@@ -16,7 +16,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test_router_tenant",
@@ -172,7 +172,7 @@ class TestClassifyEndpoint:
             "/api/v1/kernel/classify",
             json={"message": "Refactor the user service"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
         data = response.json()["data"]
         assert data["intent"] == "code"
         assert data["method"] == "regex"
@@ -190,7 +190,7 @@ class TestClassifyEndpoint:
             "/api/v1/kernel/classify",
             json={"message": "Hello there!"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
         data = response.json()["data"]
         assert data["intent"] == "general"
         assert data["confidence"] == 0.3
@@ -206,7 +206,7 @@ class TestClassifyEndpoint:
             "/api/v1/kernel/classify",
             json={},
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -221,7 +221,7 @@ class TestClassifyEndpoint:
                 "message": "Investigate the best practices for WebSocket scaling",
             },
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
         data = response.json()["data"]
         assert data["intent"] == "research"
         assert data["confidence"] >= 0.4
@@ -239,7 +239,7 @@ class TestClassifyEndpoint:
                 "message": "Research and implement a code refactoring tool",
             },
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
         data = response.json()["data"]
         # Should show scores for both code + research
         assert len(data["all_scores"]) >= 2
@@ -262,15 +262,14 @@ class TestRouteEndpoint:
             "/api/v1/kernel/route",
             json={"message": "Refactor the auth service"},
         )
-        assert response.status_code in (201, 500)
+        assert_ok(response, 201)
 
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert "session_id" in data
-            assert data["classified_intent"] == "code"  # still classified and recorded
-            assert data["routed_to"] == "jarvis"  # the lead hands code to cody itself
-            assert data["task_status"] == "queued"
-            assert "task_id" in data
+        data = response.json()["data"]
+        assert "session_id" in data
+        assert data["classified_intent"] == "code"  # still classified and recorded
+        assert data["routed_to"] == "jarvis"  # the lead hands code to cody itself
+        assert data["task_status"] == "queued"
+        assert "task_id" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -283,7 +282,7 @@ class TestRouteEndpoint:
             "/api/v1/kernel/route",
             json={},
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -301,7 +300,7 @@ class TestRouteEndpoint:
                 "project_id": str(_uuid.uuid4()),
             },
         )
-        assert response.status_code in (201, 500)
+        assert_ok(response, 201)
 
 
 # ── Sessions Endpoint ────────────────────────────────────────
@@ -320,13 +319,12 @@ class TestSessionsEndpoint:
         response = await client.get(
             "/api/v1/kernel/sessions",
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert "meta" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert "meta" in body
+        assert isinstance(body["data"], list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -339,7 +337,7 @@ class TestSessionsEndpoint:
             "/api/v1/kernel/sessions",
             params={"intent": "code"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -352,11 +350,10 @@ class TestSessionsEndpoint:
             "/api/v1/kernel/sessions",
             params={"limit": 5, "offset": 0},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            meta = response.json()["meta"]
-            assert meta["page_size"] == 5
+        meta = response.json()["meta"]
+        assert meta["page_size"] == 5
 
 
 # ── Target Agent Override ────────────────────────────────────
@@ -378,11 +375,10 @@ class TestTargetAgentOverride:
                 "target_agent": "jarvis",
             },
         )
-        assert response.status_code in (200, 201, 500)
-        if response.status_code in (200, 201):
-            data = response.json()["data"]
-            assert data["routed_to"] == "jarvis"
-            assert data["classified_intent"] == "override"
+        assert_ok(response, 201)
+        data = response.json()["data"]
+        assert data["routed_to"] == "jarvis"
+        assert data["classified_intent"] == "override"
 
     @pytest.mark.asyncio
     async def test_route_unit_skips_classify_when_target_agent_set(self):

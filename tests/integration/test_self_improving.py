@@ -9,9 +9,11 @@ Tests the Self-Improving API layer:
 - GET /api/v1/self-improving/prompt-versions (list)
 - GET /api/v1/self-improving/dashboard/overview (dashboard)
 
-Follows existing test patterns: httpx AsyncClient + ASGITransport,
-defensive assertions accepting 500 if DB unreachable.
-Eval runs and optimization require LLM calls — 500/422 accepted.
+Follows existing test patterns: httpx AsyncClient + ASGITransport.
+Each response is checked for its exact status with ``assert_ok``; an
+unreachable database is a skip (``skip_on_db_error``), never a 500 pass.
+Starting eval runs and optimizations needs an LLM, so only their lookups
+(404 for unknown ids) are exercised here.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 # Fresh tenant per run. Several rows here are unique-constrained on
 # (tenant_id, <semantic value>) — task_type, channel_type, action_name —
@@ -62,15 +64,12 @@ class TestCreateEvalSuite:
                 "auto_optimize_enabled": False,
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 201)
 
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert data["name"] == "Memory Extraction Suite"
-            assert data["task_type"] == "memory_extraction"
-            assert "id" in data
+        data = response.json()["data"]
+        assert data["name"] == "Memory Extraction Suite"
+        assert data["task_type"] == "memory_extraction"
+        assert "id" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -80,7 +79,7 @@ class TestCreateEvalSuite:
             "/api/v1/self-improving/eval-suites",
             json={"task_type": "extraction"},
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
 
 class TestAddEvalCase:
@@ -98,8 +97,7 @@ class TestAddEvalCase:
                 "task_type": "scoring",
             },
         )
-        if create_resp.status_code != 201:
-            pytest.skip("DB unavailable — cannot test add case")
+        assert_ok(create_resp, 201)
 
         suite_id = create_resp.json()["data"]["id"]
 
@@ -113,9 +111,7 @@ class TestAddEvalCase:
                 "weight": 1.0,
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 201)
 
 
 class TestCreatePromptVersion:
@@ -134,14 +130,11 @@ class TestCreatePromptVersion:
                 "description": "Baseline extraction prompt v1",
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 201)
 
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert data["task_type"] == "memory_extraction"
-            assert "id" in data
+        data = response.json()["data"]
+        assert data["task_type"] == "memory_extraction"
+        assert "id" in data
 
 
 class TestActivatePromptVersion:
@@ -159,8 +152,7 @@ class TestActivatePromptVersion:
                 "prompt_text": "Score the importance of: {input}",
             },
         )
-        if create_resp.status_code != 201:
-            pytest.skip("DB unavailable — cannot test activate")
+        assert_ok(create_resp, 201)
 
         version_id = create_resp.json()["data"]["id"]
 
@@ -168,9 +160,7 @@ class TestActivatePromptVersion:
         response = await client.post(
             f"/api/v1/self-improving/prompt-versions/{version_id}/activate",
         )
-        assert response.status_code in (200, 500), (
-            f"Expected 200 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 200)
 
 
 class TestListEvalSuites:
@@ -181,12 +171,11 @@ class TestListEvalSuites:
     async def test_list_eval_suites(self, client: AsyncClient):
         """Listing eval suites returns 200 with data array."""
         response = await client.get("/api/v1/self-improving/eval-suites")
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
 
 class TestListPromptVersions:
@@ -197,12 +186,11 @@ class TestListPromptVersions:
     async def test_list_prompt_versions(self, client: AsyncClient):
         """Listing prompt versions returns 200."""
         response = await client.get("/api/v1/self-improving/prompt-versions")
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -212,7 +200,7 @@ class TestListPromptVersions:
             "/api/v1/self-improving/prompt-versions",
             params={"task_type": "memory_extraction"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
 
 class TestDashboard:
@@ -223,14 +211,13 @@ class TestDashboard:
     async def test_dashboard_overview(self, client: AsyncClient):
         """Dashboard overview returns 200 with metrics."""
         response = await client.get("/api/v1/self-improving/dashboard/overview")
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            data = response.json()["data"]
-            assert "overall_accuracy_pct" in data
-            assert "tasks_monitored" in data
-            assert "auto_fixes_this_week" in data
-            assert "pending_reviews" in data
+        data = response.json()["data"]
+        assert "overall_accuracy_pct" in data
+        assert "tasks_monitored" in data
+        assert "auto_fixes_this_week" in data
+        assert "pending_reviews" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -240,7 +227,7 @@ class TestDashboard:
             "/api/v1/self-improving/dashboard/accuracy-trends",
             params={"days": 7},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -249,7 +236,7 @@ class TestDashboard:
         response = await client.get(
             "/api/v1/self-improving/dashboard/per-task-accuracy",
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -259,7 +246,7 @@ class TestDashboard:
             "/api/v1/self-improving/dashboard/auto-fixes",
             params={"days": 7},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -269,7 +256,7 @@ class TestDashboard:
             "/api/v1/self-improving/dashboard/cost-trends",
             params={"days": 30},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -278,21 +265,21 @@ class TestDashboard:
         response = await client.get(
             "/api/v1/self-improving/dashboard/pending-reviews",
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
 
 class TestEvalRunEndpoints:
-    """Eval run endpoints — expect 500/422/404 since they need LLM calls."""
+    """Eval run lookups (starting a run needs an LLM and is not exercised)."""
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_eval_run_not_found(self, client: AsyncClient):
-        """Getting a nonexistent eval run returns 404 or 500."""
+        """Getting a nonexistent eval run returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
         response = await client.get(
             f"/api/v1/self-improving/eval-runs/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -306,25 +293,25 @@ class TestEvalRunEndpoints:
 
 
 class TestOptimizationEndpoints:
-    """Optimization endpoints — expect 500/422 since they need LLM calls."""
+    """Optimization lookups (starting an optimization needs an LLM)."""
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_optimization_run_not_found(self, client: AsyncClient):
-        """Getting a nonexistent optimization run returns 404 or 500."""
+        """Getting a nonexistent optimization run returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
         response = await client.get(
             f"/api/v1/self-improving/optimization-runs/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_review_optimization_not_found(self, client: AsyncClient):
-        """Reviewing a nonexistent optimization returns 404 or 500."""
+        """Reviewing a nonexistent optimization returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
         response = await client.post(
             f"/api/v1/self-improving/optimization-runs/{fake_id}/review",
             json={"decision": "approve"},
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)

@@ -19,6 +19,7 @@ from life_graph.core.tenant import tenant_scope
 from life_graph.models.db import Memory
 from life_graph.services import persona_context
 from life_graph.services.skill_distiller import FACT_TYPE, SOURCE_TYPE
+from tests.conftest import fake_request
 from tests.unit.fakes import FakeResult, FakeSession, sql
 
 TENANT = "personal"
@@ -188,7 +189,7 @@ async def test_another_tenants_skill_is_404(monkeypatch):
     assert caught.value.status_code == 404
     # Reading it is refused, so approving and archiving it are too.
     with tenant_scope(TENANT), pytest.raises(HTTPException) as caught:
-        await skills_api.approve_skill(row.id)
+        await skills_api.approve_skill(row.id, fake_request())
     assert caught.value.status_code == 404
     with tenant_scope(TENANT), pytest.raises(HTTPException) as caught:
         await skills_api.archive_skill(row.id)
@@ -204,11 +205,15 @@ async def test_approve_activates_a_pending_skill(monkeypatch):
     row = skill(status="pending")
     session = use(monkeypatch, FakeSession(objects={(Memory, row.id): row}))
 
+    from life_graph.api.approval_identity import resolver
+
+    request = fake_request()
     with tenant_scope(TENANT):
-        response = await skills_api.approve_skill(row.id)
+        response = await skills_api.approve_skill(row.id, request)
 
     assert row.status == "active"
-    assert row.properties["approved_by"] == "human"
+    # Who approved, as the server saw the caller (test_owner_gates.py covers keys).
+    assert row.properties["approved_by"] == resolver(request)
     # The distiller's own properties survive the approval.
     assert row.properties["fact_type"] == FACT_TYPE
     assert session.commits == 1
@@ -221,7 +226,7 @@ async def test_approve_a_needs_review_skill(monkeypatch):
     use(monkeypatch, FakeSession(objects={(Memory, row.id): row}))
 
     with tenant_scope(TENANT):
-        response = await skills_api.approve_skill(row.id)
+        response = await skills_api.approve_skill(row.id, fake_request())
 
     assert response["data"]["status"] == "active"
 
@@ -232,7 +237,7 @@ async def test_approving_an_active_skill_writes_nothing(monkeypatch):
     session = use(monkeypatch, FakeSession(objects={(Memory, row.id): row}))
 
     with tenant_scope(TENANT):
-        response = await skills_api.approve_skill(row.id)
+        response = await skills_api.approve_skill(row.id, fake_request())
 
     assert session.commits == 0
     assert response["data"]["status"] == "active"
@@ -261,7 +266,7 @@ async def test_an_archived_skill_is_reviewable_again(monkeypatch):
     use(monkeypatch, FakeSession(objects={(Memory, row.id): row}))
 
     with tenant_scope(TENANT):
-        await skills_api.approve_skill(row.id)
+        await skills_api.approve_skill(row.id, fake_request())
 
     assert row.status == "active"
 

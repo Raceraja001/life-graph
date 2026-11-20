@@ -161,6 +161,52 @@ docker compose -f docker-compose.production.yml exec postgres \
   WHERE job_name IN ('backup','restore_drill') ORDER BY started_at DESC LIMIT 14;"
 ```
 
+## Dependencies: installing from `uv.lock`
+
+`uv.lock` is the authority for which package versions run. CI (`uv sync
+--locked`), the Docker image (`Dockerfile`, same command) and a release all
+install from it, so what was tested is what ships. `pyproject.toml` only holds
+the ranges; see the version-policy comment at the top of its `dependencies`.
+
+**Docker deployments** (`scripts/deploy.sh`, `docker-compose.production.yml`)
+need nothing extra: `docker compose build` installs from the lock, on Python
+3.12, and fails the build if `pyproject.toml` and `uv.lock` disagree.
+
+**A host venv** (e.g. `~/.venvs/life-graph`) is not touched by any script —
+it was installed by hand with pip, so its versions drift from the lock (on
+2026-11-20 it had fastapi 0.141.1 / litellm 1.103.0 / pr-agent 0.47.0 against
+the locked 0.165.0 / 1.105.1 / 0.50.0). At release, bring it to the lock from
+the checkout the venv's editable install points at, uv 0.12.14:
+
+```bash
+cd <checkout>
+export UV_PROJECT_ENVIRONMENT="$HOME/.venvs/life-graph"   # sync THAT venv, not ./.venv
+EXTRAS="--extra dev --extra multimodal --extra cold-start --extra watchers --extra browser-sandbox"
+# add --extra local-nlp for in-process embeddings (CPU torch + sentence-transformers)
+
+# 1. Preview: lists every install/upgrade/downgrade, changes nothing.
+uv sync --locked --inexact --python 3.12 $EXTRAS --dry-run
+
+# 2. Apply. --locked refuses a stale lock; downloads are checked against the
+#    sha256 in uv.lock. --inexact leaves packages that are not in the lock
+#    (pip, the spaCy model, anything installed by hand) alone; drop it to make
+#    the venv match the lock exactly.
+uv sync --locked --inexact --python 3.12 $EXTRAS
+
+# 3. The spaCy model is not on PyPI, so not in the lock (only if spaCy is used):
+uv pip install --python "$UV_PROJECT_ENVIRONMENT/bin/python" \
+  "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85"
+```
+
+Then restart the services that use the venv. Roll back by checking out the
+previous commit and running the same `uv sync` (the old lock reinstalls the
+old versions).
+
+**Advisories.** The CI `dependency-audit` job runs pip-audit over the whole
+lock and is blocking. Advisories that cannot be fixed from this repo yet are
+listed, with a reason and a review-by date at most 30 days out, in
+`.github/pip-audit-ignore.txt`; an expired entry fails CI too.
+
 ## Connectors: Calendar, Email, Contacts, Tasks, GitHub
 
 Read-only; set up in the dashboard under **Settings → Connected accounts**

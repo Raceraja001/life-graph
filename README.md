@@ -80,6 +80,11 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install "life-graph[local-nlp]"
 ```
 
+From a source checkout, install the exact versions CI tested from `uv.lock`
+instead (`uv sync --locked --python 3.12 --extra dev --extra local-nlp`; CPU
+torch is already pinned there) — see "Option 2: Local Development" in
+[docs/QUICKSTART.md](docs/QUICKSTART.md).
+
 ### Option B — run the full stack with Docker
 
 ```bash

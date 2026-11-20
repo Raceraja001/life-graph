@@ -19,6 +19,7 @@ import pytest
 
 import life_graph.api.admin as admin
 from life_graph.core.tenant import set_tenant_context
+from tests.conftest import fake_request
 
 
 class _Session:
@@ -84,7 +85,7 @@ async def test_enqueued_job_gets_the_real_row_ids_and_is_searchable(monkeypatch)
     pool = _Pool()
     session = _wire(monkeypatch, pool)
 
-    data = (await admin.bulk_import(_body()))["data"]
+    data = (await admin.bulk_import(_body(), fake_request()))["data"]
 
     assert data == {"imported": 2, "embedding_job_id": "job-1", "searchable": True}
     ((name, (ids, tenant)),) = pool.enqueued
@@ -101,7 +102,7 @@ async def test_rows_carry_content_hash(monkeypatch):
 
     session = _wire(monkeypatch, _Pool())
 
-    await admin.bulk_import(_body(n=1))
+    await admin.bulk_import(_body(n=1), fake_request())
 
     (row,) = session.added
     assert row.content_hash == hashlib.sha256(b"fact 0").hexdigest()
@@ -113,7 +114,7 @@ async def test_no_embeddings_requested_is_not_searchable(monkeypatch):
     pool = _Pool()
     _wire(monkeypatch, pool)
 
-    data = (await admin.bulk_import(_body(generate=False)))["data"]
+    data = (await admin.bulk_import(_body(generate=False), fake_request()))["data"]
 
     assert data["searchable"] is False
     assert data["embedding_job_id"] is None
@@ -126,7 +127,7 @@ async def test_enqueue_failure_is_logged_and_not_searchable(monkeypatch, caplog)
     _wire(monkeypatch, pool)
 
     with caplog.at_level(logging.ERROR, logger="life_graph.api.admin"):
-        data = (await admin.bulk_import(_body()))["data"]
+        data = (await admin.bulk_import(_body(), fake_request()))["data"]
 
     assert data["imported"] == 2
     assert data["searchable"] is False
@@ -140,7 +141,7 @@ async def test_duplicate_job_none_is_not_searchable(monkeypatch, caplog):
     _wire(monkeypatch, _Pool(job=None))
 
     with caplog.at_level(logging.WARNING, logger="life_graph.api.admin"):
-        data = (await admin.bulk_import(_body()))["data"]
+        data = (await admin.bulk_import(_body(), fake_request()))["data"]
 
     assert data["searchable"] is False
     assert "not enqueued" in caplog.text
