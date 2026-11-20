@@ -114,6 +114,45 @@ async def test_not_found_download_error_is_swallowed_and_upload_proceeds(monkeyp
     fake_session.commit.assert_awaited_once()
 
 
+class _FakeSessionWithKeylessRow(_FakeSession):
+    """An existing ExternalSession whose nullable raw_key column is NULL."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.row = SimpleNamespace(raw_key=None, source_path=None, updated_at=None, line_count=3)
+
+    async def execute(self, _stmt):
+        scalars = MagicMock()
+        scalars.first.return_value = self.row
+        return SimpleNamespace(scalars=lambda: scalars)
+
+
+@pytest.mark.asyncio
+async def test_existing_row_without_raw_key_gets_the_staging_key(monkeypatch):
+    """Found by mypy (audit M11): raw_key is nullable, and an existing row
+    without one reached minio.upload(key=None). It now gets the key the insert
+    path would have given it."""
+    set_tenant_context("test-tenant")
+
+    fake_session = _FakeSessionWithKeylessRow()
+    monkeypatch.setattr(transcript_ingest, "async_session", _fake_session_factory(fake_session))
+
+    fake_minio = MagicMock()
+    fake_minio.download.side_effect = _s3_error("NoSuchKey")
+    monkeypatch.setattr(transcript_ingest, "MinIOStorage", lambda: fake_minio)
+
+    fake_redis = MagicMock()
+    fake_redis.set = AsyncMock(return_value=False)
+    monkeypatch.setattr(transcript_ingest, "get_redis", lambda: fake_redis)
+
+    await transcript_ingest.ingest_external_transcript(PAYLOAD)
+
+    key = "staging/test-tenant/claude-code/sess-abc.ndjson"
+    assert fake_session.row.raw_key == key
+    assert fake_minio.upload.call_args.args[1] == key
+    assert fake_session.row.line_count == 4
+
+
 @pytest.mark.asyncio
 async def test_missing_bucket_is_swallowed_and_upload_proceeds(monkeypatch):
     """NoSuchBucket (fresh deploy — the `transcripts` bucket doesn't exist yet)
