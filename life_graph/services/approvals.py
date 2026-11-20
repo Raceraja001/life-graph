@@ -51,6 +51,49 @@ class ApprovalActionError(Exception):
     """The approve side-effect failed; the item stays pending. Message is user-safe."""
 
 
+class ApprovalNeedsRetryError(ApprovalAlreadyResolvedError):
+    """An earlier attempt failed part-way or its outcome is unknown.
+
+    Running it again could do the side effect twice (a second deploy), so a
+    plain approve is refused; the owner checks what happened and approves
+    again with ``retry=True``. A subclass of the "already resolved" error so
+    every caller already answers it as a conflict (409 / "Already ...").
+    """
+
+
+# ── At-most-once execution (audit P0, 2026-11-20) ──────────────────────────
+#
+# Kinds whose approve side effect reaches outside this database transaction:
+# git push / gh, a deploy command, dev tasks or autonomy actions committed by
+# their own sessions. Rolling back the approval does not undo them, so before
+# one runs an execution claim is committed on the row
+# (``payload["execution"]``, state "started"). If the process dies before the
+# final commit the row is still pending, but the claim says an attempt began:
+# nothing runs it again on its own (not a plain approve, not the auto-merge
+# sweep), and :func:`flag_stale_claims` turns it into "unknown" and tells the
+# owner. The other kinds only change rows in this same transaction, so a crash
+# rolls their effect back together with the status: they need no claim.
+#
+# The claim lives in ``payload``, not in a new ``status`` value: every client
+# (dashboard, life-graph-ui, the phone app, Telegram /pending, MCP
+# list_approvals) lists and offers decisions on ``status == 'pending'``, and an
+# item in a new status would vanish from all of them exactly when it needs the
+# owner's attention; ``ck_approvals_status`` would also need a migration.
+DURABLE_CLAIM_KINDS = frozenset(
+    {"driver_pr", "driver_merge", "driver_deploy", "driver_plan", "autonomous_action"}
+)
+# Re-running is harmless and detects "already done": pushing the same commit,
+# finding the open PR, merging an already-merged PR (github_pr.py, local_merge.py).
+IDEMPOTENT_KINDS = frozenset({"driver_pr", "driver_merge"})
+# ApprovalActionError is only raised before anything was done (payload or
+# project checks), so a "failed" attempt is safe to run again.
+FAILS_BEFORE_EFFECT_KINDS = frozenset({"driver_plan"})
+# A "started" claim older than this cannot still be running: every side effect
+# is bounded well below it (a deploy: DEPLOY_TIMEOUT_SECONDS + smoke + a
+# 600 s rollback; gh calls 120 s each; an agent task 280 s).
+STALE_CLAIM_SECONDS = 3600
+
+
 class ApprovalService:
     """Business logic for the unified approvals feed."""
 
@@ -177,12 +220,27 @@ class ApprovalService:
         decision: str,
         note: str | None = None,
         resolved_by: str | None = None,
+        *,
+        retry: bool = False,
+        durable_claim: bool = True,
     ) -> dict[str, Any]:
         """Approve or reject an item; run its side-effect on approve.
 
+        For :data:`DURABLE_CLAIM_KINDS` an approve commits an execution claim
+        on the row first (this commits the caller's session), runs the side
+        effect outside that short transaction, and leaves the final commit to
+        the caller as before. ``retry`` is the owner's explicit "run it again"
+        for an item whose earlier attempt failed part-way or never reported
+        back. ``durable_claim=False`` is only for a caller that filed the
+        approval in its own still-uncommitted transaction (the dispatcher's
+        plan auto-approval): there is no committed row to claim, and if that
+        transaction rolls back the approval never existed to be approved again.
+
         Raises:
             LookupError: no such approval for this tenant.
-            ApprovalAlreadyResolved: item is not pending.
+            ApprovalAlreadyResolved: item is not pending, or an attempt is running.
+            ApprovalNeedsRetryError: an earlier attempt's outcome needs checking.
+            ApprovalActionError: the side effect failed (recorded on the claim).
         """
         try:
             pk = uuid.UUID(str(approval_id))
@@ -197,11 +255,101 @@ class ApprovalService:
             raise ApprovalAlreadyResolvedError(appr.status)
 
         approve = decision == "approve"
+        _check_execution(appr, approve, retry)
+        if approve and durable_claim and appr.kind in DURABLE_CLAIM_KINDS:
+            return await self._resolve_claimed(tenant_id, appr, note, resolved_by)
+
         appr.status = "approved" if approve else "rejected"
         appr.resolved_at = datetime.now(UTC)
         appr.resolved_by = resolved_by
         appr.resolution_note = note
 
+        await self._apply(tenant_id, appr, approve, resolved_by)
+        await self.session.flush()
+        return self._serialize(appr)
+
+    async def _resolve_claimed(
+        self, tenant_id: str, appr: Approval, note: str | None, resolved_by: str | None
+    ) -> dict[str, Any]:
+        """Approve *appr* (already locked, pending) with a committed execution claim.
+
+        1. Write ``payload["execution"] = {state: "started", ...}`` and commit:
+           the row lock goes with that commit, and from then on any other
+           resolve, the auto-merge sweep or a retried request sees the claim
+           and stays away.
+        2. Run the side effect. Its transaction holds no row lock, but it may
+           read before a long command (the deploy's pinned-command check) and
+           then idle through it, so it is exempt from the idle timeout: else a
+           slow but successful deploy could not record its outcome.
+        3. Success: status approved + claim "done", flushed; the caller commits.
+           ApprovalActionError: "failed"; anything else: "unknown"; each
+           committed here (the effect's own partial session changes are
+           rolled back first), then re-raised. A crash before the caller's
+           commit leaves "started", which :func:`flag_stale_claims` reports.
+        """
+        claim = _new_claim(appr, resolved_by)
+        appr.payload = {**(appr.payload or {}), "execution": claim}
+        await self.session.commit()
+        await _exempt_from_idle_timeout(self.session)
+
+        appr.resolution_note = note  # handlers append their outcome to it
+        try:
+            await self._apply(tenant_id, appr, True, resolved_by)
+        except ApprovalActionError as exc:
+            await self._end_attempt(appr, claim, "failed", str(exc))
+            raise
+        except Exception as exc:
+            await self._end_attempt(appr, claim, "unknown", f"{type(exc).__name__}: {exc}")
+            raise
+        appr.status = "approved"
+        appr.resolved_at = datetime.now(UTC)
+        appr.resolved_by = resolved_by
+        appr.payload = {
+            **(appr.payload or {}),
+            "execution": {**claim, "state": "done", "finished_at": datetime.now(UTC).isoformat()},
+        }
+        await self.session.flush()
+        return self._serialize(appr)
+
+    async def _end_attempt(self, appr: Approval, claim: dict, state: str, error: str) -> None:
+        """Record that the attempt *claim* ended in *state* without completing.
+
+        The side effect's own changes in this session are discarded (as the
+        request's rollback did before); the item is pending again with the
+        outcome on its claim. Best effort: if even this cannot be written the
+        claim stays "started" and the stale sweep reports it.
+        """
+        try:
+            await self.session.rollback()
+            await self.session.refresh(appr, with_for_update=True)
+            current = (appr.payload or {}).get("execution") or {}
+            if current.get("attempt_id") != claim["attempt_id"]:
+                logger.warning("Approval %s: claim moved on; not recording %s", appr.id, state)
+                await self.session.rollback()
+                return
+            appr.payload = {
+                **(appr.payload or {}),
+                "execution": {
+                    **claim,
+                    "state": state,
+                    "finished_at": datetime.now(UTC).isoformat(),
+                    "error": error[:500],
+                    "rerun_safe": _rerun_safe(appr.kind, state),
+                },
+            }
+            await self.session.commit()
+        except Exception:
+            logger.warning(
+                "Approval %s: could not record the %s attempt; its claim stays started",
+                appr.id,
+                state,
+                exc_info=True,
+            )
+
+    async def _apply(
+        self, tenant_id: str, appr: Approval, approve: bool, resolved_by: str | None
+    ) -> None:
+        """Run *appr*'s kind-specific side effect."""
         if appr.kind == "promotion":
             await self._apply_promotion(tenant_id, appr, approve, resolved_by)
         elif appr.kind == "merge":
@@ -229,25 +377,21 @@ class ApprovalService:
 
             await apply_adoption(self.session, appr, approve)
 
-        await self.session.flush()
-        return self._serialize(appr)
-
     async def _claim(self, appr: Approval) -> None:
         """Lock *appr*'s row for this transaction and re-read it.
 
-        Side effects (a merge, a deploy of up to ten minutes) run before the
-        caller commits, so without a lock two approvals of the same item at
-        once — the phone and the dashboard, or a client retrying after its
-        own timeout — both read ``pending`` and both ran the side effect.
+        Without a lock two approvals of the same item at once — the phone and
+        the dashboard, or a client retrying after its own timeout — both read
+        ``pending`` and both ran the side effect.
 
-        ``SELECT ... FOR UPDATE NOWAIT``: the row stays locked until the
-        caller commits or rolls back, and a second resolve that arrives
-        meanwhile is told at once that the item is being resolved (the
-        same 409 as an already-resolved item) instead of waiting out the
-        first one's deploy. If the first one fails and rolls back, the lock
-        goes with it and the item is pending again, as before. The re-read
-        matters too: the status checked afterwards is the committed one,
-        not what this session read before the lock.
+        ``SELECT ... FOR UPDATE NOWAIT``: a second resolve that arrives while
+        the row is locked is told at once that the item is being resolved
+        (the same 409 as an already-resolved item). For the kinds that only
+        change rows in this transaction the lock lasts until the caller
+        commits; for :data:`DURABLE_CLAIM_KINDS` only until the execution
+        claim is committed, after which the claim itself turns others away
+        (:func:`_check_execution`). The re-read matters too: the status and
+        claim checked afterwards are the committed ones.
         """
         from sqlalchemy.exc import DBAPIError, InvalidRequestError
 
@@ -260,7 +404,6 @@ class ApprovalService:
         except InvalidRequestError:
             # Deleted between the read and the lock.
             raise LookupError(str(appr.id)) from None
-        await _exempt_from_idle_timeout(self.session)
 
     async def _apply_driver_pr(self, appr: Approval, approve: bool) -> None:
         """Push a verified task branch and open its PR (approve). Reject: no-op.
@@ -396,7 +539,10 @@ class ApprovalService:
         """
         from life_graph.services.dev.github_pr import merge_approval_fields
 
-        fields = merge_approval_fields(pr_approval.payload or {})
+        # Never the PR approval's execution claim: that is its own attempt, and
+        # a copy would leave the new merge approval "being applied" for good.
+        pr_payload = {k: v for k, v in (pr_approval.payload or {}).items() if k != "execution"}
+        fields = merge_approval_fields(pr_payload)
         merge = Approval(
             tenant_id=pr_approval.tenant_id,
             kind="driver_merge",
@@ -1196,14 +1342,12 @@ async def _exempt_from_idle_timeout(session: Any) -> None:
     """``SET LOCAL idle_in_transaction_session_timeout = 0`` on Postgres.
 
     The engine sets that timeout (storage/database.py, 600 s by default) so a
-    forgotten transaction cannot pin a connection. A claimed approval holds
-    its row lock in an open transaction *on purpose* while the side effect
-    runs, and the connection is idle that whole time: a deploy may take
-    ``DEPLOY_TIMEOUT_SECONDS`` plus the smoke check and rollback. Without
-    this, a slow but successful deploy had its connection closed by the
-    server, the final commit failed, the approval stayed pending and a retry
-    deployed again. ``LOCAL`` scopes it to this transaction only; the side
-    effects themselves are bounded by their own timeouts.
+    forgotten transaction cannot pin a connection. A claimed side effect may
+    read (the deploy's pinned-command check) and then idle through a command
+    of up to ``DEPLOY_TIMEOUT_SECONDS`` plus smoke and rollback; without this
+    the server closed the connection and the outcome could not be recorded.
+    Since P0 this transaction starts after the claim is committed and holds
+    no row lock. ``LOCAL`` scopes it to this transaction only.
 
     A no-op on any other dialect, and for test doubles with no bind.
     """
@@ -1219,6 +1363,87 @@ async def _exempt_from_idle_timeout(session: Any) -> None:
     from sqlalchemy import text
 
     await session.execute(text("SET LOCAL idle_in_transaction_session_timeout = 0"))
+
+
+def _execution(appr: Any) -> dict:
+    """The execution claim on *appr* (``payload["execution"]``), or ``{}``."""
+    value = (getattr(appr, "payload", None) or {}).get("execution")
+    return value if isinstance(value, dict) else {}
+
+
+def _new_claim(appr: Any, by: str | None) -> dict:
+    """A fresh "started" claim for the next attempt at *appr*'s side effect."""
+    previous = _execution(appr)
+    claim = {
+        "state": "started",
+        "attempt_id": uuid.uuid4().hex,
+        "attempt": int(previous.get("attempt") or 0) + 1,
+        "started_at": datetime.now(UTC).isoformat(),
+        "by": by,
+    }
+    if previous:
+        claim["previous"] = {
+            k: previous.get(k) for k in ("state", "attempt", "started_at", "error") if k in previous
+        }
+    return claim
+
+
+def _rerun_safe(kind: str, state: str) -> bool:
+    """May an attempt that ended in *state* simply be run again?"""
+    if kind in IDEMPOTENT_KINDS:
+        return True
+    return state == "failed" and kind in FAILS_BEFORE_EFFECT_KINDS
+
+
+def _stale_after(kind: str) -> int:
+    """Seconds after which a "started" claim of *kind* cannot still be running."""
+    if kind != "driver_deploy":
+        return STALE_CLAIM_SECONDS
+    from life_graph.config import settings
+
+    longest = DEPLOY_TIMEOUT_SECONDS + int(settings.post_deploy_smoke_timeout) + 600 + 300
+    return max(STALE_CLAIM_SECONDS, longest)
+
+
+def _is_stale(claim: dict, kind: str, now: datetime | None = None) -> bool:
+    """A "started" claim old enough that its attempt must have died."""
+    if claim.get("state") != "started":
+        return False
+    try:
+        started = datetime.fromisoformat(str(claim.get("started_at")))
+    except ValueError:
+        return True  # unreadable: treat as not running rather than block forever
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    return ((now or datetime.now(UTC)) - started).total_seconds() > _stale_after(kind)
+
+
+def _check_execution(appr: Any, approve: bool, retry: bool) -> None:
+    """Refuse a decision that could run *appr*'s side effect a second time.
+
+    - an attempt is running ("started", not stale): approve and reject both
+      wait for it (409 "being applied") — a reject now would be overwritten
+      by the attempt's own result, and a second approve would run it twice;
+    - an attempt failed part-way or never reported back ("failed",
+      "unknown", or a stale "started"): reject is the owner abandoning it;
+      approve runs it again only when that is harmless (:func:`_rerun_safe`)
+      or the owner explicitly asked to retry.
+    """
+    claim = _execution(appr)
+    state = claim.get("state")
+    if state not in ("started", "failed", "unknown"):
+        return
+    if state == "started" and not _is_stale(claim, appr.kind):
+        raise ApprovalAlreadyResolvedError("being applied")
+    if not approve or retry:
+        return
+    if _rerun_safe(appr.kind, "unknown" if state == "started" else state):
+        return
+    outcome = "failed part-way" if state == "failed" else "has an unknown outcome"
+    raise ApprovalNeedsRetryError(
+        f"attempted: attempt {claim.get('attempt') or 1} (started {claim.get('started_at')}) "
+        f"{outcome}. Check what it did, then approve again with retry to run it again"
+    )
 
 
 def _lock_not_available(exc: Exception) -> bool:
@@ -1301,10 +1526,14 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
     itself) on approvals whose PR asked for auto-merge. Called by the
     15-minute ``sync_dev_task_prs`` job.
 
-    Each approval is claimed with ``FOR UPDATE SKIP LOCKED`` and committed on
-    its own: one that a person is approving right now (``resolve`` holds its
-    row lock) is skipped rather than merged twice, and the lock on each row
-    lasts one merge attempt, not the whole sweep.
+    Each approval is locked with ``FOR UPDATE SKIP LOCKED`` (one a person is
+    approving right now is skipped) and then given the same committed
+    execution claim a manual approve takes, before the merge runs: a manual
+    approve meanwhile gets 409, and if this process dies mid-merge the claim
+    stays behind. Rows whose last attempt is running or has an unknown
+    outcome are never retried here; that is for the owner
+    (:func:`flag_stale_claims`). A merge that did not go through (not
+    trusted, CI not green yet) puts the claim back as it was.
     """
     from datetime import timedelta
 
@@ -1324,7 +1553,9 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
             .scalars()
             .all()
         )
-        candidates = [a for a in rows if (a.payload or {}).get("auto_merge")]
+        candidates = [
+            a for a in rows if (a.payload or {}).get("auto_merge") and _sweep_may_merge(a)
+        ]
         for candidate in candidates:
             appr = (
                 await session.execute(
@@ -1336,18 +1567,124 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
             ).scalar_one_or_none()
             if appr is None:
                 continue  # being resolved by someone else, or already resolved
-            # The merge (gh, possibly waiting on the network) runs while this
-            # row lock is held: exempt the transaction from the idle timeout.
-            await _exempt_from_idle_timeout(session)
+            if not _sweep_may_merge(appr):
+                await session.rollback()  # claimed meanwhile: release the lock, leave it
+                continue
+            previous = _execution(appr)
+            claim = _new_claim(appr, "auto: retry_auto_merges")
+            appr.payload = {**(appr.payload or {}), "execution": claim}
+            await session.commit()  # the claim is durable; the row lock is released
+            await _exempt_from_idle_timeout(session)  # gh may take minutes
             payload = appr.payload or {}
             tried += 1
             svc = ApprovalService(session)
-            await svc.maybe_auto_merge(
-                appr, payload.get("driver") or "", payload.get("project_id"), True
-            )
+            try:
+                await svc.maybe_auto_merge(
+                    appr, payload.get("driver") or "", payload.get("project_id"), True
+                )
+            except Exception as exc:  # maybe_auto_merge handles the expected failures
+                logger.warning("Auto-merge retry of %s failed unexpectedly", appr.id, exc_info=True)
+                await svc._end_attempt(appr, claim, "unknown", f"{type(exc).__name__}: {exc}")
+                continue
+            done = dict(appr.payload or {})
             if appr.status == "approved":
                 merged += 1
-            await session.commit()  # releases this row's lock
+                done["execution"] = {
+                    **claim,
+                    "state": "done",
+                    "finished_at": datetime.now(UTC).isoformat(),
+                }
+            elif previous:
+                done["execution"] = previous  # nothing happened: as it was
+            else:
+                done.pop("execution", None)
+            appr.payload = done
+            await session.commit()
     if tried:
         logger.info("Auto-merge retry: %d of %d pending merges went through", merged, tried)
     return {"tried": tried, "merged": merged}
+
+
+def _sweep_may_merge(appr: Any) -> bool:
+    """The auto-merge sweep only retries rows with no claim or a known failure."""
+    return _execution(appr).get("state") in (None, "failed")
+
+
+async def flag_stale_claims(session_factory, now: datetime | None = None) -> int:
+    """Turn "started" claims that can no longer be running into "unknown".
+
+    A claim stays "started" only when the process died (or lost its database
+    connection) between running a side effect and committing its outcome:
+    the effect may or may not have happened. Such an item is still pending,
+    and :func:`_check_execution` already refuses to run it again unattended;
+    this makes it visible: the claim says "unknown" and the owner is told
+    through the "needs your attention" channel (push + Telegram). Re-running
+    needs the owner's explicit retry, except for kinds where it is harmless.
+    Called by the 15-minute ``sync_dev_task_prs`` job. Returns how many it flagged.
+    """
+    now = now or datetime.now(UTC)
+    flagged = 0
+    async with session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Approval).where(
+                        Approval.status == "pending",
+                        Approval.kind.in_(sorted(DURABLE_CLAIM_KINDS)),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        stale = [a for a in rows if _is_stale(_execution(a), a.kind, now)]
+        for candidate in stale:
+            appr = (
+                await session.execute(
+                    select(Approval)
+                    .where(Approval.id == candidate.id, Approval.status == "pending")
+                    .with_for_update(skip_locked=True)
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one_or_none()
+            if appr is None:
+                continue
+            claim = _execution(appr)
+            if not _is_stale(claim, appr.kind, now):
+                await session.rollback()
+                continue
+            appr.payload = {
+                **(appr.payload or {}),
+                "execution": {
+                    **claim,
+                    "state": "unknown",
+                    "flagged_at": now.isoformat(),
+                    "error": (
+                        "no outcome was recorded: the process stopped or lost its "
+                        "database connection while this ran"
+                    ),
+                    "rerun_safe": _rerun_safe(appr.kind, "unknown"),
+                },
+            }
+            await session.commit()
+            flagged += 1
+            how = (
+                "Approving it again is safe: it checks what is already done."
+                if _rerun_safe(appr.kind, "unknown")
+                else "Check what it did; to run it again, approve with retry."
+            )
+            await event_bus.emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": appr.tenant_id,
+                    "kind": "approval_needs_attention",
+                    "title": f"Needs attention: {appr.title}",
+                    "detail": (
+                        f"Approved at {claim.get('started_at')}, but no outcome was recorded. {how}"
+                    ),
+                },
+                source="approvals",
+            )
+    if flagged:
+        logger.warning("Flagged %d approval(s) whose attempt never reported back", flagged)
+    return flagged

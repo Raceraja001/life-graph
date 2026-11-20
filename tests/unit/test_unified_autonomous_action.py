@@ -34,6 +34,12 @@ class _FakeSession:
     async def flush(self):
         self.flushed = True
 
+    async def commit(self):
+        pass  # the execution claim is committed before the side effect
+
+    async def rollback(self):
+        pass
+
 
 def _autonomous_action_approval(**overrides) -> Approval:
     defaults = dict(

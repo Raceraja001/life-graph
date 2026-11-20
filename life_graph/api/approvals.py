@@ -51,6 +51,10 @@ class ResolveBody(BaseModel):
     # Kept for old clients. Not trusted: who decided is the server's to say
     # (resolver); a value here is only recorded in the note.
     resolved_by: str | None = None
+    # The owner's explicit "run it again" for an item whose earlier attempt
+    # failed part-way or never reported back (services/approvals.py
+    # _check_execution). Without it such an item answers 409.
+    retry: bool = False
 
 
 @router.get("", summary="List items awaiting a decision")
@@ -120,16 +124,18 @@ async def _resolve(
 ):
     service = ApprovalService(session)
     note = _note(body)
+    retry = {"retry": True} if body is not None and body.retry else {}
     try:
         result = await service.resolve(
-            tenant_id, approval_id, decision, note=note, resolved_by=resolved_by
+            tenant_id, approval_id, decision, note=note, resolved_by=resolved_by, **retry
         )
     except LookupError:
         raise HTTPException(status_code=404, detail="Approval not found") from None
     except ApprovalAlreadyResolvedError as exc:
         raise HTTPException(status_code=409, detail=f"Approval already {exc}") from None
     except ApprovalActionError as exc:
-        # Not committed: the item stays pending so it can be approved again.
+        # The item stays pending; the failed attempt is on its execution
+        # claim (resolve committed that). Drop anything else.
         await session.rollback()
         raise HTTPException(status_code=502, detail=str(exc)) from None
 

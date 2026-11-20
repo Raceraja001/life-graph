@@ -946,9 +946,15 @@ async def sync_dev_task_prs(ctx: dict) -> dict:
     approvals feed are handled by its event subscriber; this catches what
     happens on GitHub directly.
     """
-    from life_graph.services.approvals import retry_auto_merges
+    from life_graph.services.approvals import flag_stale_claims, retry_auto_merges
     from life_graph.services.dev.outcomes import sync_all
 
+    # Approvals whose attempt died mid-way: marked "unknown", owner told.
+    try:
+        stale = await flag_stale_claims(async_session)
+    except Exception:
+        logger.warning("Stale approval-claim sweep failed", exc_info=True)
+        stale = -1
     # First, so a PR that auto-merges now is settled by this same sync.
     try:
         retried = await retry_auto_merges(async_session)
@@ -957,6 +963,7 @@ async def sync_dev_task_prs(ctx: dict) -> dict:
         retried = {"tried": 0, "merged": 0, "error": True}
     result = await sync_all(async_session)
     result["auto_merge_retry"] = retried
+    result["stale_claims_flagged"] = stale
     logger.info("Dev PR sync: %s", {k: v for k, v in result.items() if k != "reports"})
     return result
 

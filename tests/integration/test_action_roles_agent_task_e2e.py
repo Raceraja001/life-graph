@@ -271,6 +271,12 @@ class _FakeApprovalSession:
     async def flush(self):
         self.flushed = True
 
+    async def commit(self):
+        pass  # the execution claim is committed before the side effect
+
+    async def rollback(self):
+        pass
+
 
 def _make_pending_agent_task_auto_action():
     """Build a bare object with the attributes ``_run_action``/``execute_pending`` read/write."""
