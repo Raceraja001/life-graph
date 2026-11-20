@@ -221,6 +221,13 @@ dev = [
     # No httpx here: it is a core dependency already. No testcontainers
     # either: nothing imported it (the integration job runs its own Postgres).
     "pip-audit>=2.7",  # powers the no_vulnerable_deps_in_diff verifier
+    # Layer contracts in [tool.importlinter] below (audit M12/M13): api ->
+    # services -> core/storage. Static analysis only; checked by the CI
+    # `import-contracts` job.
+    # Pinned to releases more than two months old (supply-chain caution, as
+    # with LiteLLM/Trivy in 2026-10); grimp is its import-graph engine.
+    "import-linter==2.15",
+    "grimp==3.17",
 ]
 # Everything a full self-hosted deployment uses, so `pip install life-graph[all]`
 # reproduces the old all-in-one install in one line.
@@ -334,8 +341,16 @@ select = [
     "B",    # flake8-bugbear
     "SIM",  # flake8-simplify
     "TC",   # flake8-type-checking (see per-file-ignores for route modules)
+    "C901",     # mccabe complexity > 15 (audit M15; baseline in per-file-ignores)
+    "PLR0915",  # more than 50 statements in one function (same)
 ]
 ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-statements = 50
 
 [tool.ruff.lint.per-file-ignores]
 # main.py imports routers mid-file on purpose, interleaved with the
@@ -359,8 +374,62 @@ ignore = ["E501"]  # line length handled by formatter
 # exempt automatically rather than failing CI on its first import.
 "life_graph/api/*.py" = ["TC"]
 "life_graph/**/router.py" = ["TC"]
-"life_graph/main.py" = ["E402", "TC"]
+"life_graph/main.py" = ["E402", "TC", "PLR0915"]  # PLR0915: lifespan (M15 baseline)
 "life_graph/core/metrics.py" = ["TC"]
+# ── Complexity baseline (audit M15, 2026-11-20) ──
+# C901 (complexity > 15) and PLR0915 (> 50 statements) are on so a NEW god
+# function fails lint. These are the files that already held one, with only
+# the rule(s) each one breaks. The list only shrinks: split a function, then
+# delete its entry. main.py's _start_extended_domains was split (its C901 is
+# gone); agents/orchestrator.py run() is the next one, see
+# docs/design/orchestrator-run-split-plan.md.
+"life_graph/agents/orchestrator.py" = ["C901", "PLR0915"]
+"life_graph/api/kernel.py" = ["C901", "PLR0915"]
+"life_graph/api/search.py" = ["C901", "PLR0915"]
+"life_graph/autonomy/pipeline/service.py" = ["PLR0915"]
+"life_graph/cli/root.py" = ["PLR0915"]
+"life_graph/connectors/assist.py" = ["PLR0915"]
+"life_graph/connectors/brief.py" = ["C901", "PLR0915"]
+"life_graph/connectors/chat_context.py" = ["C901", "PLR0915"]
+"life_graph/core/aliases.py" = ["C901"]
+"life_graph/core/evidence.py" = ["PLR0915"]
+"life_graph/core/memory_manager.py" = ["C901", "PLR0915"]
+"life_graph/core/slots.py" = ["C901"]
+"life_graph/drivers/dispatcher.py" = ["C901"]
+"life_graph/drivers/local.py" = ["C901", "PLR0915"]
+"life_graph/drivers/steps.py" = ["C901"]
+"life_graph/jobs/graph_migration.py" = ["C901"]
+"life_graph/kernel/process_manager.py" = ["C901", "PLR0915"]
+"life_graph/kernel/project_registry.py" = ["C901"]
+"life_graph/self_improving/eval_service.py" = ["PLR0915"]
+"life_graph/self_improving/nightly_cron.py" = ["PLR0915"]
+"life_graph/services/brief.py" = ["PLR0915"]
+"life_graph/services/browser_egress_proxy.py" = ["PLR0915"]
+"life_graph/services/capture_processors.py" = ["PLR0915"]
+"life_graph/services/destination_validator.py" = ["C901", "PLR0915"]
+"life_graph/services/dev/failure_causes.py" = ["C901"]
+"life_graph/services/dev/github_pr.py" = ["C901", "PLR0915"]
+"life_graph/services/dev/local_merge.py" = ["C901", "PLR0915"]
+"life_graph/services/dev/outcomes.py" = ["PLR0915"]
+"life_graph/services/dev/sandbox.py" = ["C901", "PLR0915"]
+"life_graph/services/dev/setup_guard.py" = ["C901"]
+"life_graph/services/dev/task_runtime.py" = ["C901"]
+"life_graph/services/dev/tasks.py" = ["C901", "PLR0915"]
+"life_graph/services/dev/verifiers.py" = ["C901"]
+"life_graph/services/memory/micro_consolidation.py" = ["C901"]
+"life_graph/services/memory/retrieval.py" = ["C901", "PLR0915"]
+"life_graph/services/memory_benchmark.py" = ["C901", "PLR0915"]
+"life_graph/services/prediction_detection.py" = ["C901"]
+"life_graph/services/reminders.py" = ["C901"]
+"life_graph/services/workers.py" = ["C901", "PLR0915"]
+"life_graph/storage/hybrid.py" = ["C901"]
+"life_graph/tools/code.py" = ["C901"]
+"life_graph/tools/memory_search.py" = ["C901", "PLR0915"]
+"life_graph/workers/tasks.py" = ["PLR0915"]
+# CI lints life_graph/ only; tests, scripts and evals are not under the gate.
+"tests/**" = ["C901", "PLR0915"]
+"scripts/**" = ["C901", "PLR0915"]
+"evals/**" = ["C901", "PLR0915"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency-injection callables are *meant* to be evaluated in
@@ -392,6 +461,53 @@ runtime-evaluated-decorators = ["pydantic.validate_call", "fastapi.Depends"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["life_graph"]
+
+# ── Layer contracts (audit M12/M13) ─────────────────────────────────────────
+# `lint-imports` (import-linter, dev extra) checks these statically, in the CI
+# `import-contracts` job. Import chains count, not just direct imports: a
+# storage module that imports runtime, which imports a service, breaks
+# "storage must not import services". Type-only imports (TYPE_CHECKING) do not.
+#
+# Every ignore_imports line below is a known violation still in the code,
+# tracked in https://github.com/Raceraja001/life-graph/issues/302. Fix one,
+# delete its line; never add a line to get a new import past the contracts.
+[tool.importlinter]
+root_package = "life_graph"
+exclude_type_checking_imports = true
+
+[[tool.importlinter.contracts]]
+id = "layers"
+name = "api -> services -> core/storage"
+type = "layers"
+# core and storage are one layer (":" = siblings that may import each other).
+layers = ["life_graph.api", "life_graph.services", "life_graph.core : life_graph.storage"]
+ignore_imports = [
+    # #302: core/memory_manager.py is an ingestion orchestrator filed under
+    # core; it calls contradiction, associations, entities, profile_card and
+    # the LM client, and reaches services through connectors (for user_tz).
+    "life_graph.core.memory_manager -> life_graph.services.**",
+    "life_graph.core.memory_manager -> life_graph.connectors.tools",
+    # #302: HybridQueryEngine embeds the query via runtime (the composition
+    # root, which imports most of services).
+    "life_graph.storage.hybrid -> life_graph.runtime",
+]
+
+[[tool.importlinter.contracts]]
+id = "storage-below-services"
+name = "storage imports neither services nor the API"
+type = "forbidden"
+source_modules = ["life_graph.storage"]
+forbidden_modules = ["life_graph.services", "life_graph.api"]
+ignore_imports = [
+    "life_graph.storage.hybrid -> life_graph.runtime",  # #302, as above
+]
+
+[[tool.importlinter.contracts]]
+id = "core-below-api"
+name = "core does not import the API"
+type = "forbidden"
+source_modules = ["life_graph.core"]
+forbidden_modules = ["life_graph.api"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
