@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from life_graph.services.memory_benchmark import (  # noqa: E402
+from life_graph.evals.memory_benchmark import (  # noqa: E402
     ADAPTIVE_ARM,
     BASELINE_ARM,
     compare_adaptive_early_exit,

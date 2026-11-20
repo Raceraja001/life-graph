@@ -83,3 +83,7 @@ continued-from-fintech-session.md
 
 # Eval sets built from a tenant's own memories: personal, never committed
 evals/local/
+
+# Local run output that was once committed at the root (audit L20)
+/cold_start_*.json
+/uv.err
