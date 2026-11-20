@@ -755,6 +755,9 @@ def _changed_files(workdir: Path) -> list[Path]:
         )
         changed_names.update(f.strip() for f in untracked.stdout.strip().split("\n") if f.strip())
     except Exception:
+        logger.warning(
+            "Listing changed files in %s failed; verifiers see none", workdir, exc_info=True
+        )
         return []
     return [workdir / f for f in changed_names if (workdir / f).is_file()]
 

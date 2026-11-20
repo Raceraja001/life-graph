@@ -192,5 +192,5 @@ async def generate_summary(sess: Session, memory_count: int) -> str:
         )
         return summary.strip() if summary.strip() else fallback
     except Exception:
-        logger.warning("LLM summary generation failed, using fallback")
+        logger.warning("LLM summary generation failed, using fallback", exc_info=True)
         return fallback

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 async def scrape_hn_front_page(limit: int = 30) -> list[dict]:
@@ -29,5 +33,6 @@ async def scrape_hn_front_page(limit: int = 30) -> list[dict]:
                 for h in hits
                 if h.get("title")
             ]
-    except (httpx.HTTPError, Exception):
+    except Exception:  # best-effort: one source failing never stops the watch
+        logger.warning("Hacker News scrape failed", exc_info=True)
         return []

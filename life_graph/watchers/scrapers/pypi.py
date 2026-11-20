@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 async def check_pypi_version(package: str) -> dict | None:
@@ -22,5 +26,6 @@ async def check_pypi_version(package: str) -> dict | None:
                 "version": info.get("version", "unknown"),
                 "summary": info.get("summary", ""),
             }
-    except (httpx.HTTPError, Exception):
+    except Exception:  # best-effort: one source failing never stops the watch
+        logger.warning("PyPI lookup failed", exc_info=True)
         return None

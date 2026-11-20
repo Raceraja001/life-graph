@@ -99,7 +99,14 @@ class NotificationEngine:
                     for row in rows
                 ]
         except Exception as e:
-            logger.warning("Failed to load notification channels: %s", e)
+            # Not a quiet failure: with no channels, nothing is sent for this tenant.
+            logger.error(
+                "Failed to load notification channels for tenant %s; its notifications "
+                "will not be sent: %s",
+                tenant_id,
+                e,
+                exc_info=True,
+            )
             return []
 
     async def route_event(self, tenant_id: str, event: dict[str, Any]) -> None:
@@ -253,7 +260,7 @@ class NotificationEngine:
                 logger.error("Unsupported channel type: %s", channel_type)
                 return False
         except Exception as e:
-            logger.error("Failed to send via %s: %s", channel_type, e)
+            logger.error("Failed to send via %s: %s", channel_type, e, exc_info=True)
             return False
 
     async def _dispatch_terminal(self, event: dict[str, Any]) -> None:
@@ -314,7 +321,7 @@ class NotificationEngine:
                 session.add(notif)
                 await session.commit()
         except Exception as e:
-            logger.error("Failed to queue notification: %s", e)
+            logger.error("Failed to queue notification: %s", e, exc_info=True)
 
     def _get_primary_channel_type(self, tenant_id: str) -> str:
         """Return the primary channel type (highest priority). Default terminal."""
@@ -376,7 +383,7 @@ class NotificationEngine:
             return sent_count
 
         except Exception as e:
-            logger.error("Failed to process pending notifications: %s", e)
+            logger.error("Failed to process pending notifications: %s", e, exc_info=True)
             return 0
 
     _MAX_CRITICAL_RETRIES = 3
@@ -446,7 +453,7 @@ class NotificationEngine:
             return resent
 
         except Exception as e:
-            logger.error("Failed to check stale criticals: %s", e)
+            logger.error("Failed to check stale criticals: %s", e, exc_info=True)
             return 0
 
     async def _record_retry(self, tenant_id: str, evt: Any) -> None:
