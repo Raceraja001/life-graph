@@ -20,7 +20,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test-research-tenant",
@@ -98,6 +98,21 @@ async def client() -> AsyncClient:
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _no_source_fetches():
+    """Never reach HN, Reddit or GitHub from a test.
+
+    The trigger tests expect 202 exactly, so the outcome must not depend on
+    whether the runner has network access: every source fetch returns nothing.
+    """
+    with patch(
+        "life_graph.services.research_engine.ResearchEngine._fetch_from_sources",
+        new_callable=AsyncMock,
+        return_value=[],
+    ) as fetch:
+        yield fetch
+
+
 # ── Trigger Research ─────────────────────────────────────────
 
 
@@ -119,13 +134,10 @@ class TestTriggerResearch:
             "/api/v1/research/trigger",
             json={},
         )
-        assert response.status_code in (200, 202, 500), (
-            f"Expected 200/202 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 202)
 
-        if response.status_code in (200, 202):
-            data = response.json()["data"]
-            assert "status" in data
+        data = response.json()["data"]
+        assert "status" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -144,8 +156,7 @@ class TestTriggerResearch:
             json={"preference_id": fake_pref_id},
         )
         # Should not be 422 — the UUID is valid
-        assert response.status_code != 422, f"Valid UUID should not return 422: {response.text}"
-        assert response.status_code in (200, 202, 500)
+        assert_ok(response, 202)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -158,7 +169,7 @@ class TestTriggerResearch:
             "/api/v1/research/trigger",
             json={"preference_id": "not-a-uuid"},
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -175,15 +186,14 @@ class TestTriggerResearch:
             "/api/v1/research/trigger",
             json={},
         )
-        assert response.status_code in (200, 202, 500)
+        assert_ok(response, 202)
 
-        if response.status_code in (200, 202):
-            data = response.json()["data"]
-            assert data["status"] in (
-                "no_stale_preferences",
-                "budget_exhausted",
-                "completed",
-            )
+        data = response.json()["data"]
+        assert data["status"] in (
+            "no_stale_preferences",
+            "budget_exhausted",
+            "completed",
+        )
 
 
 # ── List Research Runs ───────────────────────────────────────
@@ -197,12 +207,11 @@ class TestListResearchRuns:
     async def test_list_runs_returns_200(self, client: AsyncClient):
         """Listing research runs returns 200 with data array."""
         response = await client.get("/api/v1/research/runs")
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -212,12 +221,11 @@ class TestListResearchRuns:
             "/api/v1/research/runs",
             params={"limit": 5, "offset": 0},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "meta" in body
-            assert body["meta"]["page_size"] == 5
+        body = response.json()
+        assert "meta" in body
+        assert body["meta"]["page_size"] == 5
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -227,11 +235,10 @@ class TestListResearchRuns:
             "/api/v1/research/runs",
             params={"status": "completed"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert isinstance(body["data"], list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -241,7 +248,7 @@ class TestListResearchRuns:
             "/api/v1/research/runs",
             params={"limit": 0},
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
 
 # ── Get Research Run by ID ───────────────────────────────────
@@ -258,14 +265,14 @@ class TestGetResearchRun:
         response = await client.get(
             f"/api/v1/research/runs/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_run_with_invalid_uuid_returns_422(self, client: AsyncClient):
         """Requesting a run with an invalid UUID returns 422."""
         response = await client.get("/api/v1/research/runs/not-a-valid-uuid")
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -288,8 +295,7 @@ class TestGetResearchRun:
             "/api/v1/research/trigger",
             json={},
         )
-        if trigger_resp.status_code not in (200, 202):
-            pytest.skip("DB unavailable — cannot test get-after-trigger")
+        assert_ok(trigger_resp, 202)
 
         data = trigger_resp.json()["data"]
 
@@ -302,13 +308,12 @@ class TestGetResearchRun:
 
         # Get by ID
         get_resp = await client.get(f"/api/v1/research/runs/{run_id}")
-        assert get_resp.status_code in (200, 500)
+        assert_ok(get_resp, 200)
 
-        if get_resp.status_code == 200:
-            run_data = get_resp.json()["data"]
-            assert run_data["id"] == run_id
-            assert "status" in run_data
-            assert "query" in run_data
+        run_data = get_resp.json()["data"]
+        assert run_data["id"] == run_id
+        assert "status" in run_data
+        assert "query" in run_data
 
 
 # ── Tenant Isolation ─────────────────────────────────────────
@@ -357,11 +362,10 @@ class TestTenantIsolation:
             headers={"X-Tenant-ID": "test-research-tenant-OTHER"},
         ) as other_client:
             response = await other_client.get("/api/v1/research/runs")
-            assert response.status_code in (200, 500)
+            assert_ok(response, 200)
 
-            if response.status_code == 200:
-                body = response.json()
-                assert isinstance(body["data"], list)
+            body = response.json()
+            assert isinstance(body["data"], list)
 
 
 # ── Budget Enforcement ───────────────────────────────────────
@@ -388,12 +392,11 @@ class TestBudgetEnforcement:
             "/api/v1/research/trigger",
             json={},
         )
-        assert response.status_code in (200, 202, 500)
+        assert_ok(response, 202)
 
-        if response.status_code in (200, 202):
-            data = response.json()["data"]
-            assert data["status"] == "budget_exhausted"
-            assert data["budget_remaining"] == 0.0
+        data = response.json()["data"]
+        assert data["status"] == "budget_exhausted"
+        assert data["budget_remaining"] == 0.0
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -413,8 +416,7 @@ class TestBudgetEnforcement:
             "/api/v1/research/trigger",
             json={},
         )
-        assert response.status_code in (200, 202, 500)
+        assert_ok(response, 202)
 
-        if response.status_code in (200, 202):
-            data = response.json()["data"]
-            assert data["status"] == "budget_exhausted"
+        data = response.json()["data"]
+        assert data["status"] == "budget_exhausted"

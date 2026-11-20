@@ -1,8 +1,9 @@
 """Integration tests for Agent Networks (Era 7).
 
 Tests the task delegation, messaging, workflow, and shared context
-APIs. Follows existing test patterns: httpx AsyncClient + ASGITransport,
-defensive assertions accepting 500 if DB unreachable.
+APIs. Follows existing test patterns: httpx AsyncClient + ASGITransport.
+Each response is checked for its exact status with ``assert_ok``; an
+unreachable database is a skip (``skip_on_db_error``), never a 500 pass.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test-agent-networks-tenant",
@@ -52,15 +53,12 @@ class TestCreateAgentTask:
                 "input": {"prompt": "Hello world"},
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 201)
 
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert "id" in data
-            assert data["agent_name"] == "test_agent"
-            assert data["status"] in ("queued", "pending")
+        data = response.json()["data"]
+        assert "id" in data
+        assert data["agent_name"] == "test_agent"
+        assert data["status"] in ("queued", "pending")
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -75,8 +73,7 @@ class TestCreateAgentTask:
                 "input": {},
             },
         )
-        if parent_resp.status_code != 201:
-            pytest.skip("DB unavailable — cannot test delegation")
+        assert_ok(parent_resp, 201)
 
         parent_id = parent_resp.json()["data"]["id"]
 
@@ -90,11 +87,10 @@ class TestCreateAgentTask:
                 "input": {"subtask": "do-something"},
             },
         )
-        assert child_resp.status_code in (201, 500)
+        assert_ok(child_resp, 201)
 
-        if child_resp.status_code == 201:
-            data = child_resp.json()["data"]
-            assert data.get("parent_task_id") == parent_id
+        data = child_resp.json()["data"]
+        assert data.get("parent_task_id") == parent_id
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -110,9 +106,69 @@ class TestCreateAgentTask:
                 "max_depth": 400,
             },
         )
-        # Should be rejected (400) or accepted (201) depending on
-        # whether depth enforcement is in create or delegate
-        assert response.status_code in (400, 422, 201, 500)
+        # A root task has depth 0 and `max_depth` is not an AgentTaskCreate
+        # field (extra keys are ignored), so creating it succeeds. The depth
+        # limit applies to delegated children: see the two tests below.
+        assert_ok(response, 201)
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_delegation_beyond_max_depth_returns_400(self, client: AsyncClient):
+        """A child one level past DelegationEngine.MAX_DEPTH is refused with 400.
+
+        It used to be a 500: the engine raised ValueError and the route did
+        not catch it.
+        """
+        from life_graph.services.delegation import DelegationEngine
+
+        parent = assert_ok(
+            await client.post(
+                "/api/v1/agent-tasks",
+                json={"task_name": "depth 0", "agent_name": "worker", "input": {}},
+            ),
+            201,
+        )["data"]
+        for depth in range(1, DelegationEngine.MAX_DEPTH + 1):
+            parent = assert_ok(
+                await client.post(
+                    "/api/v1/agent-tasks",
+                    json={
+                        "task_name": f"depth {depth}",
+                        "agent_name": "worker",
+                        "parent_task_id": parent["id"],
+                        "input": {},
+                    },
+                ),
+                201,
+            )["data"]
+            assert parent["depth"] == depth
+
+        too_deep = await client.post(
+            "/api/v1/agent-tasks",
+            json={
+                "task_name": "one too deep",
+                "agent_name": "worker",
+                "parent_task_id": parent["id"],
+                "input": {},
+            },
+        )
+        body = assert_ok(too_deep, 400)
+        assert "depth" in str(body).lower()
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_delegation_to_unknown_parent_returns_404(self, client: AsyncClient):
+        """A parent_task_id that does not exist (for this tenant) is a 404, not a 500."""
+        response = await client.post(
+            "/api/v1/agent-tasks",
+            json={
+                "task_name": "orphan",
+                "agent_name": "worker",
+                "parent_task_id": str(uuid.uuid4()),
+                "input": {},
+            },
+        )
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -127,8 +183,7 @@ class TestCreateAgentTask:
                 "input": {},
             },
         )
-        if parent_resp.status_code != 201:
-            pytest.skip("DB unavailable — cannot test cancellation")
+        assert_ok(parent_resp, 201)
 
         parent_id = parent_resp.json()["data"]["id"]
 
@@ -148,7 +203,7 @@ class TestCreateAgentTask:
             f"/api/v1/agent-tasks/{parent_id}/cancel",
             json={"reason": "Test cancellation"},
         )
-        assert cancel_resp.status_code in (200, 500)
+        assert_ok(cancel_resp, 200)
 
 
 # ── Messaging Tests ──────────────────────────────────────────
@@ -171,15 +226,12 @@ class TestAgentMessaging:
                 "payload": {"text": "Please analyze this data"},
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 201)
 
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert "id" in data
-            assert data["sender_agent"] == "agent_a"
-            assert data["recipient_agent"] == "agent_b"
+        data = response.json()["data"]
+        assert "id" in data
+        assert data["sender_agent"] == "agent_a"
+        assert data["recipient_agent"] == "agent_b"
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -201,12 +253,11 @@ class TestAgentMessaging:
         response = await client.get(
             "/api/v1/agent-messages/inbox/inbox_test_agent",
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -223,8 +274,7 @@ class TestAgentMessaging:
                 "payload": {"text": "Read me"},
             },
         )
-        if send_resp.status_code != 201:
-            pytest.skip("DB unavailable — cannot test mark-read")
+        assert_ok(send_resp, 201)
 
         msg_id = send_resp.json()["data"]["id"]
 
@@ -232,7 +282,7 @@ class TestAgentMessaging:
         response = await client.patch(
             f"/api/v1/agent-messages/{msg_id}/read",
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -249,8 +299,7 @@ class TestAgentMessaging:
                 "payload": {"text": "Need your help"},
             },
         )
-        if send_resp.status_code != 201:
-            pytest.skip("DB unavailable — cannot test reply")
+        assert_ok(send_resp, 201)
 
         msg_id = send_resp.json()["data"]["id"]
 
@@ -263,7 +312,7 @@ class TestAgentMessaging:
                 "payload": {"text": "Sure, sending response"},
             },
         )
-        assert response.status_code in (201, 200, 500)
+        assert_ok(response, 201)
 
 
 # ── Workflow Tests ───────────────────────────────────────────
@@ -336,7 +385,7 @@ class TestWorkflows:
                 ],
             },
         )
-        assert response.status_code in (400, 500)
+        assert_ok(response, 400)
 
 
 # ── Shared Context Tests ─────────────────────────────────────
@@ -358,15 +407,12 @@ class TestSharedContext:
                 "metadata": {"environment": "production"},
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
+        assert_ok(response, 201)
 
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert "id" in data
-            assert data["context_type"] == "fact"
-            assert data["source_agent"] == "devops_agent"
+        data = response.json()["data"]
+        assert "id" in data
+        assert data["context_type"] == "fact"
+        assert data["source_agent"] == "devops_agent"
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -391,9 +437,8 @@ class TestSharedContext:
             f"/api/v1/shared-context/{project_id}",
             params={"query": "database", "limit": 5},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)

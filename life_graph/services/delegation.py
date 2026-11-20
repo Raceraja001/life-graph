@@ -23,6 +23,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class ParentTaskNotFoundError(ValueError):
+    """The parent_task_id names no task of this tenant."""
+
+
+class DelegationDepthError(ValueError):
+    """Delegating would nest a task deeper than DelegationEngine.MAX_DEPTH."""
+
+
 class DelegationEngine:
     """Manages hierarchical agent task delegation."""
 
@@ -65,10 +73,10 @@ class DelegationEngine:
             if parent_id:
                 parent = await session.get(AgentTask, parent_id)
                 if not parent or parent.tenant_id != tenant_id:
-                    raise ValueError(f"Parent task {parent_id} not found")
+                    raise ParentTaskNotFoundError(f"Parent task {parent_id} not found")
                 depth = (parent.depth or 0) + 1
                 if depth > self.MAX_DEPTH:
-                    raise ValueError(f"Max delegation depth ({self.MAX_DEPTH}) exceeded")
+                    raise DelegationDepthError(f"Max delegation depth ({self.MAX_DEPTH}) exceeded")
                 task.parent_task_id = parent_id
                 task.root_task_id = parent.root_task_id or parent.id
                 task.depth = depth

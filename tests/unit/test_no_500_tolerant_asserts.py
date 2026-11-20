@@ -30,7 +30,7 @@ STATUS = re.compile(r"status_code\s+in\s")
 #: file (relative to tests/integration) -> allowed count. Only ever lower these.
 BASELINE: dict[str, int] = {
     "test_advisor.py": 6,
-    "test_agent_networks.py": 11,
+    "test_agent_networks.py": 0,
     "test_approvals.py": 7,
     "test_autonomy.py": 10,
     "test_autonomy_approvals.py": 5,
@@ -43,17 +43,17 @@ BASELINE: dict[str, int] = {
     "test_evidence.py": 7,
     "test_kernel_notifications.py": 10,
     "test_kernel_projects.py": 8,
-    "test_kernel_router.py": 12,
-    "test_kernel_scheduler.py": 12,
+    "test_kernel_router.py": 0,
+    "test_kernel_scheduler.py": 0,
     "test_memory_approval.py": 5,
     "test_merge_suggestions.py": 2,
     "test_preferences.py": 10,
     "test_push_api.py": 3,
-    "test_research.py": 14,
-    "test_search_filters.py": 10,
-    "test_self_improving.py": 17,
+    "test_research.py": 0,
+    "test_search_filters.py": 0,
+    "test_self_improving.py": 0,
     "test_transcript.py": 5,
-    "test_watchers.py": 12,
+    "test_watchers.py": 0,
 }
 
 
