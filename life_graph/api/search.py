@@ -24,12 +24,13 @@ from life_graph.api.dependencies import (
     get_store,
     get_synthesis_service,
 )
-from life_graph.api.responses import success_response
+from life_graph.api.responses import Envelope, success_response
 from life_graph.api.token_meta import token_meta
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.models.schemas import (
     MemoryIndexItem,
     MemoryResponse,
+    RecallContext,
     SearchQuery,
     SearchResult,
     TrailPassage,
@@ -264,6 +265,7 @@ async def _search_trail(store, body) -> list[TrailPassage]:
 @router.post(
     "/",
     summary="Search across memories (vector, hybrid, or tri-hybrid)",
+    response_model=Envelope[SearchResult],
 )
 async def semantic_search(
     body: SearchQuery,
@@ -461,6 +463,7 @@ async def semantic_search(
 @router.post(
     "/recall",
     summary="Proactive recall at session start",
+    response_model=Envelope[RecallContext],
 )
 async def session_start_recall(
     body: RecallRequest,
@@ -487,6 +490,7 @@ async def session_start_recall(
 @router.post(
     "/recall/event",
     summary="Mid-session event-driven recall",
+    response_model=Envelope[list[MemoryResponse] | list[dict[str, Any]]],
 )
 async def mid_session_recall(
     body: MidSessionRecallRequest,
@@ -716,6 +720,7 @@ def detect_knowledge_gaps(
 @router.post(
     "/ask",
     summary="Ask a question — get a synthesized answer from memories",
+    response_model=Envelope[AskResponse],
 )
 async def ask_brain(
     body: AskRequest,
@@ -732,11 +737,17 @@ async def ask_brain(
 
     # Generate embedding for the question
     embedding = await manager._generate_embedding(body.question)
+    # Every exit answers the same {"data": ...} envelope. The four early exits
+    # below used to return a bare AskResponse, so a client that unwraps
+    # `data` (life-graph-ui's unwrap) got undefined exactly when the answer
+    # was "I don't know" (found while typing this route, audit M11).
     if embedding is None:
-        return AskResponse(
-            answer="Embedding service is unavailable. Cannot search memories.",
-            source_count=0,
-            epistemic_status=EPISTEMIC_UNSUPPORTED,
+        return success_response(
+            data=AskResponse(
+                answer="Embedding service is unavailable. Cannot search memories.",
+                source_count=0,
+                epistemic_status=EPISTEMIC_UNSUPPORTED,
+            )
         )
 
     # The memories that answer it, as Jarvis finds them (services/memory/retrieval.py):
@@ -755,10 +766,12 @@ async def ask_brain(
         else await retrieve(body.question, limit=body.limit, as_of=body.as_of)
     )
     if rows is None:
-        return AskResponse(
-            answer="Embedding service is unavailable. Cannot search memories.",
-            source_count=0,
-            epistemic_status=EPISTEMIC_UNSUPPORTED,
+        return success_response(
+            data=AskResponse(
+                answer="Embedding service is unavailable. Cannot search memories.",
+                source_count=0,
+                epistemic_status=EPISTEMIC_UNSUPPORTED,
+            )
         )
 
     memories = [MemoryResponse.model_validate(r) for r in rows]
@@ -781,39 +794,43 @@ async def ask_brain(
 
     # Deterministic calibrated abstention when evidence is absent or below min_confidence
     if not memories:
-        return AskResponse(
-            answer="I don't have enough stored evidence to answer that.",
-            answered=False,
-            abstained=True,
-            abstention_reason="no_matching_memories",
-            knowledge_gaps=detect_knowledge_gaps(
-                [], abstained=True, abstention_reason="no_matching_memories"
-            ),
-            epistemic_status=EPISTEMIC_UNSUPPORTED,
-            source_count=0,
-            query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
-            result_mode="index" if body.index_only else "full",
-            as_of=body.as_of,
-            recorded_as_of=body.recorded_as_of,
+        return success_response(
+            data=AskResponse(
+                answer="I don't have enough stored evidence to answer that.",
+                answered=False,
+                abstained=True,
+                abstention_reason="no_matching_memories",
+                knowledge_gaps=detect_knowledge_gaps(
+                    [], abstained=True, abstention_reason="no_matching_memories"
+                ),
+                epistemic_status=EPISTEMIC_UNSUPPORTED,
+                source_count=0,
+                query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
+                result_mode="index" if body.index_only else "full",
+                as_of=body.as_of,
+                recorded_as_of=body.recorded_as_of,
+            )
         )
     if body.min_confidence > 0 and max_confidence < body.min_confidence:
-        return AskResponse(
-            answer=f"Stored memories are below the required confidence threshold ({max_confidence:.2f} < {body.min_confidence:.2f}).",
-            answered=False,
-            abstained=True,
-            abstention_reason="low_confidence",
-            knowledge_gaps=detect_knowledge_gaps(
-                memories, abstained=True, abstention_reason="low_confidence"
-            ),
-            epistemic_status=EPISTEMIC_UNSUPPORTED,
-            source_lineage=source_lineage,
-            source_count=len(memories),
-            memories=[] if body.index_only else memories,
-            query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
-            result_mode="index" if body.index_only else "full",
-            index=_to_index_items([(r, 0.0) for r in rows]) if body.index_only else [],
-            as_of=body.as_of,
-            recorded_as_of=body.recorded_as_of,
+        return success_response(
+            data=AskResponse(
+                answer=f"Stored memories are below the required confidence threshold ({max_confidence:.2f} < {body.min_confidence:.2f}).",
+                answered=False,
+                abstained=True,
+                abstention_reason="low_confidence",
+                knowledge_gaps=detect_knowledge_gaps(
+                    memories, abstained=True, abstention_reason="low_confidence"
+                ),
+                epistemic_status=EPISTEMIC_UNSUPPORTED,
+                source_lineage=source_lineage,
+                source_count=len(memories),
+                memories=[] if body.index_only else memories,
+                query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
+                result_mode="index" if body.index_only else "full",
+                index=_to_index_items([(r, 0.0) for r in rows]) if body.index_only else [],
+                as_of=body.as_of,
+                recorded_as_of=body.recorded_as_of,
+            )
         )
 
     # Synthesize answer (include provenance & temporal validity metadata)

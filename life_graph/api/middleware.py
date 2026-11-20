@@ -20,6 +20,7 @@ from starlette.responses import JSONResponse, Response
 
 from life_graph.api.auth import is_exempt_path, verify_service_key
 from life_graph.api.device_access import device_may_call, route_path
+from life_graph.api.responses import http_error_body
 from life_graph.config import settings
 from life_graph.core.metrics import route_label, track_request
 from life_graph.core.rate_limit import check_rate_limit
@@ -103,13 +104,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
             return JSONResponse(
                 status_code=401,
-                content={
-                    "error": {
-                        "code": "UNAUTHORIZED",
-                        "message": str(e.detail) if hasattr(e, "detail") else str(e),
-                        "request_id": getattr(request.state, "request_id", ""),
-                    }
-                },
+                content=http_error_body(
+                    401,
+                    str(e.detail) if hasattr(e, "detail") else str(e),
+                    getattr(request.state, "request_id", ""),
+                    code="UNAUTHORIZED",
+                ),
             )
 
         return await call_next(request)
@@ -143,13 +143,12 @@ class TenantMiddleware(BaseHTTPMiddleware):
             else:
                 return JSONResponse(
                     status_code=400,
-                    content={
-                        "error": {
-                            "code": "MISSING_TENANT",
-                            "message": "X-Tenant-ID header is required",
-                            "request_id": getattr(request.state, "request_id", ""),
-                        }
-                    },
+                    content=http_error_body(
+                        400,
+                        "X-Tenant-ID header is required",
+                        getattr(request.state, "request_id", ""),
+                        code="MISSING_TENANT",
+                    ),
                 )
 
         # Set context vars for this request
@@ -189,13 +188,13 @@ class TenantMiddleware(BaseHTTPMiddleware):
                     tenant_status = None
 
             if tenant_status == "deactivated":
-                from life_graph.api.responses import error_response
-
                 return JSONResponse(
                     status_code=403,
-                    content=error_response(
-                        "TENANT_DEACTIVATED",
+                    content=http_error_body(
+                        403,
                         "Tenant is deactivated. Read-only access only.",
+                        getattr(request.state, "request_id", ""),
+                        code="TENANT_DEACTIVATED",
                     ),
                 )
 
@@ -270,13 +269,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not result.allowed:
             return JSONResponse(
                 status_code=429,
-                content={
-                    "error": {
-                        "code": "RATE_LIMITED",
-                        "message": f"Rate limit exceeded. Limit: {result.limit}/min.",
-                        "request_id": getattr(request.state, "request_id", ""),
-                    }
-                },
+                content=http_error_body(
+                    429,
+                    f"Rate limit exceeded. Limit: {result.limit}/min.",
+                    getattr(request.state, "request_id", ""),
+                    code="RATE_LIMITED",
+                ),
                 headers={
                     **result.headers,
                     "Retry-After": str(result.reset_at - int(__import__("time").time())),
