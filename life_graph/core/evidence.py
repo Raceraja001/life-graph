@@ -124,7 +124,8 @@ def evidence_of(
     props = properties or {}
     derived = derive_evidence(source_type, trust_tier, props)
     stamped = props.get("evidence")
-    if stamped in KINDS and AUTHORITY[stamped] <= AUTHORITY[derived]:
+    # Only a str can be one of KINDS; the isinstance just tells mypy so.
+    if isinstance(stamped, str) and stamped in KINDS and AUTHORITY[stamped] <= AUTHORITY[derived]:
         return stamped
     return derived
 
@@ -678,6 +679,13 @@ def lexical_entailment_score(claim: str, source: str) -> float:
     return round(len(claim_tokens & source_tokens) / len(claim_tokens), 4)
 
 
+def _field(memory: Any, key: str, default: Any = None) -> Any:
+    """*key* of a memory given as a dict (API payload) or an object (ORM row)."""
+    if isinstance(memory, dict):
+        return memory.get(key, default)
+    return getattr(memory, key, default)
+
+
 def citation_text(memory: Any) -> str:
     """Everything of a cited memory we are allowed to check a claim against.
 
@@ -688,15 +696,15 @@ def citation_text(memory: Any) -> str:
     """
     if memory is None:
         return ""
-    get = (
-        (lambda k: memory.get(k))
-        if isinstance(memory, dict)
-        else (lambda k: getattr(memory, k, None))
-    )
+
+    def get(key: str) -> Any:
+        return _field(memory, key)
+
     props = get("properties") or {}
     if not isinstance(props, dict):
         props = {}
-    lineage = props.get("lineage") if isinstance(props.get("lineage"), dict) else {}
+    raw_lineage = props.get("lineage")
+    lineage = raw_lineage if isinstance(raw_lineage, dict) else {}
     parts = [
         get("content"),
         get("summary"),
@@ -716,11 +724,10 @@ def _is_tombstone(memory: Any) -> bool:
     """True when the cited row exists only as a marker that its source is gone."""
     if memory is None:
         return True
-    get = (
-        (lambda k: memory.get(k))
-        if isinstance(memory, dict)
-        else (lambda k: getattr(memory, k, None))
-    )
+
+    def get(key: str) -> Any:
+        return _field(memory, key)
+
     if get("deleted") or get("missing"):
         return True
     return str(get("status") or "").lower() in ("deleted", "purged", "missing", "unavailable")
@@ -1010,11 +1017,10 @@ def decompose_memory_confidence(
     rather than folds in: ``base_confidence`` stays readable beside the
     penalised ``calibrated_confidence``.
     """
-    get = (
-        (lambda k, d=None: memory.get(k, d))
-        if isinstance(memory, dict)
-        else (lambda k, d=None: getattr(memory, k, d))
-    )
+
+    def get(key: str, default: Any = None) -> Any:
+        return _field(memory, key, default)
+
     props = get("properties") or {}
     if not isinstance(props, dict):
         props = {}

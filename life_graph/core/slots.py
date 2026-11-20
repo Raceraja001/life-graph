@@ -21,8 +21,12 @@ slot is mapped to the name they are known by in services/entities.py
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from life_graph.core import aliases
+
+if TYPE_CHECKING:
+    from collections.abc import Container
 
 TOPICS = (
     "basics",
@@ -287,7 +291,7 @@ def _activity(segment: str) -> str:
 def _activity_in(content: str) -> str | None:
     """The one activity *content* names, else None (none, or more than one)."""
     text = " " + re.sub(r"[^a-z]+", " ", content.lower()) + " "
-    found = []
+    found: list[str] = []
     for act in ACTIVITIES:
         if f" {act.replace('_', ' ')} " in text and not any(act in f for f in found):
             found.append(act)
@@ -297,7 +301,7 @@ def _activity_in(content: str) -> str | None:
     return found[0] if len(found) == 1 else None
 
 
-def _split_field(segment: str, fields) -> tuple[str, str] | None:
+def _split_field(segment: str, fields: Container[str]) -> tuple[str, str] | None:
     """``cricket_day`` → (cricket, day), ``day_cricket`` → (cricket, day), else None."""
     bits = segment.split("_")
     for i in range(1, len(bits)):

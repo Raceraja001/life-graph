@@ -129,6 +129,8 @@ async def get_usage_count(tenant_id: str, resource: str = "requests") -> int:
 
     try:
         # Count entries in the last minute
-        return await redis.zcount(key, now - 60, now)
+        # redis-py types replies as Any (sync and async clients share stubs).
+        count: int = await redis.zcount(key, now - 60, now)
+        return count
     except Exception:
         return 0

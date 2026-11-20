@@ -221,12 +221,16 @@ def coerce_tier(
         return default
 
 
-def is_untrusted(tier: str | TrustTier) -> bool:
-    """True when content must be fenced as data (tier ≥ EXTERNAL)."""
+def is_untrusted(tier: str | TrustTier | None) -> bool:
+    """True when content must be fenced as data (tier ≥ EXTERNAL).
+
+    ``None`` (an untagged row) is accepted and, like any unknown tag, counts
+    as EXTERNAL via :func:`coerce_tier` -- untrusted, not silently trusted.
+    """
     return _ORDER[coerce_tier(tier)] >= _ORDER[TrustTier.EXTERNAL]
 
 
-def is_excluded_from_agents(tier: str | TrustTier) -> bool:
+def is_excluded_from_agents(tier: str | TrustTier | None) -> bool:
     """True when content must never enter a packet fed to an acting agent."""
     return coerce_tier(tier) is TrustTier.HOSTILE_POSSIBLE
 
