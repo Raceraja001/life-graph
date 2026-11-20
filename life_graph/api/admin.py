@@ -3,6 +3,22 @@
 Provides operational endpoints: system statistics (simple COUNT
 queries), knowledge gap listing, raw text ingestion shortcut,
 webhook CRUD, tenant lifecycle management, and bulk memory operations.
+
+Who may call what (audit 2026-11-19 L10/F11 follow-up):
+
+* ``GET /stats``, ``GET /gaps``, ``POST /ingest``: any key — the caller's own
+  tenant, the same as the ordinary memory routes. (The dashboard's sign-in
+  checks its key against ``/stats``.) ``/ingest`` and ``/bulk/import`` grade
+  what they store by who is calling (core/trust.py ``classify_ingress``), as
+  ``POST /memories`` does.
+* everything else changes the deployment (tenants, webhooks) or reads or
+  rewrites a whole tenant (export, bulk ops, consolidation, job runs): owner
+  only when ``admin_require_owner`` is on (:func:`require_admin_owner`).
+* reaching a tenant other than the caller's own (``/tenants/{id}``, the
+  ``tenant_id`` filter of ``/jobs``, ``/jobs/consolidate`` and
+  ``/jobs/cleanup-memories``, which without one meant every tenant): an owner
+  API key, always (:func:`_tenant_in_reach`). A paired phone is the owner of
+  its own tenant only, so it is not enough here.
 """
 
 from __future__ import annotations
@@ -14,11 +30,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 
+from life_graph.api.auth import ingress_for
 from life_graph.api.dependencies import get_memory_manager, get_metamemory, get_store
 from life_graph.api.openapi_examples import (
     BULK_DELETE,
@@ -30,8 +47,10 @@ from life_graph.api.openapi_examples import (
 )
 from life_graph.api.responses import encode_cursor, paginated_response, success_response
 from life_graph.api.url_guard import require_public_url
+from life_graph.config import settings
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.core.trust import classify_ingress
 from life_graph.models.db import (
     Intention,
     JobRun,
@@ -51,6 +70,50 @@ from life_graph.storage.postgres import PostgresMemoryStore
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+ADMIN_OWNER_REQUIRED = (
+    "This admin route needs the owner: an owner API key or a paired phone"
+    " (admin_require_owner is on)."
+)
+OTHER_TENANT_OWNER_REQUIRED = (
+    "Another tenant (or every tenant) can only be reached through /admin with an owner API key."
+)
+
+
+def require_admin_owner(request: Request) -> None:
+    """403 unless the caller is the owner — only when ``admin_require_owner`` is on."""
+    if settings.admin_require_owner and not ingress_for(request).is_owner:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ADMIN_OWNER_REQUIRED)
+
+
+_OWNER_GATED = [Depends(require_admin_owner)]
+
+
+def _deployment_owner(request: Request) -> bool:
+    """An owner key (or a dev stack with auth off): the owner of the whole deployment.
+
+    A paired phone is owner-verified too, but its pairing binds it to one
+    tenant, so it does not reach the others.
+    """
+    ingress = ingress_for(request)
+    return ingress.owner_verified and not ingress.device_id
+
+
+def _tenant_in_reach(request: Request, tenant_id: str | None) -> str | None:
+    """The tenant this caller may act on; None = every tenant (owner key only).
+
+    Anyone else is held to their own tenant: no ``tenant_id`` means theirs,
+    and naming another one is a 403. Not tied to ``admin_require_owner``: one
+    tenant reading or rewriting another's data is never a matter of setting.
+    """
+    if _deployment_owner(request):
+        return tenant_id
+    current = get_current_tenant_id()
+    if tenant_id and tenant_id != current:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=OTHER_TENANT_OWNER_REQUIRED
+        )
+    return current
 
 
 # ── Request / Response schemas ───────────────────────────────
@@ -191,17 +254,23 @@ async def list_gaps(
 )
 async def ingest_text(
     body: IngestRequest,
+    request: Request,
     manager: MemoryManager = Depends(get_memory_manager),
 ):
     """Run raw text through the full ingestion pipeline.
 
     Extracts facts, scores importance, checks contradictions,
-    and stores resulting memories.
+    and stores resulting memories. Their trust tier comes from the declared
+    ``source`` checked against who is calling (core/trust.py
+    ``classify_ingress``): a first-party source is honoured only for the
+    owner, anything else is stored as external content. Without this every
+    fact stored here got the column default, ``verified``.
     """
     memories = await manager.ingest(
         text=body.text,
         context=body.context,
         source=body.source,
+        trust_tier=classify_ingress(body.source, ingress_for(request)).value,
     )
     return success_response(data=[MemoryResponse.model_validate(m) for m in memories])
 
@@ -209,6 +278,7 @@ async def ingest_text(
 @router.get(
     "/export",
     summary="Export all memories as NDJSON stream",
+    dependencies=_OWNER_GATED,
 )
 async def export_memories(
     store: PostgresMemoryStore = Depends(get_store),
@@ -249,6 +319,7 @@ async def export_memories(
     status_code=status.HTTP_201_CREATED,
     summary="Register a webhook",
     responses=WEBHOOK_CREATED,
+    dependencies=_OWNER_GATED,
 )
 async def create_webhook(body: WebhookCreate):
     """Register a new webhook for the current tenant.
@@ -284,6 +355,7 @@ async def create_webhook(body: WebhookCreate):
     "/webhooks",
     summary="List webhooks",
     responses=WEBHOOK_LIST,
+    dependencies=_OWNER_GATED,
 )
 async def list_webhooks():
     """List all webhooks registered for the current tenant."""
@@ -318,6 +390,7 @@ async def list_webhooks():
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a webhook",
     response_class=Response,
+    dependencies=_OWNER_GATED,
 )
 async def delete_webhook(webhook_id: uuid.UUID):
     """Delete a webhook registration by ID."""
@@ -337,6 +410,7 @@ async def delete_webhook(webhook_id: uuid.UUID):
 @router.post(
     "/webhooks/{webhook_id}/test",
     summary="Test a webhook",
+    dependencies=_OWNER_GATED,
 )
 async def test_webhook(webhook_id: uuid.UUID):
     """Send a test event payload to a webhook URL.
@@ -392,6 +466,7 @@ async def test_webhook(webhook_id: uuid.UUID):
     status_code=status.HTTP_201_CREATED,
     summary="Provision a new tenant",
     responses=TENANT_PROVISIONED,
+    dependencies=_OWNER_GATED,
 )
 async def provision_tenant(body: TenantProvisionRequest):
     """Provision a new tenant with a configuration record and usage tracking.
@@ -435,13 +510,15 @@ async def provision_tenant(body: TenantProvisionRequest):
     "/tenants/{tenant_id}",
     summary="Get tenant summary",
     responses=TENANT_SUMMARY,
+    dependencies=_OWNER_GATED,
 )
-async def get_tenant_summary(tenant_id: str):
+async def get_tenant_summary(tenant_id: str, request: Request):
     """Return a comprehensive tenant summary.
 
     Includes memory count, session count, plan, status,
-    and aggregated usage statistics.
+    and aggregated usage statistics. Another tenant's needs an owner key.
     """
+    _tenant_in_reach(request, tenant_id)
     async with async_session() as session:
         config = await session.get(TenantConfig, tenant_id)
         if config is None:
@@ -486,13 +563,16 @@ async def get_tenant_summary(tenant_id: str):
 @router.post(
     "/tenants/{tenant_id}/deactivate",
     summary="Deactivate a tenant",
+    dependencies=_OWNER_GATED,
 )
-async def deactivate_tenant(tenant_id: str):
+async def deactivate_tenant(tenant_id: str, request: Request):
     """Deactivate a tenant, switching to read-only access.
 
     Sets status to 'deactivated' and records the deactivation timestamp.
     The tenant's data is preserved but write operations are blocked.
+    Another tenant needs an owner key.
     """
+    _tenant_in_reach(request, tenant_id)
     async with async_session() as session:
         config = await session.get(TenantConfig, tenant_id)
         if config is None:
@@ -522,13 +602,15 @@ async def deactivate_tenant(tenant_id: str):
 @router.post(
     "/tenants/{tenant_id}/reactivate",
     summary="Reactivate a tenant",
+    dependencies=_OWNER_GATED,
 )
-async def reactivate_tenant(tenant_id: str):
+async def reactivate_tenant(tenant_id: str, request: Request):
     """Reactivate a previously deactivated tenant.
 
     Restores full read-write access by setting status back to 'active'
-    and clearing the deactivation timestamp.
+    and clearing the deactivation timestamp. Another tenant needs an owner key.
     """
+    _tenant_in_reach(request, tenant_id)
     async with async_session() as session:
         config = await session.get(TenantConfig, tenant_id)
         if config is None:
@@ -557,15 +639,18 @@ async def reactivate_tenant(tenant_id: str):
 @router.delete(
     "/tenants/{tenant_id}",
     summary="Permanently delete a tenant",
+    dependencies=_OWNER_GATED,
 )
-async def delete_tenant(tenant_id: str):
+async def delete_tenant(tenant_id: str, request: Request):
     """Permanently delete a tenant and ALL associated data.
 
     Only works if the tenant is already deactivated (status='deactivated').
     Returns 409 Conflict if the tenant is still active.
     Cascade deletes: MemorySession, Memory, Session, Intention,
     KnowledgeGap, JobRun, TenantUsage, TenantWebhook, TenantConfig.
+    Another tenant needs an owner key.
     """
+    _tenant_in_reach(request, tenant_id)
     async with async_session() as session:
         config = await session.get(TenantConfig, tenant_id)
         if config is None:
@@ -639,6 +724,7 @@ async def delete_tenant(tenant_id: str):
     "/bulk/delete",
     summary="Bulk delete memories",
     responses=BULK_DELETE,
+    dependencies=_OWNER_GATED,
 )
 async def bulk_delete(body: BulkDeleteRequest):
     """Bulk delete memories matching filter criteria.
@@ -708,15 +794,20 @@ async def bulk_delete(body: BulkDeleteRequest):
     status_code=status.HTTP_201_CREATED,
     summary="Bulk import memories",
     responses=BULK_IMPORT,
+    dependencies=_OWNER_GATED,
 )
-async def bulk_import(body: BulkImportRequest):
+async def bulk_import(body: BulkImportRequest, request: Request):
     """Bulk import up to 500 memories directly into the store.
 
     Inserts memory records without running the full ingestion pipeline.
     If generate_embeddings=true, enqueues an ARQ job to compute
-    embeddings asynchronously.
+    embeddings asynchronously. Each row's trust tier comes from its declared
+    ``source_type`` (default ``bulk_import``) checked against who is calling
+    (core/trust.py ``classify_ingress``); it used to be the column default,
+    ``verified``, for any caller.
     """
     tenant_id = get_current_tenant_id()
+    ingress = ingress_for(request)
     imported = 0
     embedding_job_id = None
 
@@ -737,6 +828,7 @@ async def bulk_import(body: BulkImportRequest):
                 tags=item.tags,
                 importance=item.importance or 0.5,
                 source_type=item.source_type or "bulk_import",
+                trust_tier=classify_ingress(item.source_type or "bulk_import", ingress).value,
                 # gate: bulk-imported content is user content, not system-derived —
                 # see docs/superpowers/specs/2026-07-23-memory-approval-gate-design.md
                 status="pending",
@@ -817,6 +909,7 @@ class ConsolidationResponse(BaseModel):
 @router.post(
     "/consolidate",
     summary="Run consolidation now",
+    dependencies=_OWNER_GATED,
 )
 async def run_consolidation():
     """Manually trigger the nightly consolidation pipeline.
@@ -845,6 +938,7 @@ async def run_consolidation():
 @router.post(
     "/micro-consolidate/{session_id}",
     summary="Run micro-consolidation for a session",
+    dependencies=_OWNER_GATED,
 )
 async def run_micro_consolidation(session_id: uuid.UUID):
     """Manually trigger micro-consolidation for a specific session.
@@ -892,13 +986,20 @@ class JobRunResponse(BaseModel):
 @router.get(
     "/jobs",
     summary="List recent job runs",
+    dependencies=_OWNER_GATED,
 )
 async def list_job_runs(
+    request: Request,
     limit: int = Query(20, ge=1, le=200),
     tenant_id: str | None = None,
     job_name: str | None = None,
 ):
-    """List recent background job runs, optionally filtered by tenant/name."""
+    """List recent background job runs, optionally filtered by tenant/name.
+
+    Only the caller's own tenant's runs, unless the caller holds an owner key
+    (then ``tenant_id`` filters, and without it every tenant's are listed).
+    """
+    tenant_id = _tenant_in_reach(request, tenant_id)
     stmt = select(JobRun).order_by(JobRun.started_at.desc()).limit(limit)
     if tenant_id:
         stmt = stmt.where(JobRun.tenant_id == tenant_id)
@@ -916,12 +1017,16 @@ async def list_job_runs(
     "/jobs/consolidate",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Enqueue consolidation job",
+    dependencies=_OWNER_GATED,
 )
-async def enqueue_consolidation(tenant_id: str | None = None):
+async def enqueue_consolidation(request: Request, tenant_id: str | None = None):
     """Enqueue a consolidation job via ARQ (async, non-blocking).
 
     If ARQ is unavailable, falls back to the legacy synchronous run.
+    Without ``tenant_id`` an owner key runs every tenant; anyone else runs
+    their own tenant only.
     """
+    tenant_id = _tenant_in_reach(request, tenant_id)
     try:
         from arq import create_pool
 
@@ -949,15 +1054,18 @@ async def enqueue_consolidation(tenant_id: str | None = None):
     "/jobs/cleanup-memories",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Enqueue one-time memory cleanup job",
+    dependencies=_OWNER_GATED,
 )
-async def enqueue_cleanup_memories(tenant_id: str | None = None):
+async def enqueue_cleanup_memories(request: Request, tenant_id: str | None = None):
     """Enqueue the fragment/duplicate cleanup job via ARQ (async, non-blocking).
 
     Queues merge approvals for same-utterance fragments/duplicates (near-dup
     similarity band or overlapping ``properties.entities``) — never
     auto-merges or auto-deletes; resolution goes through the existing
     approvals queue. Idempotent, so it's safe to trigger repeatedly.
+    Without ``tenant_id`` an owner key cleans every tenant; anyone else their own.
     """
+    tenant_id = _tenant_in_reach(request, tenant_id)
     from arq import create_pool
 
     from life_graph.workers.settings import parse_redis_settings

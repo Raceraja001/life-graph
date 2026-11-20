@@ -1568,7 +1568,8 @@ def _command_approver(request: Request) -> str | None:
 
     deploy/smoke/rollback/backup_check commands run as a shell on the host
     (kernel/project_registry.py ``HOST_COMMAND_KEYS``), so only an owner key or
-    a paired device may set them (audit 2026-11-19, H2).
+    a paired device may set them (audit 2026-11-19, H2). The same caller is the
+    only one who may loosen a safety setting (``loosened_settings``).
     """
     from life_graph.api.auth import ingress_for
 
@@ -1596,10 +1597,11 @@ async def register_project(
     """Register a new project and auto-scan it.
 
     Detects language, framework, git info, and file counts.
-    Returns 409 if name already exists, 403 if a host command
-    (deploy/smoke/rollback/backup_check) is set by a non-owner caller.
+    Returns 409 if name already exists, 403 if a non-owner caller sets a host
+    command (deploy/smoke/rollback/backup_check) or a safety setting looser
+    than its default (kernel/project_registry.py ``loosened_settings``).
     """
-    from life_graph.kernel.project_registry import CommandApprovalError
+    from life_graph.kernel.project_registry import CommandApprovalError, SettingApprovalError
 
     tenant_id = get_current_tenant_id()
 
@@ -1609,7 +1611,7 @@ async def register_project(
             body.model_dump(exclude_none=True),
             approved_by=_command_approver(request),
         )
-    except CommandApprovalError as exc:
+    except (CommandApprovalError, SettingApprovalError) as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
         detail = str(exc)
@@ -1714,9 +1716,13 @@ async def update_project(
     """Update description, git_url or the verifier sandbox setup command.
 
     Setting or changing deploy/smoke/rollback/backup_check commands needs the
-    owner (403 otherwise); clearing one is allowed with any key.
+    owner (403 otherwise); clearing one is allowed with any key. Likewise a
+    change that loosens a safety setting (turning auto_merge on, raising
+    auto_merge_max_lines, removing a protected path, ...:
+    kernel/project_registry.py ``loosened_settings``) needs the owner, and
+    tightening one is allowed with any key.
     """
-    from life_graph.kernel.project_registry import CommandApprovalError
+    from life_graph.kernel.project_registry import CommandApprovalError, SettingApprovalError
 
     tenant_id = get_current_tenant_id()
     try:
@@ -1726,7 +1732,7 @@ async def update_project(
             body.model_dump(exclude_unset=True),
             approved_by=_command_approver(request),
         )
-    except CommandApprovalError as exc:
+    except (CommandApprovalError, SettingApprovalError) as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(

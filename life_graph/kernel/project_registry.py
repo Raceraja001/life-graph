@@ -259,6 +259,183 @@ def redact_commands(project: dict[str, Any]) -> dict[str, Any]:
     return {**project, "scan_metadata": hidden}
 
 
+# ── Safety settings (audit 2026-11-19 P0 follow-up to H2) ──
+
+# Every key in _USER_META_KEYS falls in one of three groups. Any caller may
+# TIGHTEN a setting; LOOSENING one of group (a) needs the owner (the same
+# owner-verified ingress as HOST_COMMAND_KEYS, api/auth.py ``ingress_for``):
+#
+# (a) loosens a safety gate or widens what agents may do unattended:
+#     auto_open_pr, auto_merge, auto_approve_plans, deploy_on_merge,
+#       nightly_suggestions, nightly_untested      off -> on
+#     auto_merge_max_lines, auto_merge_max_files,
+#       nightly_max_tasks                          effective value goes up
+#     diff_coverage_min, mutation_min_kill         effective value goes down
+#     protected_paths, required_checks             any entry removed
+#     sandbox_setup_allow                          any entry added
+#     pr_mode                                      becomes "local" (no GitHub PR/CI)
+#     nightly_persona, fix_persona                 becomes anything but the default
+#     health_url                                   set or changed (the host probes it hourly)
+#     base_branch and the settings that define the verifier checks (sandbox_setup,
+#       sandbox_test_command, sandbox_start_command, sandbox_e2e_command,
+#       sandbox_toolchain, sandbox_js_test_runner): any change while auto_merge
+#       is on. They decide where unattended merges land and what "tests pass"
+#       means. With auto_merge off a person reviews every merge.
+# (b) host shell commands, HOST_COMMAND_KEYS: owner-approved by exact text above.
+# (c) harmless (any key, either way): sandbox_test_timeout, sandbox_e2e_timeout,
+#     sandbox_app_port, nightly_lint_paths, nightly_untested_paths; plus the
+#     project's description and git_url (display only).
+#
+# "Effective" means with the consumer's default filled in, because an empty
+# value clears a setting back to that default: clearing auto_merge_max_lines
+# when it is 50 raises the cap to the default 150, which loosens.
+UNATTENDED_FLAG_KEYS = (
+    "auto_open_pr",
+    "auto_merge",
+    "auto_approve_plans",
+    "deploy_on_merge",
+    "nightly_suggestions",
+    "nightly_untested",
+)
+UNATTENDED_SCOPED_KEYS = (
+    "base_branch",
+    "sandbox_setup",
+    "sandbox_test_command",
+    "sandbox_start_command",
+    "sandbox_e2e_command",
+    "sandbox_toolchain",
+    "sandbox_js_test_runner",
+)
+
+OWNER_ONLY_SETTING_DETAIL = (
+    "{changes}: loosening a safety setting can only be done by the owner (an owner API"
+    " key or a paired device). Tightening it is allowed with any key."
+)
+
+
+class SettingApprovalError(PermissionError):
+    """A safety setting would be loosened by a caller not verified as the owner."""
+
+
+def _defaults() -> dict[str, Any]:
+    """The consumers' own defaults, read from them so the two cannot drift."""
+    from life_graph.services.dev.change_policy import AUTO_MAX_FILES, AUTO_MAX_LINES
+    from life_graph.services.dev.production_findings import DEFAULT_FIX_PERSONA
+    from life_graph.services.dev.proof_checks import DIFF_COVERAGE_MIN, MUTATION_MIN_KILL
+    from life_graph.services.dev.suggestions import (
+        DEFAULT_MAX_TASKS,
+        DEFAULT_PERSONA,
+        MAX_TASKS_CAP,
+    )
+
+    return {
+        "auto_merge_max_lines": AUTO_MAX_LINES,
+        "auto_merge_max_files": AUTO_MAX_FILES,
+        "nightly_max_tasks": DEFAULT_MAX_TASKS,
+        "nightly_max_tasks_cap": MAX_TASKS_CAP,
+        "diff_coverage_min": DIFF_COVERAGE_MIN,
+        "mutation_min_kill": MUTATION_MIN_KILL,
+        "nightly_persona": DEFAULT_PERSONA,
+        "fix_persona": DEFAULT_FIX_PERSONA,
+    }
+
+
+def _number(value: Any, default: float) -> float:
+    """*value* as its consumer reads it (``value or default``); junk reads as the default."""
+    try:
+        return float(value or default)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _entries(value: Any) -> set[str]:
+    """A list setting as a set of strings (sandbox_setup_allow may be a comma string)."""
+    if not value:
+        return set()
+    if isinstance(value, str):
+        value = value.split(",")
+    return {str(v).strip() for v in value if str(v).strip()}
+
+
+def _pr_mode(meta: dict[str, Any]) -> str:
+    return "local" if str(meta.get("pr_mode") or "").strip().lower() == "local" else "github"
+
+
+def settings_after(meta: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    """*meta* with the user settings in *data* applied (an empty value clears one)."""
+    after = dict(meta)
+    for key in (_USER_META_KEYS - HOST_COMMAND_KEYS) & data.keys():
+        if data[key]:
+            after[key] = data[key]
+        else:
+            after.pop(key, None)
+    return after
+
+
+def loosened_settings(meta: dict[str, Any] | None, data: dict[str, Any]) -> list[str]:
+    """What applying *data* to *meta* would loosen, one phrase each (empty = nothing).
+
+    Pure: compares the effective value of every group-(a) setting before and
+    after. Re-sending a value unchanged loosens nothing, so a form that PATCHes
+    every field still works with any key.
+    """
+    before = dict(meta or {})
+    after = settings_after(before, data)
+    d = _defaults()
+    out: list[str] = []
+
+    for key in UNATTENDED_FLAG_KEYS:
+        if after.get(key) and not before.get(key):
+            out.append(f"{key} (turning it on)")
+    for key in ("auto_merge_max_lines", "auto_merge_max_files"):
+        if _number(after.get(key), d[key]) > _number(before.get(key), d[key]):
+            out.append(f"{key} (raising it)")
+    cap, default_tasks = d["nightly_max_tasks_cap"], d["nightly_max_tasks"]
+    old_tasks = min(_number(before.get("nightly_max_tasks"), default_tasks), cap)
+    if min(_number(after.get("nightly_max_tasks"), default_tasks), cap) > old_tasks:
+        out.append("nightly_max_tasks (raising it)")
+    for key in ("diff_coverage_min", "mutation_min_kill"):
+        if _number(after.get(key), d[key]) < _number(before.get(key), d[key]):
+            out.append(f"{key} (lowering it)")
+    for key in ("protected_paths", "required_checks"):
+        removed = sorted(_entries(before.get(key)) - _entries(after.get(key)))
+        if removed:
+            out.append(f"{key} (removing {', '.join(removed)})")
+    allow_key = "sandbox_setup_allow"
+    added = sorted(_entries(after.get(allow_key)) - _entries(before.get(allow_key)))
+    if added:
+        out.append(f"{allow_key} (adding {', '.join(added)})")
+    if _pr_mode(after) == "local" and _pr_mode(before) != "local":
+        out.append("pr_mode (switching to local)")
+    for key in ("nightly_persona", "fix_persona"):
+        new = after.get(key) or d[key]
+        if new != (before.get(key) or d[key]) and new != d[key]:
+            out.append(f"{key} (changing it to {new})")
+    if after.get("health_url") and after.get("health_url") != before.get("health_url"):
+        out.append("health_url (setting it)")
+    if after.get("auto_merge"):
+        for key in UNATTENDED_SCOPED_KEYS:
+            if after.get(key) != before.get(key):
+                out.append(f"{key} (changing it while auto_merge is on)")
+    return out
+
+
+def check_setting_changes(
+    meta: dict[str, Any] | None, data: dict[str, Any], approved_by: str | None
+) -> None:
+    """Refuse a non-owner (*approved_by* None) change that loosens any safety setting.
+
+    Raises:
+        SettingApprovalError: naming each setting and how it would loosen;
+            nothing has been written.
+    """
+    if approved_by:
+        return
+    loosened = loosened_settings(meta, data)
+    if loosened:
+        raise SettingApprovalError(OWNER_ONLY_SETTING_DETAIL.format(changes="; ".join(loosened)))
+
+
 def _confined_project_path(path: str) -> str:
     """Resolve a project path under the host-tool guards.
 
@@ -299,9 +476,11 @@ def _user_scan_metadata(data: dict[str, Any], approved_by: str | None = None) ->
     """Returns the user-set scan_metadata keys (such as sandbox_setup) present in the registration data.
 
     Host commands among them are pinned to *approved_by* (see
-    :func:`apply_command_settings`, which raises without one).
+    :func:`apply_command_settings`, which raises without one), and a safety
+    setting looser than its default needs it too (:func:`check_setting_changes`).
     """
     meta = {k: data[k] for k in _USER_META_KEYS - HOST_COMMAND_KEYS if data.get(k)}
+    check_setting_changes({}, meta, approved_by)
     apply_command_settings(
         meta, {k: data[k] for k in HOST_COMMAND_KEYS if data.get(k)}, approved_by
     )
@@ -615,6 +794,8 @@ class ProjectRegistry:
         Raises:
             ValueError: If name already exists or path invalid.
             CommandApprovalError: A host command without *approved_by*.
+            SettingApprovalError: A safety setting looser than its default
+                without *approved_by*.
         """
         name = data["name"]
         path = _confined_project_path(data["path"])
@@ -852,6 +1033,8 @@ class ProjectRegistry:
         Raises:
             CommandApprovalError: A host command without *approved_by*;
                 nothing is written.
+            SettingApprovalError: A safety setting loosened without
+                *approved_by* (:func:`loosened_settings`); nothing is written.
         """
         async with self._session_factory() as session:
             project = (
@@ -866,7 +1049,9 @@ class ProjectRegistry:
             if project is None:
                 return None
             meta = dict(project.scan_metadata or {})
-            # Before anything is set: a refused command leaves the project as it was.
+            # Before anything is set: a refused command or setting leaves the
+            # project as it was.
+            check_setting_changes(meta, data, approved_by)
             apply_command_settings(meta, data, approved_by)
             for field in ("description", "git_url"):
                 if field in data:

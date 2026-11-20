@@ -10,6 +10,12 @@ redeeming a code that an authenticated caller asked for here. That is why
 ``/pair`` is the only write and why revocation lives here too: undoing a
 binding must require proof of identity that a message in the chat cannot give.
 
+The authenticated caller must be the owner (an owner key, or auth off on a
+dev stack). A bound chat speaks as the owner — its messages are stored as the
+owner's own words (core/trust.py ``"telegram"`` is SELF) and, with
+``telegram_allow_approvals``, it can approve — so a code minted by any service
+key was a way to become the owner.
+
 ``/status`` is the odd one out. The poller runs in the ARQ worker process, not
 in the API process serving this request, so there is no object to ask — it
 reports what the poller published to Redis. See :func:`poller_state`.
@@ -20,9 +26,10 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 
+from life_graph.api.auth import ingress_for
 from life_graph.api.openapi_examples import (
     TELEGRAM_BINDING_LIST,
     TELEGRAM_PAIR_CREATED,
@@ -45,6 +52,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/integrations/telegram", tags=["telegram"])
 
+OWNER_ONLY_PAIRING = (
+    "A linked Telegram chat speaks as the owner, so only the owner can create a pairing"
+    " code: use an owner API key (LIFE_GRAPH_OWNER_API_KEYS)."
+)
+
 # The bot's @handle never changes for a given token, and the pairing screen
 # needs it on every load to tell the user which bot to open. Cached per process
 # so a dashboard visit is not a round trip to Telegram.
@@ -57,13 +69,15 @@ _bot_username_cache: str | None = None
     summary="Mint a pairing code for a Telegram chat",
     responses=TELEGRAM_PAIR_CREATED,
 )
-async def create_pairing_code(tenant_id: str = Depends(get_current_tenant_id)):
+async def create_pairing_code(request: Request, tenant_id: str = Depends(get_current_tenant_id)):
     """Issue a short-lived, single-use code to send to the bot as ``/start <code>``.
 
     Codes are not listed anywhere and cannot be retrieved after this response —
     losing one costs a second call, whereas making them readable later would
-    turn any read of this API into a way to bind a chat.
+    turn any read of this API into a way to bind a chat. Owner only (403).
     """
+    if not ingress_for(request).is_owner:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=OWNER_ONLY_PAIRING)
     async with async_session() as session:
         code = await TelegramBindingService(session).issue_code(tenant_id)
         await session.commit()

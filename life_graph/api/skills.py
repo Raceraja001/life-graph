@@ -18,7 +18,7 @@ import logging
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
@@ -170,19 +170,28 @@ async def get_skill(skill_id: uuid.UUID):
 
 
 @router.post("/{skill_id}/approve", summary="Approve a skill into active recall")
-async def approve_skill(skill_id: uuid.UUID):
+async def approve_skill(skill_id: uuid.UUID, request: Request):
     """Promote a skill to ``active`` so recall and the persona block use it.
 
     Idempotent, and it also un-archives: approving is the only way back from
     a mistaken archive, and the alternative (a 409 on anything but pending)
     would leave a row with no route to active at all.
+
+    An active skill is injected into every dev persona's prompt, so this is
+    an approval like any other (api/approval_identity.py): with
+    ``approvals_require_owner`` on only the owner may approve (403), and
+    ``approved_by`` records who did as the server saw them — it said
+    ``"human"`` for any caller, the MCP server and agents included.
     """
+    from life_graph.api.approval_identity import require_owner, resolver
+
+    require_owner(request)
     async with async_session() as db:
         memory = await _load(db, skill_id)
         if memory.status != "active":
             logger.info("Approving skill %s (was %s)", skill_id, memory.status)
             memory.status = "active"
-            memory.properties = {**(memory.properties or {}), "approved_by": "human"}
+            memory.properties = {**(memory.properties or {}), "approved_by": resolver(request)}
             await db.commit()
         return success_response(data=serialize(memory))
 

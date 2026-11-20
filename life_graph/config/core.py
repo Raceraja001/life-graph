@@ -70,6 +70,14 @@ class CoreSettings(BaseModel):
     # WARNING, and GET /kernel/observability/system shows "approvals", when it
     # is on with no owner key and no paired phone (services/owner_enforcement.py).
     approvals_require_owner: bool = False
+    # The /admin routes that change the deployment or export a tenant's data
+    # (tenants, webhooks, export, bulk delete/import, consolidation and job
+    # runs) only from the owner: an owner key or (for the caller's own tenant)
+    # a paired phone (api/admin.py). Off by default, for the same reason as
+    # approvals_require_owner: turn the two on together once the dashboard's key
+    # is in owner_api_keys. GET /admin/stats and /admin/gaps stay open. Reaching
+    # ANOTHER tenant through /admin needs an owner key whatever this says.
+    admin_require_owner: bool = False
     # A paired phone's token stops working after this many days unused
     # (services/devices.py authenticate; re-pair to get a new one). 0 = never.
     device_token_idle_days: int = Field(default=60, ge=0)
