@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-20 07:44 UTC` from `master` @ `974f3b5`
+Generated `2026-11-20 07:50 UTC` from `master` @ `935e21f`
 
 ---
 
@@ -18,15 +18,15 @@ Generated `2026-11-20 07:44 UTC` from `master` @ `974f3b5`
 |---|---|
 | HTTP operations | **397** across 344 paths, 46 tags |
 | Database tables | **89** |
-| Migrations | **60** (head: `060_dev_task_events`) |
+| Migrations | **61** (head: `061_approval_queue_requested_by`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **35** |
 | Config settings | **325** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5380** in 552 files |
+| Test functions | **5410** in 554 files |
 | Dashboard pages | **23** |
-| Python | 569 files, 144,298 lines |
+| Python | 569 files, 144,555 lines |
 
 ---
 
@@ -676,7 +676,7 @@ Generated `2026-11-20 07:44 UTC` from `master` @ `974f3b5`
 | `agent_run_steps` | 12 | ✓ | `044_agent_run_steps` |
 | `agent_sessions` | 15 | ✓ | `—` |
 | `agent_tasks` | 40 | ✓ | `—` |
-| `approval_queue` | 25 | ✓ | `018_autonomous_ai` |
+| `approval_queue` | 26 | ✓ | `018_autonomous_ai` |
 | `approvals` | 15 | ✓ | `026_approvals` |
 | `audit_log` | 22 | ✓ | `018_autonomous_ai` |
 | `auto_actions` | 31 | ✓ | `018_autonomous_ai` |
@@ -1020,9 +1020,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-60 revisions, head `060_dev_task_events`.
+61 revisions, head `061_approval_queue_requested_by`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by`
 
 ---
 
@@ -1032,10 +1032,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 432 | 4491 |
-| `tests/integration/` | 119 | 877 |
+| `tests/unit/` | 433 | 4514 |
+| `tests/integration/` | 120 | 884 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **552** | **5380** |
+| **total** | **554** | **5410** |
 
 ---
 
