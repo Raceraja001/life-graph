@@ -18,7 +18,12 @@ from pydantic import BaseModel, Field
 from life_graph.api.auth import ingress_for
 from life_graph.api.dependencies import get_memory_manager, get_recall_engine, get_store
 from life_graph.api.openapi_examples import MEMORY_CREATED
-from life_graph.api.responses import encode_cursor, paginated_response, success_response
+from life_graph.api.responses import (
+    Envelope,
+    encode_cursor,
+    paginated_response,
+    success_response,
+)
 from life_graph.api.token_meta import token_meta
 from life_graph.config import settings
 from life_graph.core.memory_manager import MemoryManager
@@ -64,6 +69,7 @@ async def _store_verbatim(
     "/",
     status_code=status.HTTP_201_CREATED,
     summary="Create memories from text or structured input",
+    response_model=Envelope[list[MemoryResponse]],
     responses=MEMORY_CREATED,
 )
 async def create_memory(
@@ -164,6 +170,7 @@ class MemoryBatchRequest(BaseModel):
 @router.post(
     "/batch",
     summary="Expand memory ids to full memories (progressive-disclosure step 2)",
+    response_model=Envelope[list[MemoryResponse]],
 )
 async def batch_get_memories(
     body: MemoryBatchRequest,
@@ -203,6 +210,27 @@ async def batch_get_memories(
             found=len(memories),
         ),
     )
+
+
+class PendingCount(BaseModel):
+    """How many memories await approval."""
+
+    count: int
+
+
+class BulkApprovalResult(BaseModel):
+    """Outcome of a batch approve/reject: counts, and the ids that failed."""
+
+    approved: int
+    rejected: int
+    errors: list[str]
+
+
+class DenyResult(BaseModel):
+    """The denied memory, and the memory that replaces it when one was given."""
+
+    denied: MemoryResponse
+    replacement: MemoryResponse | None = None
 
 
 class BulkApprovalBody(BaseModel):
@@ -266,6 +294,7 @@ async def _transition(
 @router.get(
     "/pending/count",
     summary="Count memories awaiting approval",
+    response_model=Envelope[PendingCount],
 )
 async def pending_count(store: PostgresMemoryStore = Depends(get_store)):
     """Number of memories awaiting approval for this tenant."""
@@ -276,6 +305,7 @@ async def pending_count(store: PostgresMemoryStore = Depends(get_store)):
 @router.post(
     "/approvals/bulk",
     summary="Approve/reject memories in batch",
+    response_model=Envelope[BulkApprovalResult],
 )
 async def bulk_approvals(
     body: BulkApprovalBody,
@@ -302,6 +332,7 @@ async def bulk_approvals(
 @router.post(
     "/{memory_id}/approve",
     summary="Approve a memory",
+    response_model=Envelope[MemoryResponse],
 )
 async def approve_memory(
     request: Request,
@@ -342,6 +373,7 @@ async def approve_memory(
 @router.post(
     "/{memory_id}/reject",
     summary="Reject a memory",
+    response_model=Envelope[MemoryResponse],
 )
 async def reject_memory(
     memory_id: uuid.UUID,
@@ -355,6 +387,7 @@ async def reject_memory(
 @router.get(
     "/{memory_id}",
     summary="Get a memory by ID",
+    response_model=Envelope[MemoryResponse],
 )
 async def get_memory(
     memory_id: uuid.UUID,
@@ -373,6 +406,7 @@ async def get_memory(
 @router.patch(
     "/{memory_id}",
     summary="Update a memory",
+    response_model=Envelope[MemoryResponse],
 )
 async def update_memory(
     memory_id: uuid.UUID,
@@ -418,6 +452,7 @@ async def delete_memory(
 @router.post(
     "/{memory_id}/unarchive",
     summary="Unarchive a memory",
+    response_model=Envelope[MemoryResponse],
 )
 async def unarchive_memory(
     memory_id: uuid.UUID,
@@ -446,6 +481,7 @@ async def unarchive_memory(
 @router.get(
     "/",
     summary="List memories with optional filters",
+    response_model=Envelope[list[MemoryResponse]],
 )
 async def list_memories(
     store: PostgresMemoryStore = Depends(get_store),
@@ -526,6 +562,7 @@ class DenyRequest(BaseModel):
 @router.post(
     "/{memory_id}/reinforce",
     summary="Reinforce a memory — confirm it is still accurate",
+    response_model=Envelope[MemoryResponse],
 )
 async def reinforce_memory(
     memory_id: uuid.UUID,
@@ -550,6 +587,7 @@ async def reinforce_memory(
 @router.post(
     "/{memory_id}/deny",
     summary="Deny a memory — mark as no longer accurate",
+    response_model=Envelope[DenyResult],
 )
 async def deny_memory(
     memory_id: uuid.UUID,

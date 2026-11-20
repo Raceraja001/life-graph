@@ -14,9 +14,9 @@ import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from life_graph.api.responses import success_response
+from life_graph.api.responses import Envelope, success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.graph import (
     DEFAULT_GRAPH_TENANT,
@@ -89,6 +89,25 @@ class GraphSearchResult(BaseModel):
     graph_context: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class EntityContext(BaseModel):
+    """GET /graph/entity/{name}: the vertex, its neighbours, and memories naming it."""
+
+    entity: dict[str, Any]
+    neighbors: list[dict[str, Any]] = Field(default_factory=list)
+    memories: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class GraphPath(BaseModel):
+    """GET /graph/path: the path found between two entities, if any."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+    path: list[Any] = Field(default_factory=list)
+    found: bool
+
+
 # ── Lazy Dependency Helpers ───────────────────────────────────
 
 _graph_store = None
@@ -121,6 +140,7 @@ def _get_hybrid_engine():
 @router.get(
     "/entities",
     summary="List all graph entities",
+    response_model=Envelope[list[GraphEntity]],
 )
 async def list_entities(
     label: str | None = Query(None, pattern=LABEL_PATTERN, description="Filter by vertex label"),
@@ -161,6 +181,7 @@ async def list_entities(
 @router.get(
     "/entity/{name}",
     summary="Get entity detail with neighbors",
+    response_model=Envelope[EntityContext],
 )
 async def get_entity(name: str):
     """Get full details for an entity including graph neighbors and related memories.
@@ -191,6 +212,7 @@ async def get_entity(name: str):
 @router.post(
     "/query",
     summary="Execute a Cypher query",
+    response_model=Envelope[list[Any]],
 )
 async def execute_cypher(body: CypherQuery):
     """Execute a raw Cypher query against the knowledge graph.
@@ -242,6 +264,7 @@ async def execute_cypher(body: CypherQuery):
 @router.get(
     "/path",
     summary="Find path between two entities",
+    response_model=Envelope[GraphPath],
 )
 async def find_path(
     from_name: str = Query(..., description="Source entity name"),
@@ -291,6 +314,7 @@ async def find_path(
 @router.post(
     "/search",
     summary="Hybrid graph + vector search",
+    response_model=Envelope[GraphSearchResult],
 )
 async def hybrid_search(body: GraphSearchRequest):
     """Run a hybrid search combining graph structure with vector similarity.

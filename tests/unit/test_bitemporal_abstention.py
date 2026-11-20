@@ -8,7 +8,9 @@ from life_graph.api.search import AskRequest, ask_brain
 from life_graph.services.memory.retrieval import is_valid_at
 
 
-def _mem(content: str, *, days_ago: int = 10, valid_days: int | None = None, confidence: float = 0.8):
+def _mem(
+    content: str, *, days_ago: int = 10, valid_days: int | None = None, confidence: float = 0.8
+):
     now = datetime.now(UTC)
     v_from = now - timedelta(days=days_ago)
     v_until = (v_from + timedelta(days=valid_days)) if valid_days is not None else None
@@ -78,9 +80,9 @@ async def test_ask_brain_abstains_when_no_memories(monkeypatch):
         metamemory=_Meta(),
         synthesis=_Synth(),
     )
-    assert res.answered is False
-    assert res.abstained is True
-    assert res.abstention_reason == "no_matching_memories"
+    assert res["data"].answered is False
+    assert res["data"].abstained is True
+    assert res["data"].abstention_reason == "no_matching_memories"
 
 
 @pytest.mark.asyncio
@@ -110,9 +112,9 @@ async def test_ask_brain_abstains_below_min_confidence(monkeypatch):
         metamemory=_Meta(),
         synthesis=_Synth(),
     )
-    assert res.answered is False
-    assert res.abstained is True
-    assert res.abstention_reason == "low_confidence"
+    assert res["data"].answered is False
+    assert res["data"].abstained is True
+    assert res["data"].abstention_reason == "low_confidence"
 
 
 def test_provenance_order_prefers_verified_high_trust():
@@ -120,8 +122,16 @@ def test_provenance_order_prefers_verified_high_trust():
 
     from life_graph.services.memory.retrieval import provenance_order
 
-    low = SimpleNamespace(id="low", trust_score=0.3, confidence=0.4, trust_tier="inferred", source_type="chat")
-    high = SimpleNamespace(id="high", trust_score=0.9, confidence=0.9, trust_tier="verified", source_type="user_explicit")
+    low = SimpleNamespace(
+        id="low", trust_score=0.3, confidence=0.4, trust_tier="inferred", source_type="chat"
+    )
+    high = SimpleNamespace(
+        id="high",
+        trust_score=0.9,
+        confidence=0.9,
+        trust_tier="verified",
+        source_type="user_explicit",
+    )
     # Close semantic scores (0.82 vs 0.80): provenance tie-breaker puts high first
     ordered = provenance_order([(low, 0.82), (high, 0.80)])
     assert [m.id for m, _ in ordered] == ["high", "low"]
@@ -170,8 +180,20 @@ def test_p2_cross_domain_and_challenge_mode():
 
     old_ts = datetime.now(UTC) - timedelta(days=120)
     mems = [
-        SimpleNamespace(category="finance", memory_type="preference", created_at=old_ts, updated_at=old_ts, access_count=1),
-        SimpleNamespace(category="hardware", memory_type="semantic", created_at=datetime.now(UTC), updated_at=None, access_count=5),
+        SimpleNamespace(
+            category="finance",
+            memory_type="preference",
+            created_at=old_ts,
+            updated_at=old_ts,
+            access_count=1,
+        ),
+        SimpleNamespace(
+            category="hardware",
+            memory_type="semantic",
+            created_at=datetime.now(UTC),
+            updated_at=None,
+            access_count=5,
+        ),
     ]
     domains = summarize_cross_domain(mems)
     assert domains == {"finance": 1, "hardware": 1}
@@ -349,12 +371,8 @@ def test_p5_1_normalizes_naive_iso_and_offset_timestamps_to_utc():
     assert is_valid_at(from_json, datetime(2026, 6, 1, tzinfo=UTC)) is True
     assert is_valid_at(from_json, datetime(2026, 5, 31, 23, 59, tzinfo=UTC)) is False
     # A query asked in IST must get the same answer as the same instant in UTC.
-    assert not is_bitemporally_valid(
-        from_json, recorded_at=datetime(2026, 7, 1, 5, 30, tzinfo=ist)
-    )
-    assert is_bitemporally_valid(
-        from_json, recorded_at=datetime(2026, 7, 1, 5, 29, tzinfo=ist)
-    )
+    assert not is_bitemporally_valid(from_json, recorded_at=datetime(2026, 7, 1, 5, 30, tzinfo=ist))
+    assert is_bitemporally_valid(from_json, recorded_at=datetime(2026, 7, 1, 5, 29, tzinfo=ist))
 
     # A timestamp that is not a timestamp is ignored, not guessed at.
     junk = _bitemporal_mem(properties={"superseded_at": "not a date"})

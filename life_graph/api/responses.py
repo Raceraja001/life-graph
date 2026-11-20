@@ -15,9 +15,9 @@ pagination utilities for building responses.
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import Any, TypeVar
+from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
 
 # The cursor helpers live in core/pagination.py so the storage layer can
 # decode a cursor without importing the API (audit M12). Re-exported here,
@@ -66,6 +66,32 @@ class ErrorResponse(BaseModel):
     """Standard error envelope."""
 
     error: ErrorBody
+
+
+class Envelope(BaseModel, Generic[T]):
+    """The success envelope as a response model: ``{"data": T, "meta": {...}}``.
+
+    Use as ``response_model=Envelope[MemoryResponse]`` on a route that returns
+    ``success_response(...)``. FastAPI then validates ``data`` against ``T``
+    (a mismatch is caught in tests, not discovered by a client) and the
+    OpenAPI schema documents the real shape instead of an untyped object.
+
+    ``meta`` stays free-form (pagination, token accounting, degraded flags)
+    and is left out of the body when the route sent none, exactly as
+    ``success_response`` does — typing a route does not add a key.
+    """
+
+    data: T
+    meta: dict[str, Any] | None = None
+
+    # No return annotation on purpose: pydantic would take it as the
+    # serialisation schema and the OpenAPI output would degrade to a bare object.
+    @model_serializer(mode="wrap")
+    def _omit_absent_meta(self, handler: SerializerFunctionWrapHandler):
+        out = handler(self)
+        if isinstance(out, dict) and out.get("meta") is None:
+            out.pop("meta", None)
+        return out
 
 
 def success_response(
