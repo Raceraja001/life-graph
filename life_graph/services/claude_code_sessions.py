@@ -24,9 +24,10 @@ row, the thing MCP ``start_session``/``end_session`` manage):
   already asked to end, so the session still closes after the grace period.
 * :func:`close_due` — the worker cron closes sessions whose end was asked for
   a few minutes ago, and ones that never asked (terminal killed) once idle.
-  Closing is ``POST /sessions/{id}/end`` (``api.sessions.close_session``) plus
-  the same micro-consolidation, with the summary written by the local model
-  only: these are the owner's prompts.
+  Closing is what ``POST /sessions/{id}/end`` does
+  (``services.session_lifecycle.close_session``) plus the same
+  micro-consolidation, with the summary written by the local model only:
+  these are the owner's prompts.
 
 Tenant-scoped throughout; nothing here logs prompt or memory content.
 """
@@ -42,6 +43,7 @@ from sqlalchemy import DateTime, cast, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from life_graph.services import session_lifecycle
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -302,9 +304,6 @@ async def close_due(
     All tenants, or one (*tenant_id*). Each runs in its own tenant scope;
     one failing does not stop the rest.
     """
-    from fastapi import HTTPException
-
-    from life_graph.api import sessions as sessions_api
     from life_graph.config import settings
     from life_graph.core.tenant import tenant_scope
     from life_graph.models.db import Session
@@ -329,9 +328,9 @@ async def close_due(
                 summary = await summarize(session_id, owner, project)
                 # A summary is always passed, so the API's own generator (which
                 # may route to a cloud model) never sees this session.
-                await sessions_api.close_session(session_id, summary=summary)
-                await sessions_api._run_micro_consolidation(session_id)
-        except HTTPException:
+                await session_lifecycle.close_session(session_id, summary=summary)
+                await session_lifecycle.run_micro_consolidation(session_id)
+        except session_lifecycle.SessionCloseError:
             # Ended meanwhile (409) or gone (404): nothing left to do.
             continue
         except Exception:

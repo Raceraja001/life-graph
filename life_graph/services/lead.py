@@ -219,3 +219,44 @@ GENERAL_NOTE = (
     " available here. If the request needs it, say so in one line and tell the user"
     " to ask again starting with 'personal:'."
 )
+
+
+def resolve_run_tools(
+    persona: dict[str, Any] | None,
+    override: list[str] | None = None,
+    *,
+    cloud: bool,
+    temporary: bool,
+    registry: Any = None,
+) -> list[str] | None:
+    """The tool names one agent run may use; ``None`` means the whole registry.
+
+    The one place this is decided (audit M14). ``kernel/process_manager.py``
+    (chat and kernel tasks) and ``drivers/local.py`` (dispatched dev tasks)
+    each had a copy, and the driver's -- which said it mirrored the other --
+    applied neither cut below.
+
+    * *override*, when not None, REPLACES the persona's ``allowed_tools``
+      (scheduled action-role runs are forced onto a read-only set this way).
+    * *cloud*: the run's model leaves the machine, so :data:`PERSONAL_TOOLS`
+      are cut. Neither an override nor "all tools" (None) brings them back.
+    * *temporary*: a temporary chat leaves nothing behind, so
+      :data:`TEMPORARY_BLOCKED_TOOLS` are cut the same way.
+
+    A cut expands "all tools" to every name in *registry* (default: the live
+    tool registry; read only then) minus the cut, so the result is then
+    always a list.
+    """
+    allow = override if override is not None else (persona or {}).get("allowed_tools")
+    blocked: frozenset[str] = frozenset()
+    if cloud:
+        blocked |= PERSONAL_TOOLS
+    if temporary:
+        blocked |= TEMPORARY_BLOCKED_TOOLS
+    if not blocked:
+        return None if allow is None else list(allow)
+    if allow is None:
+        if registry is None:
+            from life_graph.tools.registry import registry
+        allow = registry.tool_names
+    return [t for t in allow if t not in blocked]

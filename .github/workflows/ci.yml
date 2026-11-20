@@ -572,3 +572,29 @@ jobs:
 
       - name: mypy --strict ratchet for life_graph/api
         run: python scripts/mypy_ratchet.py
+
+  # Layer contracts (audit M12/M13): api -> services -> core/storage, storage
+  # never imports services or the API, core never imports the API. Defined in
+  # pyproject.toml [tool.importlinter]; the known exceptions there are
+  # tracked in issue #302. Static analysis of the source -- nothing is
+  # imported or run -- but the linter itself comes from uv.lock (dev extra).
+  import-contracts:
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        id: py
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.12.14
+
+      - name: Install the dev extra from uv.lock
+        run: uv sync --locked --extra dev --python "${{ steps.py.outputs.python-path }}"
+
+      - name: Check the import contracts
+        run: .venv/bin/lint-imports --no-cache

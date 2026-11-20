@@ -480,9 +480,11 @@ async def test_eval_1_provenance_spoofing_and_owner_confirmation_forgery(auth_co
     store = approve_store(row)
     with (
         patch("life_graph.api.memories.MemoryResponse"),
-        patch("life_graph.api.memories._settle_contradictions", AsyncMock()),
-        patch("life_graph.api.memories._learn_names", AsyncMock()),
-        patch("life_graph.api.memories.get_current_tenant_id", return_value=TENANT_A),
+        patch("life_graph.services.memory.transitions.settle_contradictions", AsyncMock()),
+        patch("life_graph.services.memory.transitions.learn_names", AsyncMock()),
+        patch(
+            "life_graph.services.memory.transitions.get_current_tenant_id", return_value=TENANT_A
+        ),
         patch("life_graph.services.profile_card.invalidate"),
     ):
         await approve_memory(

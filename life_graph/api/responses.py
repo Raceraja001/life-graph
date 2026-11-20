@@ -10,11 +10,17 @@ pagination utilities for building responses.
 
 from __future__ import annotations
 
-import base64
-import json
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field
+
+# The cursor helpers live in core/pagination.py so the storage layer can
+# decode a cursor without importing the API (audit M12). Re-exported here,
+# as the same objects, for the routers and clients that import them from here
+# (main.py's InvalidCursorError handler must match what storage raises).
+from life_graph.core.pagination import InvalidCursorError as InvalidCursorError
+from life_graph.core.pagination import decode_cursor as decode_cursor
+from life_graph.core.pagination import encode_cursor as encode_cursor
 
 T = TypeVar("T")
 
@@ -29,37 +35,6 @@ class PaginationMeta(BaseModel):
     page_size: int = Field(description="Number of items per page")
     next_cursor: str | None = Field(None, description="Cursor for next page")
     has_more: bool = Field(description="Whether more results exist")
-
-
-def encode_cursor(sort_key: str, item_id: str) -> str:
-    """Encode a cursor from sort key and item ID."""
-    payload = json.dumps({"k": sort_key, "id": item_id})
-    return base64.urlsafe_b64encode(payload.encode()).decode()
-
-
-class InvalidCursorError(ValueError):
-    """A pagination cursor could not be decoded.
-
-    A malformed cursor is bad client input, not a server fault, so main.py
-    maps this to 422. It previously escaped as a bare ValueError and became
-    an unhandled 500.
-    """
-
-
-def decode_cursor(cursor: str) -> dict[str, str]:
-    """Decode a cursor back to sort key and item ID.
-
-    Returns:
-        Dict with 'k' (sort key) and 'id' fields.
-
-    Raises:
-        InvalidCursorError: If the cursor is not valid base64 JSON.
-    """
-    try:
-        payload = base64.urlsafe_b64decode(cursor.encode()).decode()
-        return json.loads(payload)
-    except Exception as exc:
-        raise InvalidCursorError("Invalid cursor format") from exc
 
 
 # ── Response Helpers ─────────────────────────────────────────
