@@ -120,6 +120,7 @@ def _ollama_available() -> bool:
         return False
 
 
+@pytest.mark.network
 @pytest.mark.asyncio
 async def test_real_review_catches_an_obvious_bug():
     if not _pr_agent_available():
@@ -147,6 +148,7 @@ async def test_real_review_catches_an_obvious_bug():
     assert verdict.concern
 
 
+@pytest.mark.network
 def test_json_schema_assumption_still_holds():
     """Pin the exact PR-Agent output shape _parse() depends on, so a
     version bump that changes it fails here instead of silently

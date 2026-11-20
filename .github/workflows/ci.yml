@@ -245,7 +245,7 @@ jobs:
         # Coverage is measured but not yet gated (no --cov-fail-under): the
         # first runs set the baseline a threshold can be chosen from.
         run: >-
-          python -m pytest tests/unit/ -n auto -q --tb=short
+          python -m pytest tests/unit/ -n auto -q --tb=short -p tests.no_network
           --cov=life_graph --cov-report=xml:coverage-unit.xml --cov-report=term
 
       - name: Upload unit coverage
