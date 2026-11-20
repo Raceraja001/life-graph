@@ -79,7 +79,7 @@ class ConfigParser:
 
         try:
             data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception:  # best-effort: a malformed file teaches nothing
             logger.debug("Failed to parse pyproject.toml")
             return memories
 
@@ -184,7 +184,7 @@ class ConfigParser:
             raw = re.sub(r"//.*$", "", raw, flags=re.MULTILINE)
             raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.DOTALL)
             data = json.loads(raw)
-        except Exception:
+        except Exception:  # best-effort: a malformed file teaches nothing
             logger.debug("Failed to parse tsconfig.json")
             return memories
 
@@ -223,7 +223,7 @@ class ConfigParser:
 
         try:
             text = editorconfig.read_text(encoding="utf-8")
-        except Exception:
+        except Exception:  # best-effort: an unreadable file teaches nothing
             return memories
 
         parts: list[str] = []
@@ -258,7 +258,7 @@ class ConfigParser:
                 continue
             try:
                 text = dockerfile.read_text(encoding="utf-8")
-            except Exception:
+            except Exception:  # best-effort: an unreadable file teaches nothing
                 continue
 
             from_lines = re.findall(r"^FROM\s+(\S+)", text, re.MULTILINE)
@@ -305,7 +305,7 @@ class ConfigParser:
 
         try:
             data = json.loads(pkg_file.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception:  # best-effort: an unreadable file teaches nothing
             return memories
 
         deps = list(data.get("dependencies", {}).keys())

@@ -290,7 +290,7 @@ class DurableCapabilityStore:
                     .first()
                 )
         except Exception as exc:
-            logger.error("Durable capability store unreachable on read: %s", exc)
+            logger.error("Durable capability store unreachable on read: %s", exc, exc_info=True)
             return None
         return None if row is None else _row_to_capability(row)
 
@@ -347,7 +347,7 @@ class DurableCapabilityStore:
             with self.engine.begin() as conn:
                 row = conn.execute(statement, params).mappings().first()
         except Exception as exc:
-            logger.error("Durable capability store unreachable on consume: %s", exc)
+            logger.error("Durable capability store unreachable on consume: %s", exc, exc_info=True)
             return None, CapabilityCheck(False, STORE_UNAVAILABLE)
         if row is not None:
             return _row_to_capability(row), CapabilityCheck(True, "capability_valid")
@@ -438,7 +438,7 @@ class DurableCapabilityStore:
                     text("DELETE FROM capabilities WHERE expires_at <= :now"), {"now": now}
                 )
         except Exception as exc:
-            logger.error("Durable capability store unreachable on purge: %s", exc)
+            logger.error("Durable capability store unreachable on purge: %s", exc, exc_info=True)
             return 0
         return int(result.rowcount or 0)
 
@@ -545,7 +545,7 @@ class DurableStandingRuleStore:
                     .all()
                 )
         except Exception as exc:
-            logger.error("Durable standing-rule store unreachable on read: %s", exc)
+            logger.error("Durable standing-rule store unreachable on read: %s", exc, exc_info=True)
             return ()
         return tuple(
             StandingRule(

@@ -42,7 +42,7 @@ async def init_redis() -> aioredis.Redis:
     try:
         await _redis.ping()
         logger.info("Redis connected: %s", settings.redis_url)
-    except Exception:
+    except Exception:  # expected: Redis is optional; the message says what degrades
         logger.warning(
             "Redis not available at %s — rate limiting and pub/sub will be disabled",
             settings.redis_url,

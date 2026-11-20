@@ -557,7 +557,7 @@ def _part(name: str, fn: Callable[[], Any], default: Any) -> Any:
     """``fn()``, or *default* when a malformed row breaks it: that part only is empty."""
     try:
         return fn()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - a malformed row empties its part only
         logger.debug("today: %s could not be built (%s)", name, type(exc).__name__)
         return default
 

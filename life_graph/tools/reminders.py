@@ -96,7 +96,7 @@ async def reminder_set(text: str, at: str) -> str:
             await session.commit()
     except Exception as exc:  # noqa: BLE001
         # Never the text: it is personal.
-        logger.warning("reminder_set failed (%d chars): %s", len(words), exc)
+        logger.warning("reminder_set failed (%d chars): %s", len(words), exc, exc_info=True)
         return json.dumps({"error": f"Could not set the reminder: {exc}"})
     # Not ASCII-escaped, as memory_save's result: the chat stream trims a tool
     # result before the phone's "reminded" event is read from it.

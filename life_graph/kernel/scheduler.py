@@ -508,6 +508,7 @@ class SchedulerService:
                 "Schedule %s fire failed: %s",
                 job_id,
                 exc,
+                exc_info=True,
             )
             await self._record_run(
                 tenant_id,

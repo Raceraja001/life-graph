@@ -91,7 +91,7 @@ async def ask_schedule(ask: str, when: str) -> str:
         return json.dumps({"error": str(exc)})
     except Exception as exc:  # noqa: BLE001
         # Never the ask: it is personal.
-        logger.warning("ask_schedule failed: %s", exc)
+        logger.warning("ask_schedule failed: %s", exc, exc_info=True)
         return json.dumps({"error": f"Could not set it up: {exc}"})
     props = job.get("properties") or {}
     return json.dumps(

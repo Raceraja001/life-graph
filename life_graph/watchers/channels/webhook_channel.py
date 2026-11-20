@@ -105,5 +105,5 @@ class WebhookChannel:
             return False
 
         except Exception as e:
-            logger.error("Webhook send to %s failed: %s", url, e)
+            logger.error("Webhook send to %s failed: %s", url, e, exc_info=True)
             return False

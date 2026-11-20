@@ -409,5 +409,5 @@ async def _safe_cooldown(health: LLMHealth, model: str) -> float:
     """Resolve a model's cooldown-until timestamp, defaulting to 0.0 on any error."""
     try:
         return await health.cooldown_until(model)
-    except Exception:  # pragma: no cover
+    except Exception:  # pragma: no cover - best-effort: no health store, no cooldown
         return 0.0

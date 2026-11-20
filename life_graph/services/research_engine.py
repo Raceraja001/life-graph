@@ -437,7 +437,7 @@ class ResearchEngine:
                 ),
                 timeout=10,
             )
-        except (TimeoutError, Exception) as exc:
+        except (TimeoutError, Exception) as exc:  # best-effort: stance is optional
             logger.warning("Stance detection failed: %s", exc)
             return None
 

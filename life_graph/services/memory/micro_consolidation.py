@@ -349,7 +349,8 @@ class MicroConsolidator:
                     canonical_names.append(name)
                     entities_created += 1
                 except Exception:
-                    logger.debug("Failed to upsert vertex: %s", name)
+                    # Never the name in the log: entity names are personal.
+                    logger.warning("Failed to upsert a %s vertex", label, exc_info=True)
 
             # Create edges between co-occurring entities
             if len(canonical_names) >= 2:

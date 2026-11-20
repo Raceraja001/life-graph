@@ -641,7 +641,7 @@ def _serialize(obj: Any) -> dict:
     for key in keys:
         try:
             val = getattr(obj, key)
-        except Exception:
+        except Exception:  # best-effort: an attribute that raises is skipped
             continue
         if callable(val):
             continue

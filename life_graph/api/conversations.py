@@ -138,7 +138,7 @@ async def distill_conversation_endpoint(
 
         pool = await get_arq_pool()
         await pool.enqueue_job(DISTILL_JOB_NAME, str(conversation_id), tenant_id)
-    except Exception as e:
+    except Exception as e:  # fail-open: Redis/ARQ down, distil inline (below)
         logger.warning(
             "ARQ enqueue failed for distill of conversation %s: %s — running inline",
             conversation_id,

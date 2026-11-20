@@ -196,7 +196,7 @@ def _to_memory_responses(hits: list[tuple[Any, float]]) -> list[MemoryResponse]:
             # always been allowed to be individually unconvertible.
             try:
                 resp = _dict_to_memory_response(obj)
-            except Exception:
+            except Exception:  # best-effort: one unconvertible row is dropped, not the whole page
                 resp = None
         else:
             resp = MemoryResponse.model_validate(obj)

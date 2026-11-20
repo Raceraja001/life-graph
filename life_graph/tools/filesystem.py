@@ -63,7 +63,7 @@ async def file_read(path: str) -> str:
         return json.dumps({"content": content[:MAX_READ_CHARS], "truncated": truncated})
     except ToolDeniedError as exc:
         return json.dumps({"error": str(exc)})
-    except Exception as exc:
+    except Exception as exc:  # expected: the error is returned to the agent
         logger.warning("file_read failed for %s: %s", path, exc)
         return json.dumps({"error": f"Read failed: {exc}"})
 
@@ -105,6 +105,6 @@ async def file_write(path: str, content: str) -> str:
         return json.dumps({"bytes_written": len(content.encode("utf-8")), "path": str(p)})
     except ToolDeniedError as exc:
         return json.dumps({"error": str(exc)})
-    except Exception as exc:
+    except Exception as exc:  # expected: the error is returned to the agent
         logger.warning("file_write failed for %s: %s", path, exc)
         return json.dumps({"error": f"Write failed: {exc}"})

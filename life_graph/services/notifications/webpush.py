@@ -98,7 +98,7 @@ class PushService:
                         dead.append(row.endpoint)
                     else:
                         logger.warning("Web push failed for %s: %s", row.endpoint[:40], exc)
-                except Exception as exc:
+                except Exception as exc:  # best-effort: one flaky endpoint never aborts the batch
                     # Transport-level failure (ConnectionError, Timeout, DNS, ...) isn't a
                     # WebPushException — never let one flaky endpoint abort the whole batch.
                     logger.warning("Web push transport error for %s: %s", row.endpoint[:40], exc)

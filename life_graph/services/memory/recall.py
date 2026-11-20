@@ -620,7 +620,7 @@ class RecallEngine:
             return None
         try:
             return await self._embeddings.embed_async(fingerprint.as_text()) or None
-        except Exception:
+        except Exception:  # fail-open: the semantic signal stays neutral
             logger.warning("Fingerprint embedding failed; semantic signal stays neutral")
             return None
 
@@ -804,7 +804,7 @@ def _dict_to_memory_response(mem_dict: dict[str, Any]) -> MemoryResponse | None:
                 last_reinforced=last_reinforced,
                 reinforced_count=reinforced_count,
             )
-        except Exception:
+        except Exception:  # best-effort: decay maths failing leaves verify False
             pass  # Graceful degradation
 
         return MemoryResponse(

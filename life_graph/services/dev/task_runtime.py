@@ -385,7 +385,7 @@ class DockerTaskRuntime:
             try:
                 meta["teardown"] = await self.teardown(names)
             except Exception as exc:  # never mask the run's own outcome
-                logger.error("task runtime teardown raised: %s", exc)
+                logger.error("task runtime teardown raised: %s", exc, exc_info=True)
                 meta["teardown"] = {"ok": False, "errors": [f"teardown raised: {exc}"]}
             _event(
                 req,
@@ -438,7 +438,7 @@ class DockerTaskRuntime:
             try:
                 await self.teardown(names)
             except Exception as exc:  # never mask the setup's own outcome
-                logger.error("setup egress teardown raised: %s", exc)
+                logger.error("setup egress teardown raised: %s", exc, exc_info=True)
 
     async def teardown(self, names: dict[str, str]) -> dict:
         """Remove one runtime's container, proxy and network. Idempotent."""
@@ -737,7 +737,7 @@ async def sweep_orphans(session_factory, *, expire_events: bool = True) -> dict 
         else:
             report = await runtime.sweep(active, min_age_seconds=PERIODIC_MIN_AGE_SECONDS)
     except Exception as exc:  # never block startup on cleanup
-        logger.warning("task runtime sweep failed: %s", exc)
+        logger.warning("task runtime sweep failed: %s", exc, exc_info=True)
         return None
     if report["containers"] or report["networks"] or report["credentials"]:
         logger.warning("task runtime sweep removed leftovers: %s", report)

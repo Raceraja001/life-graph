@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 from life_graph.config import settings
 from life_graph.kernel.persona_files import load_builtin_personas, load_fragments
@@ -283,13 +284,23 @@ class PersonaService:
                         session.add(persona)
                         await session.flush()
                     count += 1
-                except Exception:
+                except IntegrityError:
                     # Duplicate — a concurrent seed call beat us to
                     # this one name. Skip it, keep seeding the rest.
                     logger.debug(
                         "Persona %s already exists for tenant %s — skip",
                         defn["name"],
                         tenant_id,
+                    )
+                    continue
+                except Exception:
+                    # Anything else is a real failure, not a duplicate:
+                    # still skip this one persona, but say so.
+                    logger.warning(
+                        "Persona %s could not be seeded for tenant %s",
+                        defn["name"],
+                        tenant_id,
+                        exc_info=True,
                     )
                     continue
 

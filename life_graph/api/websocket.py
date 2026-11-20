@@ -83,7 +83,7 @@ class ConnectionManager:
         for ws in connections:
             try:
                 await ws.send_json(message)
-            except Exception:
+            except Exception:  # expected: a closed socket raises; it is pruned
                 logger.warning("Failed to send to WebSocket, marking dead")
                 dead.append(ws)
 
@@ -103,7 +103,7 @@ class ConnectionManager:
             for ws in connections:
                 try:
                     await ws.send_json(message)
-                except Exception:
+                except Exception:  # expected: a closed socket raises; it is pruned
                     logger.warning("Failed to send to WebSocket, marking dead")
                     dead.append((tenant_id, ws))
 
@@ -137,7 +137,7 @@ async def publish_event(tenant_id: str, event: dict) -> None:
         try:
             await r.publish(f"events:{tenant_id}", json.dumps(event, default=str))
             return
-        except Exception:
+        except Exception:  # fail-open: Redis down, broadcast locally
             logger.warning("Redis publish failed, falling back to local broadcast")
 
     # Fallback: broadcast locally

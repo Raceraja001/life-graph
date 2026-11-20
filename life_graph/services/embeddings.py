@@ -80,7 +80,7 @@ class EmbeddingService:
             return "healthy"
         try:
             vector = await self._lm_client.embed("health")
-        except Exception as e:
+        except Exception as e:  # expected: a health probe; the status says unreachable
             logger.warning("Embedding backend probe failed: %s", e)
             return "unreachable"
         return "healthy" if vector else "unreachable"

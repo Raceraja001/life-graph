@@ -116,6 +116,7 @@ class CrossSystemSyncService:
                     return sync_record
 
                 except Exception as e:
+                    # expected: retried up to MAX_RETRIES; the last error is recorded
                     last_error = str(e)
                     sync_record.retry_count = attempt + 1
                     logger.warning(

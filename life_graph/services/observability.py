@@ -151,7 +151,7 @@ async def system(session: AsyncSession, app_state: Any) -> dict[str, Any]:
     for d in driver_registry.list_all():
         try:
             available = bool(await d.available())
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - best-effort: a driver whose probe raises is unavailable
             available = False
         drivers.append(
             {

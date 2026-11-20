@@ -108,7 +108,7 @@ async def resolve_workdir(packet: ContextPacket, fallback: Path) -> tuple[Path, 
             stderr=asyncio.subprocess.PIPE,
         )
         _, err = await proc.communicate()
-    except Exception as exc:
+    except Exception as exc:  # expected: git missing or not permitted (see below)
         # `git` missing from PATH (FileNotFoundError — the shipped runtime
         # image had no git until this was found), permission errors, etc.
         # create_subprocess_exec raises BEFORE there is a proc to inspect.
@@ -283,7 +283,7 @@ async def diff_against_head(workdir: Path) -> str:
             return ""
         return out.decode(errors="replace")
     except Exception as exc:
-        logger.warning("Could not compute diff for review: %s", exc)
+        logger.warning("Could not compute diff for review: %s", exc, exc_info=True)
         return ""
 
 
@@ -333,7 +333,7 @@ async def preserve_verified_work(
                 stderr=asyncio.subprocess.PIPE,
             )
             out, err = await proc.communicate()
-        except Exception as exc:  # git absent, permissions, ...
+        except Exception as exc:  # expected: git absent, permissions, ...
             logger.warning("Landing could not run git %s (%s)", args[:2], exc)
             return 1, str(exc)
         return proc.returncode, (out + err).decode(errors="replace").strip()
@@ -403,4 +403,6 @@ async def remove_worktree(
         )
         await proc.communicate()
     except Exception as exc:
-        logger.warning("Worktree cleanup could not run git (%s) — leaving %s", exc, worktree)
+        logger.warning(
+            "Worktree cleanup could not run git (%s) — leaving %s", exc, worktree, exc_info=True
+        )

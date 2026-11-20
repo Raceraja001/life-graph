@@ -592,7 +592,7 @@ class BrowserEgressProxy:
             pass
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - best-effort: one client connection, the proxy keeps serving
             logger.warning("egress proxy connection failed: %s: %s", type(exc).__name__, exc)
         finally:
             if task is not None:

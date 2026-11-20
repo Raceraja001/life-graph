@@ -316,7 +316,7 @@ def current_task_key() -> str | None:
         from life_graph.core.task_context import get_current_task_context
 
         ctx = get_current_task_context()
-    except Exception:  # pragma: no cover - defensive; contextvar lookup is safe
+    except Exception:  # pragma: no cover - best-effort: contextvar lookup is safe
         return None
     return str(ctx.task_id) if ctx else None
 
@@ -333,7 +333,7 @@ def current_tenant_id() -> str | None:
         from life_graph.core.tenant import get_current_tenant_id
 
         return get_current_tenant_id() or None
-    except Exception:
+    except Exception:  # best-effort: no tenant context, no tenant budget
         return None
 
 

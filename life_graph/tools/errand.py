@@ -693,7 +693,7 @@ async def run_browser_errand(
             # that used it (services/vault.py), and an errand that paused has
             # not spent one.
             await session.commit()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - expected: returned to the agent; no traceback, pages are personal
         # Never the plan and never a page: both are personal, and a page is
         # also untrusted text that should not reach a log unfenced.
         logger.warning("run_browser_errand failed (%d steps): %s", len(errand.steps), exc)
@@ -743,7 +743,7 @@ async def _release(driver: Any) -> bool:
         out = close()
         if inspect.isawaitable(out):
             await out
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - best-effort close
         logger.warning(
             "the errand's browser context could not be closed (%s): %s", type(exc).__name__, exc
         )
