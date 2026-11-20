@@ -54,6 +54,29 @@ DEFAULT_AGENT_TASK_COST_CAP = 1.0
 # approval immediately — a bigger change, deliberately not attempted here.
 AGENT_TASK_DISPATCH_TIMEOUT_SECONDS = 280
 
+# A rollback_command is a host shell command that runs with no classifier
+# pass of its own (audit 2026-11-19, H2), so only an owner-verified caller may
+# attach one, and it is pinned to its exact text when the action is created:
+# ``AutoAction.before_state[ROLLBACK_APPROVAL_KEY] = {"sha256", "approved_by",
+# "approved_at"}``. before_state is otherwise unused; a JSON key there avoids
+# a migration. rollback() runs the command only while the pin matches.
+ROLLBACK_APPROVAL_KEY = "rollback_approval"
+
+
+class RollbackNotApprovedError(PermissionError):
+    """A rollback_command without the owner's approval, or edited since."""
+
+
+def _rollback_pin_matches(action) -> bool:
+    from hmac import compare_digest
+
+    from life_graph.kernel.project_registry import command_sha256
+
+    record = (action.before_state or {}).get(ROLLBACK_APPROVAL_KEY)
+    if not isinstance(record, dict) or not action.rollback_command:
+        return False
+    return compare_digest(str(record.get("sha256") or ""), command_sha256(action.rollback_command))
+
 
 def _to_response(action) -> AutoActionResponse:
     """Serialize a real ``AutoAction`` ORM row into the API response shape.
@@ -170,6 +193,8 @@ class AutoFixService:
         self,
         tenant_id: str,
         request: AutoFixRequest,
+        *,
+        rollback_approved_by: str | None = None,
     ) -> AutoFixResponse:
         """Orchestrate: classify → route → execute/queue.
 
@@ -177,9 +202,32 @@ class AutoFixService:
         ``recommendation`` (auto-execute / notify-before / queue-for-approval),
         so routing keys off that. The classifier takes a live session, so it is
         built per-request rather than injected as a singleton.
+
+        A ``rollback_command`` needs *rollback_approved_by*, the owner-verified
+        caller; it is pinned to its exact text.
+
+        Raises:
+            RollbackNotApprovedError: a rollback_command without an owner;
+                nothing is recorded.
         """
         from life_graph.autonomy.models import AutoAction
         from life_graph.autonomy.safety.classifier import ActionClassifier, Recommendation
+        from life_graph.kernel.project_registry import command_sha256
+
+        rollback_pin = None
+        if request.rollback_command:
+            if not rollback_approved_by:
+                raise RollbackNotApprovedError(
+                    "rollback_command is a host shell command and can only be set by the"
+                    " owner (an owner API key or a paired device)"
+                )
+            rollback_pin = {
+                ROLLBACK_APPROVAL_KEY: {
+                    "sha256": command_sha256(request.rollback_command),
+                    "approved_by": rollback_approved_by,
+                    "approved_at": datetime.now(UTC).isoformat(),
+                }
+            }
 
         # 1. Classify (rule match → trust → autonomy level → recommendation)
         async with self._session_factory() as session:
@@ -218,6 +266,7 @@ class AutoFixService:
                 instruction=request.instruction,
                 rollback_command=request.rollback_command,
                 is_reversible=bool(request.rollback_command),
+                before_state=rollback_pin,
                 trigger_type="manual",
                 trigger_detail=request.description or request.action_type,
                 risk_level=risk_level,
@@ -716,6 +765,17 @@ class AutoFixService:
 
             if action.status not in ("success", "failure"):
                 raise ValueError(f"Cannot rollback action in status: {action.status}")
+
+            if not _rollback_pin_matches(action):
+                logger.warning(
+                    "Refusing rollback of auto action %s: rollback_command is not"
+                    " owner-approved or changed since",
+                    auto_action_id,
+                )
+                raise RollbackNotApprovedError(
+                    "rollback_command is not owner-approved or was changed since the"
+                    " action was created; it was not run"
+                )
 
             project_id = action.project_id
             agent_id = action.agent_id

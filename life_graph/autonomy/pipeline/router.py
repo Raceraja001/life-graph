@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select
 
 from life_graph.api.responses import success_response
@@ -19,18 +19,31 @@ router = APIRouter(prefix="/auto-actions", tags=["auto-actions"])
 
 
 @router.post("", status_code=201, response_model=None)
-async def trigger_auto_action(request: AutoFixRequest):
+async def trigger_auto_action(request: AutoFixRequest, http_request: Request):
     """Trigger an autonomous action — classify → route → execute/queue.
 
-    Returns 201 if auto-executed, 202 if queued for approval.
+    Returns 201 if auto-executed, 202 if queued for approval, 403 if a
+    ``rollback_command`` comes from a caller that is not the owner (it is a
+    host shell command; audit 2026-11-19, H2).
     """
+    from life_graph.api.auth import ingress_for
+    from life_graph.autonomy.pipeline.service import RollbackNotApprovedError
+
     tenant_id = get_current_tenant_id()
 
     from life_graph.runtime import get_autofix_service
 
     service = get_autofix_service()
 
-    result = await service.process(tenant_id, request)
+    ingress = ingress_for(http_request)
+    try:
+        result = await service.process(
+            tenant_id,
+            request,
+            rollback_approved_by=ingress.actor if ingress.owner_verified else None,
+        )
+    except RollbackNotApprovedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     status_code = 201 if result.routing == "auto_executed" else 202
     from fastapi.responses import JSONResponse
@@ -84,12 +97,15 @@ async def rollback_action(action_id: str):
     """Rollback a previously executed auto action."""
     tenant_id = get_current_tenant_id()
 
+    from life_graph.autonomy.pipeline.service import RollbackNotApprovedError
     from life_graph.runtime import get_autofix_service
 
     service = get_autofix_service()
 
     try:
         result = await service.rollback(tenant_id, action_id)
+    except RollbackNotApprovedError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
