@@ -35,6 +35,7 @@ from sqlalchemy.orm import defer
 
 from life_graph.core import evidence as ev
 from life_graph.core import slots
+from life_graph.core.utils import iso_or_none as _iso
 from life_graph.services.memory import transitions
 from life_graph.storage.database import async_session
 
@@ -66,10 +67,6 @@ class PageActionError(Exception):
         super().__init__(message)
         self.status = status
         self.message = message
-
-
-def _iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value else None
 
 
 def _evidence(m: Any) -> str:

@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select, update
 
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.core.utils import cosine_similarity as _cosine_similarity
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate
 from life_graph.scoring.decay import DecayCalculator
@@ -63,21 +64,6 @@ class ConsolidationReport:
 
 
 # ── Cosine helper ─────────────────────────────────────────────────────────────
-
-
-def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
-    """Compute cosine similarity between two vectors.
-
-    Returns 0.0 when either vector is empty or has zero magnitude.
-    """
-    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
-        return 0.0
-    dot = sum(a * b for a, b in zip(vec_a, vec_b, strict=False))
-    norm_a = sum(a * a for a in vec_a) ** 0.5
-    norm_b = sum(b * b for b in vec_b) ** 0.5
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
 
 
 _TIER_RANK: dict[str, int] = {"low": 0, "normal": 1, "high": 2, "critical": 3}

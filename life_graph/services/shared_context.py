@@ -16,19 +16,15 @@ from __future__ import annotations
 import hashlib
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select, update
 
 from life_graph.core.events import EventType, event_bus
+from life_graph.core.utils import utcnow as _utcnow
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow() -> datetime:
-    """Return the current UTC timestamp (timezone-aware)."""
-    return datetime.now(UTC)
 
 
 class SharedContextService:

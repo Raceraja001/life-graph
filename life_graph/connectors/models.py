@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -20,11 +20,8 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from life_graph.config import settings
+from life_graph.core.utils import utcnow as _utcnow
 from life_graph.models.db import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class ConnectorAccount(Base):

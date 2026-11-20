@@ -38,6 +38,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, func, or_, select
 
+from life_graph.core.utils import iso_or_none as _iso
+
 if TYPE_CHECKING:
     import uuid
     from collections.abc import Awaitable, Callable, Iterable
@@ -126,10 +128,6 @@ def _rule_clause():
         Memory.source_type == "explicit",
     )
     return and_(explicit, Memory.content.op("~*")(_RULE_SQL))
-
-
-def _iso(value) -> str | None:
-    return value.isoformat() if value else None
 
 
 def memory_row(m) -> dict[str, Any]:
