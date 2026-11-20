@@ -74,7 +74,11 @@ def resolved(monkeypatch):
         async def rollback(self):
             pass
 
+    async def nobody_asked(*_a):
+        return None  # no dev task behind these approvals (self-approval guard)
+
     monkeypatch.setattr(approvals_mod.ApprovalService, "resolve", fake_resolve)
+    monkeypatch.setattr(api, "_requested_by", nobody_asked)
     monkeypatch.setattr(api.event_bus, "emit", no_emit)
     return calls, _Session()
 

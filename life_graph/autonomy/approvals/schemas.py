@@ -43,7 +43,11 @@ class ResolveRequest(BaseModel):
 
     decision: str = Field(..., pattern="^(approve|reject)$")
     note: str | None = Field(None, max_length=500)
-    resolved_by: str = Field(..., description="Who is resolving")
+    # Optional and not trusted: who resolved is the server's to say
+    # (api/approval_identity.py). A value here is only kept in the note.
+    resolved_by: str | None = Field(
+        None, max_length=128, description="Ignored for identity; recorded as an unverified note"
+    )
     also_trust: bool = Field(False, description="Also update trust score")
 
 
@@ -56,7 +60,9 @@ class BatchResolveRequest(BaseModel):
     risk_level: str | None = None
     decision: str = Field(..., pattern="^(approve|reject)$")
     note: str | None = Field(None, max_length=500)
-    resolved_by: str = Field(...)
+    resolved_by: str | None = Field(
+        None, max_length=128, description="Ignored for identity; recorded as an unverified note"
+    )
 
 
 class BatchResolveResponse(BaseModel):
