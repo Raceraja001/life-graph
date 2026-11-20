@@ -54,6 +54,47 @@ def _as_uuid(value: uuid.UUID | str | None) -> uuid.UUID | None:
 RRF_K = 60
 RRF_POOL = 100
 
+# Whether the server's pgvector has iterative index scans (0.8+). None until
+# the first vector search asks; one catalog read per process.
+_iterative_scan_supported: bool | None = None
+
+
+def _pgvector_has_iterative_scan(version: str | None) -> bool:
+    """True for pgvector 0.8.0 and later (``hnsw.iterative_scan``)."""
+    if not version:
+        return False
+    try:
+        major, minor = (int(p) for p in version.split(".")[:2])
+    except ValueError:
+        return False
+    return (major, minor) >= (0, 8)
+
+
+async def _apply_vector_scan_settings(session, *, ef_search: int | None = None) -> None:
+    """Transaction-local HNSW settings for one vector search.
+
+    The tenant and status filters are applied *after* the HNSW index scan
+    (audit L4), so once archived or other-tenant rows crowd the nearest
+    ``ef_search`` candidates, active matches silently drop out. pgvector 0.8
+    can keep scanning until enough rows pass the filter
+    (``hnsw.iterative_scan``); ``relaxed_order`` is the cheaper mode, and the
+    callers order or rank the returned rows by distance again anyway. Older
+    pgvector rejects the setting, so it is only sent when the server has it.
+    """
+    from sqlalchemy import text
+
+    global _iterative_scan_supported
+    if ef_search is not None:
+        await session.execute(text(f"SET LOCAL hnsw.ef_search = {int(ef_search)}"))
+    if _iterative_scan_supported is None:
+        version = await session.scalar(
+            text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+        )
+        _iterative_scan_supported = _pgvector_has_iterative_scan(version)
+    if _iterative_scan_supported:
+        await session.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
+
+
 _WORD = re.compile(r"\w+", re.UNICODE)
 _LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
 _TAMIL = re.compile(r"[஀-௿]")
@@ -414,6 +455,7 @@ class PostgresMemoryStore:
         stmt = stmt.limit(limit)
 
         async with async_session() as session:
+            await _apply_vector_scan_settings(session)
             result = await session.execute(stmt)
             return list(result.scalars().all())
 
@@ -509,7 +551,7 @@ class PostgresMemoryStore:
         async with async_session() as session:
             # HNSW returns at most ef_search rows (pgvector default 40), so the
             # vector pool of 100 asked for above was silently 40.
-            await session.execute(text(f"SET LOCAL hnsw.ef_search = {int(RRF_POOL)}"))
+            await _apply_vector_scan_settings(session, ef_search=RRF_POOL)
             result = await session.execute(
                 raw_sql,
                 {

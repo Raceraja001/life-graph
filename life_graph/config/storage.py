@@ -23,9 +23,12 @@ class StorageSettings(BaseModel):
     A connection left idle inside an open transaction longer than this is
     closed by the server, so a forgotten session cannot pin a pooled
     connection (and its locks) forever (audit H7, 2026-11-19). 0 turns it off.
-    The default is deliberately generous: a few paths still hold a
-    transaction across an LLM call (the session-end summary, the transcript
-    distiller), and a local model can take minutes. Lower it once those are
+    The default is deliberately generous. Session end, both distillers and
+    the Telegram poller no longer hold a transaction across their slow calls
+    (2026-11-20), but the dev-task dispatcher still holds one across the
+    coding-agent run (drivers/dispatcher.py, minutes long), as do
+    ConversationService.ask, study card generation and money categorisation
+    across a local LLM call. Lower it (120 s was the target) once those are
     split. No ``statement_timeout`` is set: consolidation and backfill jobs
     run long statements on purpose."""
 

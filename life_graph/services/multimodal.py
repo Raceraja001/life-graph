@@ -128,15 +128,10 @@ async def _enqueue_ingest_job(
             event payload once ingestion completes — ``filename`` and
             ``minio_key``.
     """
-    from arq import create_pool
+    from life_graph.runtime import get_arq_pool
 
-    from life_graph.workers.settings import parse_redis_settings
-
-    pool = await create_pool(parse_redis_settings())
-    try:
-        await pool.enqueue_job(INGEST_CAPTURE_JOB_NAME, text, source, tenant_id, meta or {})
-    finally:
-        await pool.close()
+    pool = await get_arq_pool()
+    await pool.enqueue_job(INGEST_CAPTURE_JOB_NAME, text, source, tenant_id, meta or {})
 
 
 def split_into_chunks(text: str, max_words: int = _MAX_CHUNK_WORDS) -> list[str]:
@@ -385,7 +380,8 @@ class MultiModalService:
         # 1. Store original in MinIO
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
-        self.minio.upload(_VOICE_BUCKET, key, audio_bytes, content_type)
+        # Synchronous client: off the event loop (audit M19).
+        await asyncio.to_thread(self.minio.upload, _VOICE_BUCKET, key, audio_bytes, content_type)
 
         # 2. Transcribe
         transcript = await self._transcribe(audio_bytes, filename)
@@ -526,7 +522,8 @@ class MultiModalService:
         """
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
-        self.minio.upload(_IMAGE_BUCKET, key, image_bytes, content_type)
+        # Synchronous client: off the event loop (audit M19).
+        await asyncio.to_thread(self.minio.upload, _IMAGE_BUCKET, key, image_bytes, content_type)
 
         ocr_text = await asyncio.to_thread(self._ocr_image, image_bytes)
         caption = (caption or "").strip()
@@ -604,7 +601,8 @@ class MultiModalService:
         """
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
-        self.minio.upload(_DOCUMENT_BUCKET, key, doc_bytes, content_type)
+        # Synchronous client: off the event loop (audit M19).
+        await asyncio.to_thread(self.minio.upload, _DOCUMENT_BUCKET, key, doc_bytes, content_type)
 
         ext = Path(filename).suffix.lower()
         if ext == ".pdf":

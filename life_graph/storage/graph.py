@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 # Graph name used throughout the application
 GRAPH_NAME = "life_graph"
 
+# Every graph connection's search_path: AGE's functions and types live in
+# ag_catalog.
+AGE_SEARCH_PATH = 'ag_catalog, "$user", public'
+
 # Tenant used when a caller passes none and no tenant context is set.
 DEFAULT_GRAPH_TENANT = "default"
 
@@ -225,6 +229,12 @@ async def _get_pool() -> asyncpg.Pool | None:
                 min_size=2,
                 max_size=settings.database_pool_size,
                 init=GraphStore._init_connection,
+                # search_path as a connection parameter, so it is the session
+                # default: the RESET ALL asyncpg runs when a connection goes
+                # back to the pool restores it instead of clearing it. That
+                # is what let execute_cypher stop re-running LOAD and SET on
+                # every query (audit L15).
+                server_settings={"search_path": AGE_SEARCH_PATH},
             )
         except Exception:
             _available = False
@@ -324,9 +334,13 @@ class GraphStore:
 
     @staticmethod
     async def _init_connection(conn: asyncpg.Connection) -> None:
-        """Per-connection setup for Apache AGE."""
+        """Per-connection setup for Apache AGE, once when the pool opens it.
+
+        A loaded library stays loaded for the life of the backend, and the
+        search_path comes from the pool's ``server_settings``, so neither has
+        to be repeated per query.
+        """
         await conn.execute("LOAD 'age'")
-        await conn.execute('SET search_path = ag_catalog, "$user", public')
 
     async def close(self) -> None:
         """Release this instance. A no-op: the pool is shared by the process.
@@ -391,11 +405,9 @@ class GraphStore:
             return []
 
         async with pool.acquire() as conn:
-            # AGE requires search_path to include ag_catalog.
-            # asyncpg resets search_path (via RESET ALL) when returning
-            # connections to the pool, so we must re-set it on every use.
-            await conn.execute("LOAD 'age'")
-            await conn.execute('SET search_path = ag_catalog, "$user", public')
+            # AGE needs ag_catalog on the search_path. It is the connection's
+            # default (server_settings in _get_pool), so the RESET ALL asyncpg
+            # runs on release restores it; no per-query LOAD/SET round trips.
             try:
                 rows = await conn.fetch(sql)
             except Exception:

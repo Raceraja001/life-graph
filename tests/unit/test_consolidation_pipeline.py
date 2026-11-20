@@ -43,6 +43,11 @@ class _FakeResult:
     def scalars(self):
         return _FakeScalars(self._rows)
 
+    def all(self):
+        # Column selects (select(Memory.id, ...)) read rows, not scalars; a
+        # Memory has the same attribute names, so it serves as a row here.
+        return list(self._rows)
+
 
 class _FakeSession:
     """Records every statement passed to execute()/add()."""
@@ -627,3 +632,22 @@ def test_task_result_keys_all_exist_on_report():
 
     assert read, "expected run_tenant_consolidation to read from the report"
     assert read <= fields, f"reads fields absent from ConsolidationReport: {sorted(read - fields)}"
+
+
+@pytest.mark.asyncio
+async def test_update_decay_scores_never_loads_embeddings():
+    """Audit L13: decay selected whole Memory rows, embeddings and content
+    included, to read six scalars. It now selects only those columns."""
+    set_tenant_context("acme", "system")
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+    stale = _make_memory(
+        "stale", embedding=[1.0], importance=0.01, last_accessed=old, created_at=old
+    )
+    pipeline, recorder = _pipeline(rows=[stale])
+
+    await pipeline._update_decay_scores()
+
+    select_stmt = recorder["statements"][0]
+    names = {c.name for c in select_stmt.selected_columns}
+    assert "embedding" not in names and "content" not in names, names
+    assert names >= {"id", "importance", "access_count", "last_accessed", "decay_rate"}

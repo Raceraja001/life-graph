@@ -15,7 +15,16 @@ from sqlalchemy import engine_from_config, pool
 # trust_scores and every eval_* table.
 #
 # tests/unit/test_alembic_metadata.py asserts this list stays complete.
+#
+# models.assistant and connectors.models were missing from this list until
+# 2026-11-20 (audit M18): autogenerate read their 17 tables (documents,
+# money_*, devices, entities, connector_accounts, ...) as tables to DROP. The
+# unit test's "every mapped table" check could not see it because it imported
+# the whole package before reading env's view of the metadata; it now runs
+# env's import list in a clean interpreter.
 import life_graph.autonomy.models  # noqa: F401  - registers 8 tables
+import life_graph.connectors.models  # noqa: F401  - registers 2 tables
+import life_graph.models.assistant  # noqa: F401  - registers 15 tables
 import life_graph.self_improving.models  # noqa: F401  - registers 7 tables
 import life_graph.watchers.models  # noqa: F401  - registers 6 tables
 from alembic import context

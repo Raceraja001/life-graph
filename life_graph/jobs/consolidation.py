@@ -583,13 +583,24 @@ class ConsolidationPipeline:
 
         Returns the number of memories below the threshold.
         """
-        stmt = select(Memory).where(
+        # Only the seven columns decay reads (audit L13): select(Memory) loaded
+        # every active row whole, its 1024-float embedding and content
+        # included, to compute a score from a handful of scalars.
+        stmt = select(
+            Memory.id,
+            Memory.importance,
+            Memory.access_count,
+            Memory.last_accessed,
+            Memory.created_at,
+            Memory.decay_rate,
+            Memory.importance_tier,
+        ).where(
             Memory.tenant_id == _tenant(),
             Memory.status == "active",
         )
         async with self._session_factory() as session:
             result = await session.execute(stmt)
-            active = list(result.scalars().all())
+            active = list(result.all())
 
         if not active:
             return 0

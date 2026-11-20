@@ -134,15 +134,10 @@ async def distill_conversation_endpoint(
 
     tenant_id = get_current_tenant_id()
     try:
-        from arq import create_pool
+        from life_graph.runtime import get_arq_pool
 
-        from life_graph.workers.settings import parse_redis_settings
-
-        pool = await create_pool(parse_redis_settings())
-        try:
-            await pool.enqueue_job(DISTILL_JOB_NAME, str(conversation_id), tenant_id)
-        finally:
-            await pool.close()
+        pool = await get_arq_pool()
+        await pool.enqueue_job(DISTILL_JOB_NAME, str(conversation_id), tenant_id)
     except Exception as e:
         logger.warning(
             "ARQ enqueue failed for distill of conversation %s: %s — running inline",

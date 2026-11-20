@@ -127,3 +127,75 @@ async def test_download_failure_does_not_regress_marker(monkeypatch):
     # Marker must be untouched, and the transaction must never have committed.
     assert sess.last_turn_index == 5
     session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_extraction_and_minio_run_outside_any_transaction(monkeypatch):
+    """Audit H7 + M19: the LLM extraction and both MinIO calls ran inside the
+    external session's transaction, and MinIO ran on the event loop thread.
+    Now nothing slow runs while a session is open, MinIO runs in a worker
+    thread, and the marker is written under a row lock."""
+    import threading
+
+    monkeypatch.setattr(td_mod, "get_current_tenant_id", lambda: TENANT)
+    sess = _session_obj()
+    mem = SimpleNamespace(id=uuid.uuid4(), tags=[])
+    d, manager, minio, store, session = _distiller(sess, [mem])
+
+    open_sessions = {"n": 0}
+
+    @asynccontextmanager
+    async def factory():
+        open_sessions["n"] += 1
+        try:
+            yield session
+        finally:
+            open_sessions["n"] -= 1
+
+    d._session_factory = factory
+    load = AsyncMock(return_value=sess)
+    monkeypatch.setattr(d, "_load_session", load)
+    loop_thread = threading.get_ident()
+    seen: dict[str, object] = {}
+
+    def _download(*a, **kw):
+        seen["download"] = (open_sessions["n"], threading.get_ident() != loop_thread)
+        return RAW.encode("utf-8")
+
+    def _upload(*a, **kw):
+        seen["upload"] = (open_sessions["n"], threading.get_ident() != loop_thread)
+        return "http://x"
+
+    async def fake_extract(turns, *, resilient_llm):
+        seen["extract"] = open_sessions["n"]
+        return [
+            ExtractedFact(content="Deploy target is the GCP VM.", fact_type="fact", confidence=0.7)
+        ]
+
+    minio.download = MagicMock(side_effect=_download)
+    minio.upload = MagicMock(side_effect=_upload)
+    monkeypatch.setattr(td_mod, "extract_transcript_facts", fake_extract)
+
+    result = await d.distill("sess-1")
+
+    assert result["new_facts"] == 1
+    assert seen == {"download": (0, True), "extract": 0, "upload": (0, True)}
+    assert load.await_args_list[-1].kwargs.get("for_update") is True
+    assert sess.last_turn_index == 2
+
+
+@pytest.mark.asyncio
+async def test_marker_is_never_moved_backwards(monkeypatch):
+    """A concurrent distill that read a longer transcript keeps its marker."""
+    monkeypatch.setattr(td_mod, "get_current_tenant_id", lambda: TENANT)
+    sess = _session_obj()
+    d, manager, minio, store, session = _distiller(sess, [])
+    monkeypatch.setattr(d, "_load_session", AsyncMock(return_value=sess))
+
+    async def fake_extract(turns, *, resilient_llm):
+        sess.last_turn_index = 9  # the other pass committed meanwhile
+        return []
+
+    monkeypatch.setattr(td_mod, "extract_transcript_facts", fake_extract)
+    await d.distill("sess-1")
+    assert sess.last_turn_index == 9

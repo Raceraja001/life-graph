@@ -139,11 +139,14 @@ class _HybridSearchSession:
 
     async def execute(self, stmt, params=None):
         if str(stmt).lstrip().upper().startswith("SET "):
-            return None  # SET LOCAL hnsw.ef_search: a session setting, not a query
+            return None  # SET LOCAL hnsw.*: a session setting, not a query
         self.executed.append(stmt)
         if len(self.executed) == 1:
             return SimpleNamespace(fetchall=lambda: self._scored_ids)
         return _FakeResult(rows=self._rows)
+
+    async def scalar(self, stmt, params=None):
+        return "0.8.0"  # the once-per-process pgvector version probe
 
 
 @pytest.mark.asyncio
@@ -224,9 +227,7 @@ async def test_notification_list_all_runs_counts_when_requested():
     svc = NotificationEngine(session_factory=lambda: session)
     svc._notif_to_dict = lambda row: {"id": row.id}
 
-    notifs, total, unread = await svc.list_all(
-        "t1", include_total=True, include_unread_count=True
-    )
+    notifs, total, unread = await svc.list_all("t1", include_total=True, include_unread_count=True)
 
     assert len(session.executed) == 3  # list + total COUNT + unread COUNT
     assert total == 5

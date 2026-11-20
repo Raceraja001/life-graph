@@ -151,14 +151,9 @@ async def run_all_consolidations(ctx: dict) -> dict:
     # Enqueue individual jobs via ARQ
     redis = ctx.get("redis")
     if redis:
-        from arq import create_pool
-
-        from life_graph.workers.settings import parse_redis_settings
-
-        pool = await create_pool(parse_redis_settings())
+        # The worker's own ArqRedis pool (audit L15), not a new one per run.
         for tid in tenant_ids:
-            await pool.enqueue_job("life_graph.workers.tasks.run_tenant_consolidation", tid)
-        await pool.close()
+            await redis.enqueue_job("life_graph.workers.tasks.run_tenant_consolidation", tid)
     else:
         # Fallback: run sequentially
         for tid in tenant_ids:

@@ -24,6 +24,7 @@ nothing but shared text distils nothing.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -112,6 +113,9 @@ class ConversationDistiller:
                 .order_by(ConversationMessage.created_at.asc())
             )
             messages = list(rows.scalars().all())
+            # The marker written after extraction: a message that arrives while
+            # the LLM runs is newer than this, so the next pass still sees it.
+            read_at = _utcnow()
 
             prev_marker = conv.last_distilled_at
             new_user_turns = [
@@ -141,35 +145,49 @@ class ConversationDistiller:
                 conv.last_distilled_at = _utcnow()
                 await session.commit()
                 return {"new_facts": 0, "archived": False, "skipped": True}
-            memories = await self._manager.ingest(
-                text,
-                context={"conversation_id": str(conversation_id)},
-                source="chat",
-                # These are the user's own conversation turns, so they resolve
-                # to SELF via the surface map rather than inheriting the
-                # store's "verified" default. Passed through classify_surface
-                # so the map stays the single source of truth for the policy.
-                trust_tier=classify_surface("chat").value,
+        # Transaction closed (audit H7): extraction is an LLM call plus
+        # embeddings and can take minutes on a local model; holding the
+        # conversation's transaction across it pinned a pooled connection.
+        memories = await self._manager.ingest(
+            text,
+            context={"conversation_id": str(conversation_id)},
+            source="chat",
+            # These are the user's own conversation turns, so they resolve
+            # to SELF via the surface map rather than inheriting the
+            # store's "verified" default. Passed through classify_surface
+            # so the map stays the single source of truth for the policy.
+            trust_tier=classify_surface("chat").value,
+        )
+        # Append the "chat" tag to each distilled memory for identification.
+        for mem in memories:
+            tags = list(mem.tags or [])
+            if "chat" not in tags:
+                tags.append("chat")
+                await self._store.update(mem.id, MemoryUpdate(tags=tags))
+
+        # Tier 2: archive the whole current thread (best-effort). MinIO's
+        # client is synchronous, so it runs in a worker thread (audit M19).
+        archived = False
+        try:
+            data = build_snapshot(conv, messages, [m.id for m in memories])
+            key = f"{tenant_id}/{conversation_id}.json"
+            await asyncio.to_thread(
+                self._minio.upload, ARCHIVE_BUCKET, key, data, content_type="application/json"
             )
-            # Append the "chat" tag to each distilled memory for identification.
-            for mem in memories:
-                tags = list(mem.tags or [])
-                if "chat" not in tags:
-                    tags.append("chat")
-                    await self._store.update(mem.id, MemoryUpdate(tags=tags))
+            archived = True
+        except Exception:  # pragma: no cover - archive must never lose facts
+            logger.exception("Archive upload failed for conversation %s", conversation_id)
 
-            # Tier 2: archive the whole current thread (best-effort).
-            archived = False
-            try:
-                data = build_snapshot(conv, messages, [m.id for m in memories])
-                key = f"{tenant_id}/{conversation_id}.json"
-                self._minio.upload(ARCHIVE_BUCKET, key, data, content_type="application/json")
-                archived = True
-            except Exception:  # pragma: no cover - archive must never lose facts
-                logger.exception("Archive upload failed for conversation %s", conversation_id)
-
-            conv.last_distilled_at = _utcnow()
-            await session.commit()
+        # Reopen, lock and move the marker forward only (a concurrent pass
+        # may have moved it further while this one was extracting).
+        async with self._session_factory() as session:
+            locked = await session.get(Conversation, conversation_id, with_for_update=True)
+            if locked is not None:
+                current = locked.last_distilled_at
+                locked.last_distilled_at = (
+                    read_at if current is None or current < read_at else current
+                )
+                await session.commit()
 
         with contextlib.suppress(Exception):  # events must never break the job
             await event_bus.emit(

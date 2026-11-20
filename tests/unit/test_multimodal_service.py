@@ -397,14 +397,19 @@ async def test_enqueue_ingest_job_passes_meta_to_pool(monkeypatch):
     string ``functions`` entries under that full path, not the bare
     function name, so a short name silently never runs (arq logs
     "'<name>' not found" and the job is dropped)."""
+    import life_graph.runtime as runtime_module
     import life_graph.services.multimodal as multimodal_module
 
     fake_pool = AsyncMock()
+    created: list[object] = []
 
     async def fake_create_pool(*_args, **_kwargs):
+        created.append(fake_pool)
         return fake_pool
 
     monkeypatch.setattr("arq.create_pool", fake_create_pool)
+    monkeypatch.setattr(runtime_module, "_arq_pool", None)
+    monkeypatch.setattr(runtime_module, "_arq_pool_loop", None)
 
     await multimodal_module._enqueue_ingest_job(
         "some text",
@@ -420,6 +425,12 @@ async def test_enqueue_ingest_job_passes_meta_to_pool(monkeypatch):
         TENANT_ID,
         {"filename": "note.webm", "minio_key": "abc/note.webm"},
     )
+    # One shared pool per process (audit L15): a second enqueue reuses it and
+    # nothing closes it per call; runtime.close_arq_pool does at shutdown.
+    await multimodal_module._enqueue_ingest_job("more", "voice", TENANT_ID)
+    assert len(created) == 1
+    fake_pool.close.assert_not_awaited()
+    await runtime_module.close_arq_pool()
     fake_pool.close.assert_awaited_once()
 
 

@@ -60,14 +60,19 @@ class _FakeSession:
         self._conv = conv
         self._messages = messages
         self.committed = False
+        self.gets: list[dict] = []
+        self.open = False
 
     async def __aenter__(self):
+        self.open = True
         return self
 
     async def __aexit__(self, *a):
+        self.open = False
         return False
 
-    async def get(self, _model, _id):
+    async def get(self, _model, _id, **kw):
+        self.gets.append(kw)
         return self._conv if _id == self._conv.id else None
 
     async def execute(self, _query):
@@ -200,6 +205,54 @@ async def test_unknown_conversation_raises():
     d, *_ = _distiller(conv, [])
     with pytest.raises(ConversationNotFoundError):
         await d.distill(uuid.uuid4())  # different id → session.get returns None
+
+
+@pytest.mark.asyncio
+async def test_extraction_runs_with_no_transaction_open():
+    """Audit H7: the LLM extraction held the conversation's transaction open,
+    so a slow local model pinned a pooled connection idle-in-transaction.
+    The marker is then written under a row lock in a fresh session."""
+    conv = _conv()
+    messages = [_msg("user", "dentist on Friday", 0)]
+    mem = SimpleNamespace(id=uuid.uuid4(), tags=[])
+    d, session, manager, minio, _store = _distiller(conv, messages, ingest_return=[mem])
+    seen: dict[str, bool] = {}
+
+    async def _ingest(*a, **kw):
+        seen["ingest_open"] = session.open
+        return [mem]
+
+    def _upload(*a, **kw):
+        seen["upload_open"] = session.open
+        return "ok"
+
+    manager.ingest = AsyncMock(side_effect=_ingest)
+    minio.upload = MagicMock(side_effect=_upload)
+
+    result = await d.distill(conv.id)
+
+    assert result["new_facts"] == 1 and result["archived"] is True
+    assert seen == {"ingest_open": False, "upload_open": False}
+    assert {"with_for_update": True} in session.gets, "marker write must lock the row"
+    assert conv.last_distilled_at is not None
+
+
+@pytest.mark.asyncio
+async def test_marker_never_moves_backwards():
+    """A concurrent pass that already moved the marker further is not undone."""
+    conv = _conv()
+    messages = [_msg("user", "x", 0)]
+    mem = SimpleNamespace(id=uuid.uuid4(), tags=[])
+    d, _session, manager, _minio, _store = _distiller(conv, messages, ingest_return=[mem])
+    later = datetime.now(UTC) + timedelta(hours=1)
+
+    async def _ingest(*a, **kw):
+        conv.last_distilled_at = later  # the other pass committed meanwhile
+        return [mem]
+
+    manager.ingest = AsyncMock(side_effect=_ingest)
+    await d.distill(conv.id)
+    assert conv.last_distilled_at == later
 
 
 def test_build_snapshot_shape():

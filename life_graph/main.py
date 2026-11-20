@@ -35,6 +35,7 @@ from life_graph.core.errors import DomainError
 from life_graph.core.events import enable_redis_bridge, event_bus
 from life_graph.core.logging import setup_logging
 from life_graph.core.plugins import PluginManager
+from life_graph.runtime import close_arq_pool, get_arq_pool
 from life_graph.storage.database import async_session
 from life_graph.storage.redis import check_redis, close_redis, init_redis
 
@@ -174,11 +175,8 @@ async def _step_webhook_handler(app: FastAPI, report: StartupReport) -> None:
 
         # Wire ARQ pool for async webhook delivery
         with startup_step(report, "webhook_arq_pool"):
-            from arq import create_pool
-
-            from life_graph.workers.settings import parse_redis_settings
-
-            arq_pool = await create_pool(parse_redis_settings())
+            # The process's shared pool (runtime.get_arq_pool), closed below.
+            arq_pool = await get_arq_pool()
             webhook_handler.set_arq_pool(arq_pool)
             logger.info("Webhook ARQ pool connected")
 
@@ -623,7 +621,9 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("MCP bridge shutdown failed", exc_info=True)
 
-    # Shutdown — close Redis
+    # Shutdown — close the shared arq pool, then Redis
+
+    await close_arq_pool()
     await close_redis()
 
     # Shutdown — close DB

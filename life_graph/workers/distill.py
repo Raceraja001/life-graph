@@ -90,14 +90,10 @@ async def distill_idle_conversations(ctx: dict) -> dict:
 
     redis = ctx.get("redis")
     if redis:
-        from arq import create_pool
-
-        from life_graph.workers.settings import parse_redis_settings
-
-        pool = await create_pool(parse_redis_settings())
+        # The worker's own ArqRedis pool (audit L15): opening a second pool
+        # per cron run only to enqueue was a connect + teardown each time.
         for conv_id, tenant_id in targets:
-            await pool.enqueue_job(DISTILL_JOB_NAME, str(conv_id), tenant_id)
-        await pool.close()
+            await redis.enqueue_job(DISTILL_JOB_NAME, str(conv_id), tenant_id)
     else:  # fallback: run inline (mirrors run_all_consolidations' degraded path)
         for conv_id, tenant_id in targets:
             await distill_conversation(ctx, str(conv_id), tenant_id)

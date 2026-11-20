@@ -21,12 +21,16 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from life_graph.config import settings
 from life_graph.models.base import _EMBED_DIM, Base, _utcnow
+
+# Name of the partial unique index on capture_events (migration 062).
+TELEGRAM_MESSAGE_INDEX = "uq_ce_telegram_message"
 
 
 class Memory(Base):
@@ -533,6 +537,20 @@ class CaptureEvent(Base):
         Index("ix_ce_tenant_occurred", "tenant_id", "occurred_at"),
         Index("ix_ce_tenant_surface", "tenant_id", "surface"),
         Index("ix_ce_tenant_hash", "tenant_id", "content_hash"),
+        # One capture per Telegram message (migration 062, audit M9): a
+        # replayed update conflicts here and ingest returns the duplicate view.
+        Index(
+            TELEGRAM_MESSAGE_INDEX,
+            "tenant_id",
+            "surface",
+            text("(properties ->> 'chat_id')"),
+            text("(properties ->> 'message_id')"),
+            unique=True,
+            postgresql_where=text(
+                "surface = 'telegram' AND (properties ->> 'chat_id') IS NOT NULL "
+                "AND (properties ->> 'message_id') IS NOT NULL"
+            ),
+        ),
         {"schema": "life_graph"},
     )
 

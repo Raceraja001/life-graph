@@ -42,16 +42,23 @@ def _s3_error(code: str) -> S3Error:
 
 
 class _FakeSession:
-    """Minimal stand-in for an AsyncSession: no existing ExternalSession row."""
+    """Minimal stand-in for an AsyncSession: a freshly created ExternalSession.
+
+    The endpoint upserts the row (INSERT ... ON CONFLICT DO NOTHING) and then
+    reads it back with SELECT ... FOR UPDATE, so execute() serves both."""
 
     def __init__(self) -> None:
         self.add = MagicMock()
         self.commit = AsyncMock()
+        self.row = SimpleNamespace(
+            raw_key="staging/test-tenant/claude-code/sess-abc.ndjson",
+            line_count=0,
+            source_path=None,
+            updated_at=None,
+        )
 
     async def execute(self, _stmt):
-        scalars = MagicMock()
-        scalars.first.return_value = None  # no existing row -> first-write path
-        return SimpleNamespace(scalars=lambda: scalars)
+        return SimpleNamespace(scalar_one=lambda: self.row)
 
 
 def _fake_session_factory(session: _FakeSession):
@@ -119,12 +126,8 @@ class _FakeSessionWithKeylessRow(_FakeSession):
 
     def __init__(self) -> None:
         super().__init__()
+        # Served by _FakeSession.execute (the row the locked SELECT returns).
         self.row = SimpleNamespace(raw_key=None, source_path=None, updated_at=None, line_count=3)
-
-    async def execute(self, _stmt):
-        scalars = MagicMock()
-        scalars.first.return_value = self.row
-        return SimpleNamespace(scalars=lambda: scalars)
 
 
 @pytest.mark.asyncio
