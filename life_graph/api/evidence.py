@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from life_graph.api.dependencies import get_evidence_store
 from life_graph.api.responses import success_response
+from life_graph.core.errors import DomainError
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import EvidenceCreate, EvidenceResponse
 from life_graph.services.evidence_store import EvidenceStore
@@ -47,16 +48,10 @@ async def create_evidence(
     try:
         evidence = await store.create(tenant_id, body.model_dump(exclude_none=True))
     except ValueError as e:
-        err_msg = str(e)
-        if "already exists" in err_msg:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=err_msg,
-            ) from e
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=err_msg,
-        ) from e
+        # 404 for an unknown preference, 409 for a duplicate source_url — by
+        # exception type (core/errors.py), not by the message text (audit L3).
+        code = e.status_code if isinstance(e, DomainError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=str(e)) from e
     return success_response(data=EvidenceResponse.model_validate(evidence))
 
 

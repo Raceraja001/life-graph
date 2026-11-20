@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 from sqlalchemy.orm import defer
 
+from life_graph.core.errors import ConflictError, NotFoundError
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Evidence, Preference
 
@@ -64,7 +65,7 @@ class EvidenceStore:
         async with self._session_factory() as session:
             pref = await session.get(Preference, preference_id)
             if pref is None or pref.tenant_id != tenant_id:
-                raise ValueError(f"Preference {preference_id} not found")
+                raise NotFoundError(f"Preference {preference_id} not found")
 
         # Check dedup by source_url
         source_url = data.get("source_url")
@@ -77,7 +78,7 @@ class EvidenceStore:
                     .where(Evidence.status == "active")
                 )
                 if existing.scalar_one_or_none() is not None:
-                    raise ValueError(
+                    raise ConflictError(
                         f"Evidence with source_url '{source_url}' already exists "
                         f"for preference {preference_id}"
                     )

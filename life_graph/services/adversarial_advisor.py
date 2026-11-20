@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
 
+from life_graph.core.errors import NotFoundError
 from life_graph.core.events import EventBus, EventType
 from life_graph.models.db import (
     Challenge,
@@ -222,7 +223,7 @@ class AdversarialAdvisor:
         challenge = result.scalars().first()
 
         if not challenge:
-            raise ValueError("Challenge not found")
+            raise NotFoundError("Challenge not found")
 
         challenge.action_taken = action_taken
 

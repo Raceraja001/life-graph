@@ -43,6 +43,7 @@ from life_graph.connectors.base import (
 )
 from life_graph.connectors.exposure import EXPOSURES
 from life_graph.connectors.models import ConnectorAccount, ConnectorItem
+from life_graph.core.errors import InvalidInputError, NotFoundError
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -52,8 +53,15 @@ SYNC_TIMEOUT_SECONDS = 600
 MAX_BACKOFF = timedelta(hours=6)
 
 
-class AccountError(ValueError):
-    """A request to create or change an account is invalid."""
+class AccountError(InvalidInputError):
+    """A request to create or change an account is invalid (400)."""
+
+
+class AccountNotFoundError(AccountError, NotFoundError):
+    """No such account for this tenant (404)."""
+
+    status_code = NotFoundError.status_code
+    code = NotFoundError.code
 
 
 def _slug(text: str) -> str:
@@ -251,7 +259,7 @@ class ConnectorRuntime:
             )
         ).scalar_one_or_none()
         if row is None:
-            raise AccountError("account not found")
+            raise AccountNotFoundError("account not found")
         return row
 
     async def update_account(self, tenant_id: str, account_id: str, **changes: Any) -> dict:

@@ -31,6 +31,7 @@ from life_graph.api.multimodal import router as multimodal_router
 from life_graph.api.responses import InvalidCursorError, error_response, http_error_body
 from life_graph.api.websocket import websocket_endpoint, ws_event_handler
 from life_graph.config import settings
+from life_graph.core.errors import DomainError
 from life_graph.core.events import enable_redis_bridge, event_bus
 from life_graph.core.logging import setup_logging
 from life_graph.core.plugins import PluginManager
@@ -659,6 +660,20 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
             exc.status_code, exc.detail, getattr(request.state, "request_id", None)
         ),
         headers=exc.headers,
+    )
+
+
+@app.exception_handler(DomainError)
+async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
+    """Domain exceptions (core/errors.py) map to 404/409/400 by type (audit L3)."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=http_error_body(
+            exc.status_code,
+            str(exc),
+            getattr(request.state, "request_id", None),
+            code=exc.code,
+        ),
     )
 
 
