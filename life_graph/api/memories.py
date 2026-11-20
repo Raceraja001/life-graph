@@ -317,11 +317,9 @@ async def bulk_approvals(
     body: BulkApprovalBody,
     store: PostgresMemoryStore = Depends(get_store),
 ):
-    """Approve/reject memories in batch (distillation review will lean on this).
-
-    Owner only when ``approvals_require_owner`` is on; who decided is recorded
-    on each memory (``properties.review``), as for the single routes.
-    """
+    """Approve/reject memories in batch (distillation review will lean on this)."""
+    # Owner only when approvals_require_owner is on; who decided is recorded on
+    # each memory (properties.review), as for the single routes.
     require_owner(request)
     by = resolver(request)
     approved = rejected = 0
@@ -358,11 +356,10 @@ async def approve_memory(
     it is checked against the authenticated ingress and not against anything
     in the body: a third party, or an agent posting on behalf of a page it
     read, is refused (403) rather than obeyed.
-
-    With ``approvals_require_owner`` on, only the owner may approve at all
-    (api/approval_identity.require_owner). Who approved is recorded in
-    ``properties.review`` from the server's view of the caller.
     """
+    # With approvals_require_owner on, only the owner may approve at all
+    # (api/approval_identity.require_owner). Who approved is recorded in
+    # properties.review from the server's view of the caller.
     require_owner(request)
     confirm = bool(body and body.confirm_as_owner_fact)
     actor: str | None = None
@@ -398,11 +395,9 @@ async def reject_memory(
     memory_id: uuid.UUID,
     store: PostgresMemoryStore = Depends(get_store),
 ):
-    """Reject a pending memory — hidden everywhere, re-capture allowed.
-
-    Owner only when ``approvals_require_owner`` is on; who rejected is
-    recorded in ``properties.review``.
-    """
+    """Reject a pending memory — hidden everywhere, re-capture allowed."""
+    # Owner only when approvals_require_owner is on; who rejected is recorded
+    # in properties.review.
     require_owner(request)
     row = await _transition(memory_id, "reject", store, decided_by=resolver(request))
     return success_response(data=MemoryResponse.model_validate(row))
