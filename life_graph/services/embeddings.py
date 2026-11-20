@@ -14,23 +14,11 @@ import asyncio
 import logging
 from typing import Any
 
+# Defined in core so the storage layer can stamp it without importing
+# services (audit M12); re-exported here, where its callers look for it.
+from life_graph.core.embedding_model import current_embedding_model as current_embedding_model
+
 logger = logging.getLogger(__name__)
-
-
-def current_embedding_model() -> str:
-    """Name stamped on (and compared against) ``embedding_model`` columns.
-
-    The one notion of "the embedder in use now". In local-LLM mode vectors come
-    from the LM client (``lm_embedding_model``); otherwise from the in-process
-    sentence-transformers model (``embedding_model``). Ingest stamped the first
-    while the re-embed job compared against the second, so every locally
-    embedded memory looked stale and was re-embedded on every run (code review,
-    2026-10-22). Everything that writes or checks ``embedding_model`` must go
-    through here.
-    """
-    from life_graph.config import settings
-
-    return settings.lm_embedding_model if settings.use_local_llm else settings.embedding_model
 
 
 class EmbeddingService:

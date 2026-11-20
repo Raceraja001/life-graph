@@ -295,7 +295,10 @@ def test_registered_by_main_startup():
 
     from life_graph import main
 
-    tree = ast.parse(textwrap.dedent(inspect.getsource(main._start_extended_domains)))
+    # The steps _start_extended_domains runs, in order (split per domain, M15).
+    tree = ast.parse(
+        "\n".join(textwrap.dedent(inspect.getsource(s)) for s in main._EXTENDED_STARTUP)
+    )
 
     step = next(
         node

@@ -1203,7 +1203,9 @@ def test_the_application_startup_attaches_the_durable_stores():
     from life_graph import main
     from life_graph.config import settings
 
-    src = inspect.getsource(main._start_extended_domains)
+    # _start_extended_domains runs the _EXTENDED_STARTUP steps in order
+    # (split per domain, audit M15); read every step it runs.
+    src = "\n".join(inspect.getsource(step) for step in main._EXTENDED_STARTUP)
 
     assert "settings.durable_authorization" in src
     assert "attach_durable_stores()" in src

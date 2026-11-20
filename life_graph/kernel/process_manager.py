@@ -590,22 +590,16 @@ class ProcessManager:
             except Exception:
                 logger.warning("Connector chat context failed", exc_info=True)
 
-        allow = tool_override if tool_override is not None else persona.get("allowed_tools")
-        if general_cloud:
-            # An override never brings the personal tools back to a cloud run;
-            # neither does "all tools" (None).
-            allow = [
-                t
-                for t in (allow if allow is not None else tool_registry.tool_names)
-                if t not in lead.PERSONAL_TOOLS
-            ]
-        if input_data.get("temporary"):
-            # A temporary chat leaves nothing behind (services/lead.py).
-            allow = [
-                t
-                for t in (allow if allow is not None else tool_registry.tool_names)
-                if t not in lead.TEMPORARY_BLOCKED_TOOLS
-            ]
+        # An override never brings the personal tools back to a cloud run;
+        # neither does "all tools" (None). A temporary chat leaves nothing
+        # behind. One rule for this and drivers/local.py (services/lead.py).
+        allow = lead.resolve_run_tools(
+            persona,
+            tool_override,
+            cloud=general_cloud,
+            temporary=bool(input_data.get("temporary")),
+            registry=tool_registry,
+        )
         if allow is not None:
             allowed_set = set(allow)
             tools = [t for t in tool_registry.get_tools() if t["function"]["name"] in allowed_set]

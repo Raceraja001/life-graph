@@ -849,9 +849,9 @@ async def test_an_ordinary_approve_is_open_to_any_caller_and_confirms_nothing(au
     store = _approve_store(row)
     with (
         patch("life_graph.api.memories.MemoryResponse"),
-        patch("life_graph.api.memories._settle_contradictions", AsyncMock()),
-        patch("life_graph.api.memories._learn_names", AsyncMock()),
-        patch("life_graph.api.memories.get_current_tenant_id", return_value="t1"),
+        patch("life_graph.services.memory.transitions.settle_contradictions", AsyncMock()),
+        patch("life_graph.services.memory.transitions.learn_names", AsyncMock()),
+        patch("life_graph.services.memory.transitions.get_current_tenant_id", return_value="t1"),
         patch("life_graph.services.profile_card.invalidate"),
     ):
         await approve_memory(fake_request(), memory_id=row.id, body=None, store=store)
@@ -871,9 +871,9 @@ async def test_the_owner_confirming_writes_a_full_audit_record(auth_configured):
     store = _approve_store(row)
     with (
         patch("life_graph.api.memories.MemoryResponse"),
-        patch("life_graph.api.memories._settle_contradictions", AsyncMock()),
-        patch("life_graph.api.memories._learn_names", AsyncMock()),
-        patch("life_graph.api.memories.get_current_tenant_id", return_value="t1"),
+        patch("life_graph.services.memory.transitions.settle_contradictions", AsyncMock()),
+        patch("life_graph.services.memory.transitions.learn_names", AsyncMock()),
+        patch("life_graph.services.memory.transitions.get_current_tenant_id", return_value="t1"),
         patch("life_graph.services.profile_card.invalidate"),
     ):
         await approve_memory(

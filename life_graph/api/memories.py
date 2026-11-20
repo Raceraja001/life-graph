@@ -21,12 +21,11 @@ from life_graph.api.openapi_examples import MEMORY_CREATED
 from life_graph.api.responses import encode_cursor, paginated_response, success_response
 from life_graph.api.token_meta import token_meta
 from life_graph.config import settings
-from life_graph.core.events import EventType, event_bus
 from life_graph.core.memory_manager import MemoryManager
-from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import classify_ingress
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryResponse, MemoryUpdate
+from life_graph.services.memory import transitions
 from life_graph.services.memory.recall import RecallEngine
 from life_graph.storage.postgres import PostgresMemoryStore
 
@@ -232,57 +231,11 @@ class ApproveBody(BaseModel):
     confirm_as_owner_fact: bool = False
 
 
-async def _settle_contradictions(memory_id: uuid.UUID, *, approved: bool) -> None:
-    """Apply (approve) or close (reject) the memory's deferred supersedes.
-
-    A pending memory that contradicts an active one supersedes nothing until
-    the owner approves it (review 2026-10-22: the old one used to be marked
-    superseded at ingest, and rejecting the new memory never restored it).
-    Logged, never raised: the approve/reject itself has already happened,
-    and an unapplied supersede stays on the contradiction approval for the
-    owner to apply there.
-    """
-    from life_graph.services.approvals import ApprovalService
-    from life_graph.storage.database import async_session
-
-    try:
-        async with async_session() as session:
-            service = ApprovalService(session)
-            tenant_id = get_current_tenant_id()
-            if approved:
-                await service.on_memory_approved(tenant_id, str(memory_id))
-            else:
-                await service.on_memory_rejected(tenant_id, str(memory_id))
-            await session.commit()
-    except Exception:
-        logger.warning("Failed to settle contradictions for %s", memory_id, exc_info=True)
-
-
-async def _learn_names(row: Memory) -> None:
-    """Learn other names and roles ("my wife Priya") from a memory the owner
-    has just approved. At storage time only active facts in the owner's own
-    words teach names (MemoryManager._learn_names), and most captured facts wait
-    for review, so the people table never learned a role in real use (prod,
-    2026-11-02: 0 of 41 entities had one). The owner has now read and kept this
-    exact sentence. Hedged or negated memories still teach nothing.
-    Best-effort: a failure costs the alias, never the approval."""
-    from life_graph.core.memory_manager import HEDGED
-
-    props = row.properties or {}
-    content = row.content or ""
-    if (
-        not content
-        or props.get("polarity") == "negate"
-        or props.get("certainty") == "hedged"
-        or HEDGED.search(content)
-    ):
-        return
-    from life_graph.services import entities
-
-    try:
-        await entities.learn_aliases(row.tenant_id, content, evidence=content)
-    except Exception:  # noqa: BLE001
-        logger.warning("Name learning failed for approved memory %s", row.id, exc_info=True)
+# The approve/reject state machine lives in services/memory/transitions.py
+# (audit M12: the memory page imported this router to reach it). These names
+# stay for the routes below and for api/jarvis.py.
+_settle_contradictions = transitions.settle_contradictions
+_learn_names = transitions.learn_names
 
 
 async def _transition(
@@ -293,75 +246,21 @@ async def _transition(
     confirm_as_owner_fact: bool = False,
     actor: str | None = None,
 ) -> Memory:
-    """Move a memory between pending/rejected/active, emitting the matching event.
+    """``transitions.transition``, with its errors as the routes' HTTP errors.
 
     Idempotent when already in the target status; 404 if missing; 409 if the
     requested transition isn't valid from the memory's current status.
     """
-    row = await store.retrieve(memory_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    from life_graph.services import profile_card
-
-    profile_card.invalidate(row.tenant_id)  # Keep or Drop changes what the card holds
-    if action == "approve":
-        if row.status == "active":
-            return row  # idempotent
-        if row.status not in ("pending", "rejected"):
-            raise HTTPException(status_code=409, detail=f"Cannot approve a {row.status} memory")
-        if confirm_as_owner_fact:
-            # The owner read this in the review queue and says it is their own
-            # fact. Stamped server-side (``server_side=True``, never from a
-            # properties patch) so it records who confirmed, and only here:
-            # nothing promotes outside content to the owner's word on its own.
-            # ``actor`` is how the server recognised the caller, so the record
-            # names a credential rather than the bare word "owner" — the
-            # endpoint has already refused any ingress that is not the
-            # owner's, and this is the audit trail of which one it was.
-            from life_graph.core import evidence as ev
-
-            confirmed = ev.confirm_from_owner(
-                row.properties or {},
-                by=actor or "owner",
-                target_id=str(memory_id),
-                evidence=ev.confirmation_evidence(
-                    row.content, row.source_type, row.trust_tier, row.properties
-                ),
-            )
-            updated = await store.update(
-                memory_id,
-                MemoryUpdate(status="active", properties=confirmed),
-                server_side=True,
-            )
-        else:
-            updated = await store.update(memory_id, MemoryUpdate(status="active"))
-        await _settle_contradictions(memory_id, approved=True)
-        await _learn_names(row)
-        try:
-            await event_bus.emit(
-                EventType.MEMORY_APPROVED,
-                {"id": str(memory_id), "tenant_id": get_current_tenant_id()},
-                source="memories",
-            )
-        except Exception:
-            logger.warning("Failed to emit MEMORY_APPROVED for %s", memory_id, exc_info=True)
-        return updated
-    # reject
-    if row.status == "rejected":
-        return row  # idempotent
-    if row.status != "pending":
-        raise HTTPException(status_code=409, detail=f"Cannot reject a {row.status} memory")
-    updated = await store.update(memory_id, MemoryUpdate(status="rejected"))
-    await _settle_contradictions(memory_id, approved=False)
     try:
-        await event_bus.emit(
-            EventType.MEMORY_REJECTED,
-            {"id": str(memory_id), "tenant_id": get_current_tenant_id()},
-            source="memories",
+        return await transitions.transition(
+            memory_id,
+            action,
+            store,
+            confirm_as_owner_fact=confirm_as_owner_fact,
+            actor=actor,
         )
-    except Exception:
-        logger.warning("Failed to emit MEMORY_REJECTED for %s", memory_id, exc_info=True)
-    return updated
+    except transitions.MemoryTransitionError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from None
 
 
 @router.get(

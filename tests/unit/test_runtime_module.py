@@ -47,18 +47,94 @@ def test_importing_runtime_does_not_load_the_api_package():
     assert out == "[]"
 
 
-def test_no_code_outside_the_api_imports_it_through_the_api():
+def _api_imports(rel: str, tree) -> list[str]:
+    """Every import of ``life_graph.api`` in one module, at any depth (AST).
+
+    Covers ``import life_graph.api.x``, ``from life_graph.api(.x) import ...``,
+    ``from life_graph import api`` and relative imports that resolve into the
+    API package -- function-local ones included, which a text grep for one
+    module name (this guard's first version) missed: storage/postgres.py,
+    services/claude_code_sessions.py and services/memory/page.py all reached
+    into routers that way (audit M12).
+    """
+    import ast
+
+    package = ["life_graph", *rel.split("/")[:-1]]
+    found = []
+    for node in ast.walk(tree):
+        names: list[str] = []
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                base = package[: len(package) - node.level + 1]
+                mod = ".".join(base + ([node.module] if node.module else []))
+            else:
+                mod = node.module or ""
+            names = [mod] + [f"{mod}.{a.name}" for a in node.names]
+        for name in names:
+            if name == "life_graph.api" or name.startswith("life_graph.api."):
+                found.append((node.lineno, f"{rel}:{node.lineno} {name}"))
+                break
+    return [text for _, text in sorted(found)]
+
+
+# What legitimately composes the HTTP app: the API package itself, main.py
+# (mounts every router), and the feature routers that live beside their
+# feature (autonomy/*/router.py, self_improving/router.py) -- they ARE the
+# API layer and use its response envelope and auth helpers.
+def _may_import_the_api(rel: str) -> bool:
+    return rel.startswith("api/") or rel == "main.py" or rel.endswith("/router.py")
+
+
+def test_no_code_below_the_api_imports_the_api():
+    import ast
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[2] / "life_graph"
     offenders = []
-    for p in root.rglob("*.py"):
+    for p in sorted(root.rglob("*.py")):
         rel = p.relative_to(root).as_posix()
-        if rel.startswith("api/"):
+        if _may_import_the_api(rel):
             continue
-        text = p.read_text(encoding="utf-8")
-        if "from life_graph.api.dependencies import" in text or (
-            "from life_graph.api.jarvis import" in text
-        ):
-            offenders.append(rel)
-    assert offenders == [], f"import life_graph.runtime / a service instead: {offenders}"
+        offenders += _api_imports(rel, ast.parse(p.read_text(encoding="utf-8")))
+    assert offenders == [], (
+        f"import life_graph.runtime, life_graph.core.pagination or a service instead: {offenders}"
+    )
+
+
+def test_the_guard_sees_function_local_and_relative_imports():
+    import ast
+
+    src = (
+        "def f():\n"
+        "    from life_graph.api.responses import decode_cursor\n"
+        "def g():\n"
+        "    from life_graph import api\n"
+        "from ..api import sessions\n"
+        "import life_graph.api.memories\n"
+        "from life_graph.apiary import x\n"  # not the API package
+    )
+    got = _api_imports("services/x.py", ast.parse(src))
+    assert [g.split(" ")[0] for g in got] == [
+        "services/x.py:2",
+        "services/x.py:4",
+        "services/x.py:5",
+        "services/x.py:6",
+    ]
+
+
+def test_importing_the_lower_layers_does_not_load_the_api_package():
+    # Fresh interpreter, as above: the modules that used to reach into routers.
+    code = (
+        "import sys, life_graph.storage.postgres, life_graph.storage.hybrid, "
+        "life_graph.services.claude_code_sessions, life_graph.services.memory.page, "
+        "life_graph.services.session_lifecycle, life_graph.services.memory.transitions; "
+        "print(sorted(m for m in sys.modules if m.startswith('life_graph.api')))"
+    )
+    out = (
+        subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+        .stdout.strip()
+        .splitlines()[-1]
+    )
+    assert out == "[]"

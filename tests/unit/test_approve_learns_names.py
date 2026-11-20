@@ -15,6 +15,7 @@ import pytest
 from life_graph.api import memories as api
 from life_graph.core.tenant import tenant_scope
 from life_graph.services import entities, profile_card
+from life_graph.services.memory import transitions
 
 
 class _Store:
@@ -41,8 +42,8 @@ def learned(monkeypatch):
         return None
 
     monkeypatch.setattr(entities, "learn_aliases", fake_learn)
-    monkeypatch.setattr(api, "_settle_contradictions", nothing)
-    monkeypatch.setattr(api.event_bus, "emit", nothing)
+    monkeypatch.setattr(transitions, "settle_contradictions", nothing)
+    monkeypatch.setattr(transitions.event_bus, "emit", nothing)
     monkeypatch.setattr(profile_card, "invalidate", lambda _t: None)
     return calls
 

@@ -10,14 +10,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from life_graph.api.dependencies import get_lm_client
 from life_graph.api.responses import (
     decode_cursor,
     encode_cursor,
@@ -25,8 +23,9 @@ from life_graph.api.responses import (
     success_response,
 )
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.models.db import MemorySession, Session
+from life_graph.models.db import Session
 from life_graph.models.schemas import SessionCreate, SessionResponse
+from life_graph.services import session_lifecycle
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -68,48 +67,19 @@ class EndSessionRequest(BaseModel):
     )
 
 
-# Link rows whose memory was written in the session, as opposed to ones the
-# session merely recalled. ``memories_created`` counts only these.
-_CREATED_ROLE = "created"
-
-
 async def _own_session_or_404(db: Any, session_id: uuid.UUID) -> Session:
     """Load *session_id* if it belongs to the current tenant, else 404.
 
-    end/get/heartbeat used ``db.get(Session, id)``, which is a primary-key
-    lookup with no tenant in it: any tenant that knew (or guessed) a session
-    id could read, end or rewrite another tenant's session (review finding,
-    2026-10-22). Another tenant's session is reported as missing, not
-    forbidden, so its existence is not disclosed.
+    See ``services.session_lifecycle.own_session``: another tenant's session
+    is reported as missing, not forbidden, so its existence is not disclosed.
     """
-    sess = await db.scalar(
-        select(Session).where(
-            Session.id == session_id,
-            Session.tenant_id == get_current_tenant_id(),
-        )
-    )
-    if sess is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Session {session_id} not found",
-        )
-    return sess
+    try:
+        return await session_lifecycle.own_session(db, session_id)
+    except session_lifecycle.SessionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from None
 
 
-def _created_count_stmt(session_id: uuid.UUID) -> Any:
-    """Count of memories *created* in a session (recalled links excluded).
-
-    Recall now writes ``role='recalled'`` links into the same table, so a
-    plain count of link rows would report recalled memories as created.
-    """
-    return (
-        select(func.count())
-        .select_from(MemorySession)
-        .where(
-            MemorySession.session_id == session_id,
-            MemorySession.role == _CREATED_ROLE,
-        )
-    )
+_created_count_stmt = session_lifecycle.created_count_stmt
 
 
 # ── Routes ───────────────────────────────────────────────────
@@ -193,53 +163,24 @@ async def close_session(
 ) -> Session:
     """Mark a current-tenant session ended: count, summarise, set ``ended_at``.
 
-    The body of ``POST /sessions/{id}/end``, shared with the Claude Code
-    session closer (services/claude_code_sessions.py) so a session ended by a
-    hook is ended exactly like one ended over the API. Impact scoring and
-    micro-consolidation are left to the caller. Raises the route's 404 for a
-    missing or other-tenant session and 409 for one already ended.
+    The body of ``POST /sessions/{id}/end``; the logic is
+    ``services.session_lifecycle.close_session``, which the Claude Code
+    session closer calls too. Raises the route's 404 for a missing or
+    other-tenant session and 409 for one already ended.
     """
-    async with async_session() as db:
-        sess = await _own_session_or_404(db, session_id)
-
-        if sess.ended_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Session {session_id} already ended",
-            )
-
-        memory_count = await db.scalar(_created_count_stmt(session_id)) or 0
-
-        given = (summary or "").strip()
-        sess.summary = given or await _generate_summary(sess, memory_count)
-        sess.ended_at = datetime.now(UTC)
-        sess.memories_created = memory_count
-
-        # Record outcome for impact scoring
-        if outcome and outcome in ("success", "failure", "neutral"):
-            sess.outcome = outcome
-
-        await db.commit()
-        await db.refresh(sess)
-    return sess
+    try:
+        # _generate_summary is looked up here, at call time, so a patch of
+        # this module's name still reaches the summary step.
+        return await session_lifecycle.close_session(
+            session_id, outcome=outcome, summary=summary, summarize=_generate_summary
+        )
+    except session_lifecycle.SessionCloseError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from None
 
 
 async def _run_micro_consolidation(session_id: uuid.UUID) -> None:
     """Background task: run micro-consolidation for a session."""
-    try:
-        from life_graph.api.dependencies import get_micro_consolidator
-
-        consolidator = get_micro_consolidator()
-        report = await consolidator.run(session_id)
-        logger.info(
-            "Micro-consolidation %s complete: %d processed, %d deduped (%.2fs)",
-            session_id,
-            report.memories_processed,
-            report.duplicates_removed,
-            report.duration_seconds,
-        )
-    except Exception:
-        logger.exception("Micro-consolidation failed for session %s", session_id)
+    await session_lifecycle.run_micro_consolidation(session_id)
 
 
 @router.get(
@@ -361,28 +302,5 @@ async def heartbeat(
 # ── Internal Helpers ─────────────────────────────────────────
 
 
-async def _generate_summary(sess: Session, memory_count: int):
-    """Generate a session summary via the local LLM.
-
-    Falls back to a simple template string if the LLM is
-    unavailable or returns an empty response.
-    """
-    fallback = f"Session with {memory_count} memories created"
-
-    try:
-        lm_client = get_lm_client()
-        context_str = str(sess.context) if sess.context else "no context"
-        prompt = (
-            f"Summarize this coding session in exactly 2 sentences.\n"
-            f"Context: {context_str}\n"
-            f"Memories created: {memory_count}\n"
-            f"Summary:"
-        )
-        summary = await lm_client.chat(
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=128,
-        )
-        return summary.strip() if summary.strip() else fallback
-    except Exception:
-        logger.warning("LLM summary generation failed, using fallback")
-        return fallback
+# Kept as a module name: tests patch it to prove a caller's summary wins.
+_generate_summary = session_lifecycle.generate_summary

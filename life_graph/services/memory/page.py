@@ -35,6 +35,7 @@ from sqlalchemy.orm import defer
 
 from life_graph.core import evidence as ev
 from life_graph.core import slots
+from life_graph.services.memory import transitions
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -506,9 +507,11 @@ async def drop(tenant_id: str, memory_id: uuid.UUID, store: Any) -> dict[str, An
     if status is None:
         raise PageActionError(404, "Memory not found.")
     if status in ("pending", "rejected"):
-        from life_graph.api.memories import _transition
-
-        updated = await _transition(memory_id, "reject", store)
+        try:
+            updated = await transitions.transition(memory_id, "reject", store)
+        except transitions.MemoryTransitionError as exc:
+            # The same status and words the route's HTTPException carried.
+            raise PageActionError(exc.status, exc.detail) from None
         return {"id": str(memory_id), "status": updated.status}
     note = {
         "forgotten": {

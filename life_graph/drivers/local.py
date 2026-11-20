@@ -32,10 +32,13 @@ import time
 from typing import TYPE_CHECKING
 
 from life_graph.agents.stuck import is_error_result
+from life_graph.config import settings
+from life_graph.connectors.locality import run_is_local
 from life_graph.drivers import self_check
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.steps import StepCollector
 from life_graph.drivers.workdir import diff_against_head
+from life_graph.services.lead import resolve_run_tools
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -151,12 +154,27 @@ class LocalDriver:
             # Persona tool scoping. None => no persona resolved, keep the
             # historical full-registry behavior (the orchestrator resolves the
             # registry itself when tools is None). A list — even empty — is an
-            # explicit allowlist and is passed through verbatim.
-            run_kwargs: dict = {}
-            if packet.allowed_tools is not None:
-                from life_graph.tools.registry import registry as tool_registry
+            # explicit allowlist. Either way the rule kernel/process_manager.py
+            # applies holds here too (services/lead.py::resolve_run_tools): a
+            # model that leaves the machine is never handed the owner's
+            # personal tools. Before 2026-11-20 this copy skipped that cut, so
+            # a dispatch on a cloud persona_model (or the cloud default
+            # agent_llm_model) was offered memory_search & co.; the connector
+            # tools redact themselves for a cloud audience, memory_search
+            # does not.
+            from life_graph.tools.registry import registry as tool_registry
 
-                allowed_set = set(packet.allowed_tools)
+            # The model the orchestrator runs (AgentOrchestrator's own default).
+            run_model = packet.persona_model or settings.agent_llm_model
+            allow = resolve_run_tools(
+                {"allowed_tools": packet.allowed_tools},
+                cloud=not run_is_local(run_model),
+                temporary=False,  # a dispatched task is never a temporary chat
+                registry=tool_registry,
+            )
+            run_kwargs: dict = {}
+            if allow is not None:
+                allowed_set = set(allow)
                 run_kwargs["tools"] = [
                     t for t in tool_registry.get_tools() if t["function"]["name"] in allowed_set
                 ]

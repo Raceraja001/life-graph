@@ -15,12 +15,14 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy.orm import defer
 
+from life_graph.core.embedding_model import current_embedding_model
 from life_graph.core.evidence import (
     UNKNOWN_SOURCE,
     evidence_of,
     merge_client_properties,
     normalize_lineage,
 )
+from life_graph.core.pagination import decode_cursor
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, coerce_tier
 from life_graph.models.db import CaptureEvent, Memory, MemorySession, Session
@@ -217,8 +219,6 @@ class PostgresMemoryStore:
         if valid_until is not None:
             row.valid_until = valid_until
         if embedding:
-            from life_graph.services.embeddings import current_embedding_model
-
             row.embedding = embedding
             row.embedding_model = current_embedding_model()
         async with async_session() as session:
@@ -582,8 +582,6 @@ class PostgresMemoryStore:
         stmt = stmt.order_by(Memory.created_at.desc(), Memory.id.desc())
 
         if cursor:
-            from life_graph.api.responses import decode_cursor
-
             cur = decode_cursor(cursor)
             cursor_ts = datetime.fromisoformat(cur["k"])
             cursor_id = uuid.UUID(cur["id"])
@@ -833,8 +831,6 @@ class PostgresMemoryStore:
         )
 
         if cursor:
-            from life_graph.api.responses import decode_cursor
-
             cur = decode_cursor(cursor)
             cursor_ts = datetime.fromisoformat(cur["k"])
             cursor_id = uuid.UUID(cur["id"])
