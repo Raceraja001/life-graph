@@ -2,15 +2,23 @@
 
 Endpoints for managing safety rules and classifying actions.
 Prefix: /autonomy/safety
+
+A safety rule sets an action's risk, and risk decides whether it runs without
+asking, so writing rules (create, update, delete, seed the defaults) is the
+owner's alone (api/approval_identity.py ``owner_only``); ``created_by`` is who
+the server saw calling. So is resuming autonomy after the kill switch was
+pulled. Pausing stays open to any caller — stopping is always safe — and so
+do the reads and ``/classify``, which writes nothing.
 """
 
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from life_graph.api.approval_identity import owner_only, resolver
 from life_graph.api.responses import success_response
 from life_graph.autonomy.safety.classifier import ActionClassifier
 from life_graph.autonomy.safety.schemas import (
@@ -35,17 +43,19 @@ router = APIRouter(prefix="/safety", tags=["autonomy-safety"])
 @router.post("/rules", status_code=status.HTTP_201_CREATED)
 async def create_rule(
     body: SafetyRuleCreate,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Create a new safety rule."""
+    """Create a new safety rule (owner only)."""
+    owner_only(request, "Writing a safety rule")
     svc = SafetyRuleService(session)
     rule = await svc.create_rule(
         tenant_id=tenant_id,
         action_name=body.action_name,
         action_pattern=body.action_pattern,
         risk_level=body.risk_level,
-        created_by=body.created_by,
+        created_by=resolver(request),
         category=body.category,
         trust_threshold=body.trust_threshold,
         is_guardrail=body.is_guardrail,
@@ -97,10 +107,12 @@ async def get_rule(
 async def update_rule(
     rule_id: str,
     body: SafetyRuleUpdate,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Update a safety rule (partial update)."""
+    """Update a safety rule (partial update; owner only)."""
+    owner_only(request, "Writing a safety rule")
     svc = SafetyRuleService(session)
     updates = body.model_dump(exclude_unset=True)
     rule = await svc.update_rule(tenant_id, rule_id, **updates)
@@ -112,10 +124,12 @@ async def update_rule(
 @router.delete("/rules/{rule_id}", status_code=status.HTTP_200_OK)
 async def delete_rule(
     rule_id: str,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Delete a safety rule."""
+    """Delete a safety rule (owner only)."""
+    owner_only(request, "Writing a safety rule")
     svc = SafetyRuleService(session)
     deleted = await svc.delete_rule(tenant_id, rule_id)
     if not deleted:
@@ -158,10 +172,16 @@ async def classify_action(
 
 @router.post("/seed", status_code=status.HTTP_201_CREATED)
 async def seed_defaults(
+    request: Request,
     session: AsyncSession = Depends(get_session),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Seed default safety rules for the current tenant."""
+    """Seed default safety rules for the current tenant (owner only).
+
+    The defaults mark some actions ``safe``; re-seeding after the owner
+    removed one would make it auto-executable again.
+    """
+    owner_only(request, "Writing a safety rule")
     svc = SafetyRuleService(session)
     rules = await svc.seed_defaults(tenant_id)
     return success_response([SafetyRuleResponse.model_validate(r) for r in rules])
@@ -218,10 +238,12 @@ async def pause_kill_switch(
 
 @router.post("/kill-switch/resume")
 async def resume_kill_switch(
+    request: Request,
     session: AsyncSession = Depends(get_session),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Resume autonomous action execution for this tenant."""
+    """Resume autonomous action execution for this tenant (owner only)."""
+    owner_only(request, "Resuming autonomy")
     from life_graph.autonomy.kill_switch import invalidate_autonomy_pause_cache
     from life_graph.models.db import TenantConfig
 

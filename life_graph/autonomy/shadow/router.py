@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from life_graph.api.approval_identity import owner_only, resolver
 from life_graph.api.responses import success_response
 from life_graph.autonomy.shadow.schemas import (
     GradeRequest,
@@ -39,11 +40,20 @@ async def list_runs(
 async def grade_run(
     run_id: str,
     body: GradeRequest,
+    request: Request,
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Grade a would-have-done run good/bad. Feeds trust + drives graduation."""
+    """Grade a would-have-done run good/bad. Feeds trust + drives graduation.
+
+    Owner only: a "good" grade raises the actor's trust and moves it toward
+    graduating out of shadow mode into acting for real, so an agent must not
+    grade its own runs.
+    """
+    owner_only(request, "Grading a shadow run")
     try:
-        result = await shadow_service.grade(tenant_id, run_id, body.grade)
+        result = await shadow_service.grade(
+            tenant_id, run_id, body.grade, graded_by=resolver(request)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return success_response(

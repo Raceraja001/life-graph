@@ -40,4 +40,9 @@ class TrustOverrideRequest(BaseModel):
     project_id: str | None = None
     score: float = Field(..., ge=0.0, le=1.0)
     reason: str = Field(..., min_length=1)
-    by: str = Field(..., min_length=1)
+    # Optional and not trusted: who overrode is the server's to say
+    # (api/approval_identity.py ``resolver``). A value here is kept in the
+    # reason as an unverified "client said" line.
+    by: str | None = Field(
+        None, max_length=128, description="Ignored for identity; recorded as an unverified note"
+    )

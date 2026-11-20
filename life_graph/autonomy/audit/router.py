@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
+from life_graph.api.approval_identity import owner_only
 from life_graph.api.responses import success_response
 from life_graph.autonomy.audit.schemas import (
     AuditEntryResponse,
@@ -93,8 +94,9 @@ async def export_audit_log(request: ExportRequest):
 
 
 @router.post("/{action_id}/rollback", response_model=None)
-async def rollback_from_audit(action_id: UUID):
-    """Rollback an action referenced from audit log."""
+async def rollback_from_audit(action_id: UUID, request: Request):
+    """Rollback an action referenced from audit log (owner only: runs a host command)."""
+    owner_only(request, "Running a rollback")
     tenant_id = get_current_tenant_id()
 
     from life_graph.autonomy.pipeline.service import RollbackNotApprovedError
