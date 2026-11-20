@@ -22,6 +22,13 @@ class DriverSettings(BaseModel):
     pushes, and never touches the default branch -- it leaves a reviewable
     branch for the approval step."""
 
+    drivers_dispatch_endpoint: bool = False
+    """Serve ``POST /kernel/drivers/dispatch`` (a test hook, api/drivers.py).
+
+    It runs a whole driver pipeline inside the HTTP request, outside the dev
+    runner's lock, concurrency limits and budget check (audit L5). Off: the
+    route answers 404. Real work goes through ``POST /kernel/drivers/tasks``."""
+
     # ── Agent Drivers ───────────────────────────────────
     driver_claude_code_bin: str = "claude"  # Claude Code CLI binary for the claude_code driver
     # Per-dispatch limit for the claude_code driver. The dispatcher's 300s

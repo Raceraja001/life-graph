@@ -198,7 +198,14 @@ async def dispatch_task(body: DispatchRequest):
     Uses the full dispatch pipeline: driver selection, context building,
     verification chain, and one-bounce rule. Useful for testing driver
     integration without going through the kernel task system.
+
+    Off unless ``LIFE_GRAPH_DRIVERS_DISPATCH_ENDPOINT=true`` (404 otherwise):
+    it bypasses the runner's lock, limits and budget (audit L5).
     """
+    from life_graph.config import settings
+
+    if not settings.drivers_dispatch_endpoint:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
     tenant_id = get_current_tenant_id()
 
     try:
