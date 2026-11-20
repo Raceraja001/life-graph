@@ -71,7 +71,8 @@ for the Windows side of the dual boot.
 
 Docker: `docker compose up -d` runs `app`, `worker` (ARQ), `mcp`, `postgres`, `redis`, `minio`.
 Health check: `curl http://localhost:8080/health` (deep — checks DB + Redis, 503 if critical).
-API docs at `/docs`. Config is via env vars prefixed `LIFE_GRAPH_` (see `life_graph/config.py`, `.env.example`).
+API docs at `/docs`. Config is via env vars prefixed `LIFE_GRAPH_` (see the `life_graph/config/` package — one module per domain, combined in
+`config/__init__.py` — and `.env.example`).
 
 ## Architecture (the big picture)
 
@@ -82,15 +83,17 @@ top-to-bottom): `RequestID → Auth → Tenant → RateLimit → Logging`. `Tena
 Layered structure inside `life_graph/`:
 
 - **`api/`** — routers grouped by domain; `main.py` wires them and runs a large `lifespan` startup
-  that registers tools, seeds personas, and *subscribes* services to the EventBus. `api/dependencies.py`
-  holds DI providers (`Depends()`).
+  that registers tools, seeds personas, and *subscribes* services to the EventBus. `life_graph/runtime.py`
+  holds the cached `get_*` providers (`api/dependencies.py` is an alias of it); routes use them with
+  `Depends()`, services and workers call them directly.
 - **`core/memory_manager.py`** — the primary ingestion orchestrator; trace a memory's life through here.
 - **`extraction/`** — the 3-tier pipeline (`rules.py` regex → `nlp.py` spaCy → `llm.py` fallback).
   The guiding rule is **LLM as advisor, not authority**: ~85% of operations are rule-based/local; an
   LLM call happens only when tiers 1–2 score low. Prefer this pattern when adding logic.
 - **`scoring/`** — importance tiers, recall ranking, exponential decay.
-- **`services/`** — business logic injected via `Depends()`.
-- **`storage/`** — PostgreSQL + pgvector (relational + 768-dim vectors), Apache AGE (Cypher graph as
+- **`services/`** — business logic; new code goes in a domain package (`services/memory/`,
+  `dev/`, `notifications/`, `jarvis/`, `finance/`, `llm/`), shared singletons via `runtime.py`.
+- **`storage/`** — PostgreSQL + pgvector (relational + 1024-dim bge-m3 vectors), Apache AGE (Cypher graph as
   a Postgres extension), Redis, MinIO. `storage/hybrid.py` combines graph + vector search.
 - **`workers/`** — ARQ background jobs & cron (nightly consolidation 03:00 UTC, decay 04:00, daily
   brief, hourly watchers, etc.). Register new jobs in `workers/settings.py`.

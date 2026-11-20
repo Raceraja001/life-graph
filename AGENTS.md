@@ -61,7 +61,10 @@ The build loop:
    `tenancy.py`, `agents.py`, `judgment.py`, `assistant.py`), SQLAlchemy 2.0
    `mapped_column` style, and add the class to the re-export list in `models/db.py`.
    Always include `tenant_id`.
-4. **Create the service** — `life_graph/services/`, injected via `Depends()`, async
+4. **Create the service** — in its domain package under `life_graph/services/`
+   (`memory/`, `dev/`, `notifications/`, `jarvis/`, `finance/`, `llm/`; a new domain gets
+   its own package), with a cached `get_*` provider in `life_graph/runtime.py` if it is a
+   shared singleton (routes take it with `Depends()`, workers call it directly). Async
    throughout, firing events on the EventBus rather than calling other services.
 5. **Create the API endpoints** — `life_graph/api/`, router registered in `life_graph/main.py`,
    with OpenAPI examples.
@@ -109,7 +112,7 @@ patterns are how memory is expected to behave.
 | You want to... | Look at... |
 |----------------|-----------|
 | Add an endpoint | `life_graph/api/` — follow `memories.py`, register in `main.py` |
-| Add a service | `life_graph/services/` — inject via FastAPI `Depends()` |
+| Add a service | its domain package in `life_graph/services/` + a `get_*` provider in `life_graph/runtime.py` |
 | Add a model | the domain module in `life_graph/models/` (re-exported from `models/db.py`) + a new Alembic migration |
 | Add a kernel service | `life_graph/kernel/` — follow the `scheduler.py` pattern |
 | Add a tool | `life_graph/tools/` — use the `@tool` decorator, see `calculator.py` |
@@ -119,7 +122,8 @@ patterns are how memory is expected to behave.
 | Add an event | `life_graph/core/events.py` — add to the `EventType` enum |
 | Add OpenAPI docs | `life_graph/api/openapi_examples.py` + wire `responses=` |
 | Read a spec | `docs/specs/` — check its status header first |
-| Check config | `life_graph/config.py` — env prefix `LIFE_GRAPH_` |
+| Check config | the `life_graph/config/` package (one module per domain) — env prefix `LIFE_GRAPH_` |
+| Count anything (routes, tables, jobs, settings) | `docs/STATE.md`, generated; never hard-code counts in docs (last verified 2026-11-20) |
 | Run tests | `pytest tests/ -v` (`tests/unit/ -v` needs no database) |
 | Refresh the inventory | `python scripts/gen_state.py --html` |
 
