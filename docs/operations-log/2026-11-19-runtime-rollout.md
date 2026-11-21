@@ -233,3 +233,28 @@ The runtime panel shows `failures` (info), from earlier failed tasks.
 - Convert the remaining 197 asserts that accept 500.
 
 **Rollback:** move `prod` back to `90cc730` (or an earlier tag no older than `22021b1`) and run `./dev.sh restart`. No migrations were added in this release.
+
+### D19. The dev-task runner did not come back after a reboot (2026-11-21)
+
+**What happened:** WSL rebooted at 2026-11-20 18:00. `life-graph.service` brought the API back, but `life-graph-dev-runner.service` was never started. Its state was `inactive (dead)`, with no activation time and 0 restarts. The 4 nightly tasks queued at 21:03 waited until 08:55 the next morning.
+
+**Monitoring:** it worked. `runner_down` (important) fired at 18:03, 00:03 and 06:03.
+
+**Root cause:** an ordering loop in the unit file created in D4:
+- The runner was `WantedBy=default.target` and `After=life-graph.service`.
+- `life-graph.service` is `After=default.target`.
+- A target waits for the units it wants, so `default.target` waited on the runner, the runner waited on `life-graph.service`, and that waited on `default.target`.
+- systemd breaks such a loop by dropping a job, and it dropped the runner. The boot journal had rotated, so the loop message itself was not seen.
+- This was the first reboot since the unit was created.
+
+**Fix:**
+- `[Install] WantedBy=life-graph.service` (still `After=life-graph.service`).
+- Re-enabled: the link moved from `default.target.wants/` to `life-graph.service.wants/`.
+- The old file is in `~/life-graph-backups/life-graph-dev-runner.service.before-20261121`.
+
+**Verified:**
+- `default.target` no longer wants the runner, and `life-graph.service` does.
+- Runner active since 08:55:19 UTC; it claimed the first queued task straight away.
+- The real proof is the next reboot: check `systemctl --user is-active life-graph-dev-runner` afterwards.
+
+**Rollback:** restore the backup file, then run `systemctl --user daemon-reload` and `systemctl --user reenable life-graph-dev-runner`.
