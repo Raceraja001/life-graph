@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -81,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: py
         with:
           python-version: |
@@ -144,7 +144,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -202,7 +202,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: py
         with:
           python-version: "3.12"
@@ -284,7 +284,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: py
         with:
           python-version: "3.12"
@@ -423,7 +423,7 @@ jobs:
           done
           echo "::warning::no MinIO image could be pulled; archive tests will skip"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: py
         with:
           python-version: "3.12"
@@ -548,7 +548,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: py
         with:
           python-version: "3.12"
@@ -585,7 +585,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: py
         with:
           python-version: "3.12"
@@ -651,7 +651,7 @@ jobs:
           docker logs life_graph_mig_db >&2
           exit 1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: py
         with:
           python-version: "3.12"
