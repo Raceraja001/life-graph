@@ -204,14 +204,14 @@ local-nlp = [
 # running somewhere less contained. The unit suite needs none of it — it
 # injects a transport.
 browser-sandbox = [
-    "playwright==1.52.0",
+    "playwright==1.65.2",
 ]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
     "pytest-xdist>=3.6",  # pytest -n auto; test ids must be the same in every worker
-    "ruff==0.16.1",  # pinned: an unpinned linter breaks CI with no code change
+    "ruff==0.17.5",  # pinned: an unpinned linter breaks CI with no code change
     # Pinned for the same reason: each mypy release adds checks, so a new
     # version would move the committed error baseline (mypy-api-baseline.txt)
     # with no code change. Raise it in a PR of its own and re-record
@@ -227,7 +227,7 @@ dev = [
     # Pinned to releases more than two months old (supply-chain caution, as
     # with LiteLLM/Trivy in 2026-10); grimp is its import-graph engine.
     "import-linter==2.15",
-    "grimp==3.17",
+    "grimp==3.20",
 ]
 # Everything a full self-hosted deployment uses, so `pip install life-graph[all]`
 # reproduces the old all-in-one install in one line.
