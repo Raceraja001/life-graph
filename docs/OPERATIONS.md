@@ -832,6 +832,34 @@ is the one control.
 - **Cancel:** the page's Cancel button takes two clicks.
   `POST /kernel/drivers/tasks/{id}/cancel` does the same.
 
+
+### Dev-task runner unit (prod)
+
+Prod runs dev tasks in a dedicated worker (`LIFE_GRAPH_DEV_TASK_RUNNER_MODE=worker`). The worker is the systemd user unit `~/.config/systemd/user/life-graph-dev-runner.service`. **It must be wanted by `life-graph.service`, not by `default.target`.** `life-graph.service` is `After=default.target`, so `WantedBy=default.target` together with `After=life-graph.service` forms an ordering loop at boot, and systemd silently drops the runner. See decision log D19, from 2026-11-21.
+
+```ini
+[Unit]
+Description=Life Graph dev-task runner (prod edition)
+After=life-graph.service
+Wants=life-graph.service
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/h/DevTools/Projects/life-graph-prod
+ExecStart=/bin/bash -c 'set -a; . ./.env; set +a; export PYTHONPATH="$PWD"; exec /home/raja/.venvs/life-graph/bin/python -m life_graph.workers.dev_runner'
+Restart=always
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=1560
+StandardOutput=append:/mnt/h/DevTools/Projects/life-graph-prod/logs/dev-runner.log
+StandardError=append:/mnt/h/DevTools/Projects/life-graph-prod/logs/dev-runner.log
+
+[Install]
+WantedBy=life-graph.service
+```
+
+After changing the unit, run `systemctl --user daemon-reload && systemctl --user reenable life-graph-dev-runner`. Then check that `systemctl --user show life-graph.service -p Wants` lists the runner.
+
 ### Runtime health
 
 `GET /api/v1/kernel/observability/system` has a `runtime` section: `status` (`ok`, `warning` or `critical`),
