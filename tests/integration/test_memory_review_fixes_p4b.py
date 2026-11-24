@@ -90,8 +90,6 @@ def _pipeline():
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_bulk_import_enqueues_ids_of_rows_that_exist(client, monkeypatch):
-    import arq
-
     from life_graph.models.db import Memory
     from life_graph.storage.database import async_session
 
@@ -105,10 +103,12 @@ async def test_bulk_import_enqueues_ids_of_rows_that_exist(client, monkeypatch):
         async def close(self):
             pass
 
-    async def _create_pool(*_a, **_k):
+    async def _get_arq_pool():
         return _Pool()
 
-    monkeypatch.setattr(arq, "create_pool", _create_pool)
+    # The process's shared pool (L15); the session-scoped loop may already
+    # hold a real one, so patch the accessor rather than arq.create_pool.
+    monkeypatch.setattr("life_graph.runtime.get_arq_pool", _get_arq_pool)
     tag = f"p4b-{uuid.uuid4().hex[:8]}"
 
     r = await client.post(
@@ -139,12 +139,10 @@ async def test_bulk_import_enqueues_ids_of_rows_that_exist(client, monkeypatch):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_bulk_import_enqueue_failure_reports_not_searchable(client, monkeypatch):
-    import arq
-
-    async def _create_pool(*_a, **_k):
+    async def _get_arq_pool():
         raise ConnectionError("redis down")
 
-    monkeypatch.setattr(arq, "create_pool", _create_pool)
+    monkeypatch.setattr("life_graph.runtime.get_arq_pool", _get_arq_pool)
 
     r = await client.post(
         "/api/v1/admin/bulk/import",

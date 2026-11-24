@@ -443,10 +443,11 @@ class TestProjectSettings:
             async def close(self):
                 pass
 
-        async def fake_create_pool(_settings):
+        async def fake_get_arq_pool():
             return _FakePool()
 
-        monkeypatch.setattr("arq.create_pool", fake_create_pool)
+        # The process's shared pool (L15), not a pool per request.
+        monkeypatch.setattr("life_graph.runtime.get_arq_pool", fake_get_arq_pool)
 
         response = await client.post(
             f"/api/v1/kernel/projects/{project_id}/learn", json={"authors": ["me@example.com"]}
@@ -468,10 +469,10 @@ class TestProjectSettings:
         client: AsyncClient,
         monkeypatch,
     ):
-        async def must_not_run(_settings):
+        async def must_not_run():
             raise AssertionError("must not enqueue for a project that doesn't exist")
 
-        monkeypatch.setattr("arq.create_pool", must_not_run)
+        monkeypatch.setattr("life_graph.runtime.get_arq_pool", must_not_run)
 
         response = await client.post(
             f"/api/v1/kernel/projects/{uuid.uuid4()}/learn",
