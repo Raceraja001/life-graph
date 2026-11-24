@@ -78,6 +78,24 @@ def test_detect_bind_host(argv, env, expected):
     assert detect_bind_host(argv, env) == expected
 
 
+async def test_lifespan_runs_the_guard_first_and_it_is_fatal(monkeypatch):
+    # The guard must abort boot (not be swallowed by startup_step) and run
+    # before any other startup step touches the outside world.
+    from life_graph import main
+
+    def refuse():
+        raise InsecureStartupError("no API key, exposed")
+
+    def must_not_run():
+        raise AssertionError("a startup step ran after the auth guard refused")
+
+    monkeypatch.setattr(main, "check_auth_exposure", refuse)
+    monkeypatch.setattr("life_graph.runtime.get_embedding_service", must_not_run)
+    with pytest.raises(InsecureStartupError):
+        async with main.lifespan(main.app):
+            pass
+
+
 def test_default_call_uses_the_process_argv(monkeypatch):
     monkeypatch.setattr("sys.argv", ["uvicorn", "life_graph.main:app", "--host", "0.0.0.0"])
     monkeypatch.delenv("LIFE_GRAPH_BIND_HOST", raising=False)
