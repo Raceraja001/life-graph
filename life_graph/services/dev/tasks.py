@@ -25,7 +25,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, or_, select, text
+from sqlalchemy import and_, func, or_, select, text
 
 from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
 from life_graph.autonomy.kill_switch import revoke_live_capabilities
@@ -138,6 +138,17 @@ async def create_dev_task(
     title = instruction.strip().splitlines()[0][:200] if instruction.strip() else "Dev task"
     key = instruction_key(instruction)
     async with session_factory() as session:
+        # Two identical requests at the same moment both passed the duplicate
+        # check before either row existed (audit L12). Serialise them on the
+        # dedupe key until this transaction ends: the second then sees the
+        # first. Released on commit, or on the rollback when the session closes.
+        await session.execute(
+            select(
+                func.pg_advisory_xact_lock(
+                    func.hashtextextended(f"{KIND}:{tenant_id}:{project['id']}:{key}", 0)
+                )
+            )
+        )
         existing = (
             await session.execute(
                 select(AgentTask)

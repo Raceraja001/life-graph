@@ -60,7 +60,9 @@ async def test_same_instruction_while_queued_returns_the_existing_task():
     assert data["id"] == str(existing.id)
     assert session.added == []
     assert session.commits == 0
-    lookup = sql(session.statements[0])
+    lock, lookup = sql(session.statements[0]), sql(session.statements[1])
+    assert "pg_advisory_xact_lock" in lock
+    assert dev_tasks.instruction_key(INSTRUCTION) in lock
     assert "'queued'" in lookup and "'running'" in lookup
     assert dev_tasks.instruction_key(INSTRUCTION) in lookup
     assert PROJECT["id"] in lookup.replace("'", "")
