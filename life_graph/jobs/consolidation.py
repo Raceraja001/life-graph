@@ -25,7 +25,6 @@ import numpy as np
 from sqlalchemy import func, select, update
 
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.core.utils import cosine_similarity as _cosine_similarity  # noqa: F401
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate
 from life_graph.scoring.decay import DecayCalculator
