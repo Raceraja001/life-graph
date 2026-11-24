@@ -532,40 +532,61 @@ cat evals/adversarial_security_report.json | jq .
 
 ## Emergency Kill Switches
 
-In case of abnormal browser agent activity or compromise:
+Use these if an agent, errand or browser session is doing something it should not. They are listed fastest and most targeted first. Every command below is checked against the code and the prod layout; prod runs through `./dev.sh`, with Postgres in the `life_graph_db` container and the tenant `raja`.
 
-### 1. Instant Revocation of All Pending Capabilities
+### 1. Pause autonomy (the built-in kill switch)
 
-To immediately cancel all unspent capabilities across all tenants:
+This is one call, per tenant. It does two things:
+- It stops every autonomous action from running. `AutoFixService._run_action` checks it before anything executes.
+- It revokes the tenant's live capabilities: the owner's approved, unspent mandates for errand steps.
+
 ```bash
-docker compose -f docker-compose.production.yml exec postgres \
-  psql -U life_graph -c "UPDATE authorization_capabilities SET revoked_at = NOW() WHERE spent_at IS NULL;"
+cd /mnt/h/DevTools/Projects/life-graph-prod
+K=$(grep -E '^LIFE_GRAPH_OWNER_API_KEYS=' .env | cut -d= -f2- | cut -d, -f1 | tr -d "\"'")
+H=(-H "Authorization: Bearer $K" -H "X-Tenant-ID: raja")
+curl -s -X POST "${H[@]}" http://127.0.0.1:8080/api/v1/autonomy/safety/kill-switch/pause
+curl -s "${H[@]}" http://127.0.0.1:8080/api/v1/autonomy/safety/kill-switch     # check: autonomy_paused true
+unset K H
 ```
 
-To revoke capabilities for a specific tenant:
+- **200** means paused, with `capabilities_revoked: N`.
+- **503** means autonomy *is* paused but the revocation failed. Call `pause` again; it is safe to repeat.
+- It fails closed. If the flag cannot be read, autonomy counts as paused. Other workers pick up a change within 15 s, because that is how long the pause state is cached.
+- **Resume** with `POST .../kill-switch/resume`. It needs an owner key or a paired phone; any key can pause.
+
+### 2. Revoke capabilities directly in the database (if the API is down)
+
+The capabilities live in the `capabilities` table (migration 059). This is the same statement the kill switch runs (`durable_store.revoke_all`):
+
 ```bash
-docker compose -f docker-compose.production.yml exec postgres \
-  psql -U life_graph -c "UPDATE authorization_capabilities SET revoked_at = NOW() WHERE tenant_id = '<tenant_id>' AND spent_at IS NULL;"
+cd /mnt/h/DevTools/Projects/life-graph-prod
+U=$(grep -E '^LIFE_GRAPH_DATABASE_URL=' .env | sed -E 's#.*://([^:@/]+).*#\1#')
+# one tenant:
+docker exec life_graph_db psql -U "$U" -d life_graph -c "UPDATE capabilities SET revoked = true WHERE tenant_id = 'raja' AND revoked = false;"
+# every tenant:
+docker exec life_graph_db psql -U "$U" -d life_graph -c "UPDATE capabilities SET revoked = true WHERE revoked = false;"
 ```
 
-### 2. Autonomous Browser Shutdown
+This does not pause autonomy. Do step 1 as well once the API is back.
 
-To instantly halt all running browser errands and kill the browser driver:
+### 3. Stop dev-agent work
+
+- Cancel one task: `POST /api/v1/agent-tasks/{task_id}/cancel`. It also revokes that task's capabilities.
+- Stop every dev task at once: `systemctl --user stop life-graph-dev-runner`. A running task gets SIGTERM, with up to 26 min to stop (`TimeoutStopSec`). Start it again with `systemctl --user start life-graph-dev-runner`.
+
+### 4. Turn browser errands off
+
+Set the following in prod `.env`, then run `./dev.sh restart`. An unknown value also counts as disabled.
+
 ```bash
-# Stop the sandbox browser container
-docker compose -f compose.sandbox.yaml stop browser
-
-# Alternatively, stop the egress proxy container (all web requests immediately drop)
-docker compose -f compose.sandbox.yaml stop egress
+LIFE_GRAPH_BROWSER_SANDBOX_MODE=disabled
 ```
 
-### 3. Application-Level Kill Switch
+The browser sandbox containers come from `compose.sandbox.yaml` (services `browser`, `egress`, `workspace`). They are not running in prod today. If they ever are, stopping them cuts the browser off at once:
 
-Set in `.env.production` or runtime environment:
 ```bash
-LIFE_GRAPH_BROWSER_ENABLED=false
+docker compose -f compose.sandbox.yaml stop browser egress
 ```
-Then restart the API and workers (`./dev.sh restart`). When disabled, all browser errand requests are rejected fail-closed with `BrowserDisabledError`.
 
 ## Monitoring and Alerting Checklist
 
