@@ -10,7 +10,7 @@
 
 ## Why
 
-`services/money.py::parse_alert` turns a bank SMS into a transaction. On 6459f6b it records
+`services/finance/money.py::parse_alert` turns a bank SMS into a transaction. On 6459f6b it records
 messages that are not transactions: a scheduled SIP debit, a declined card purchase, a failed
 UPI payment and a pre-approved loan offer all come back as real debits or credits. These go
 straight into the money check-in (Job 5) and the budgets.
@@ -40,7 +40,7 @@ from decimal import Decimal
 
 import pytest
 
-from life_graph.services.money import parse_alert
+from life_graph.services.finance.money import parse_alert
 
 NOW = datetime(2026, 10, 24, 9, 0, tzinfo=UTC)
 
@@ -101,7 +101,7 @@ def test_real_alerts_still_parse(text, expected):
 
 STEP 2. Run it: run_tests with paths ["tests/unit/test_money_alert_not_transactions.py"] (on OpenCode the tool is lg_tests_run_tests). Some cases must fail now, because the source is not changed yet. An ImportError or SyntaxError means STEP 1 was copied wrong: fix the copy, never the cases.
 
-STEP 3. Make the smallest change in life_graph/services/money.py (parse_alert) that makes those cases pass. Read the code first.
+STEP 3. Make the smallest change in life_graph/services/finance/money.py (parse_alert) that makes those cases pass. Read the code first.
 Add module-level compiled patterns next to the other _SMS_* patterns (case-insensitive), and in parse_alert, right after the existing OTP check, return None when:
 1. the money only will or may move: "will be", "shall be", "to be", "can be" or "may be" followed by debited, credited, deducted, charged, refunded or reversed (also "auto-debited"); or "due on", "due by", "due date", "is due", "are due", "scheduled", "upcoming", "reminder". This pattern works: r"\b(?:(?:will|shall|to|can|may)\s+be\s+(?:auto-)?(?:debited|credited|deducted|charged|refunded|reversed)|due\s+(?:on|by|date)|(?:is|are)\s+due|scheduled|upcoming|reminder)\b"
 2. it is a promotion: "pre-approved" or "preapproved", "apply now", "eligible for", "limited period", "click", "T&C", "up to" or "upto";
@@ -116,7 +116,7 @@ Change: <what you changed in parse_alert (and any helper you added), and why>
 Risk: <what could break, and which test in tests/unit/test_money_alert_not_transactions.py or tests/unit/test_assistant_money.py shows it does not>
 
 Files you may touch:
-- life_graph/services/money.py (parse_alert)
+- life_graph/services/finance/money.py (parse_alert)
 - tests/unit/test_money_alert_not_transactions.py (new; created in STEP 1)
 
 Do NOT:

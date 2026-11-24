@@ -39,7 +39,7 @@ from decimal import Decimal
 
 import pytest
 
-from life_graph.services.money import parse_alert
+from life_graph.services.finance.money import parse_alert
 
 NOW = datetime(2026, 10, 24, 9, 0, tzinfo=UTC)
 
@@ -105,7 +105,7 @@ def test_credit_card_and_credit_limit_are_not_credits(text, expected):
 
 STEP 2. Run it: run_tests with paths ["tests/unit/test_money_alert_amount.py"] (on OpenCode the tool is lg_tests_run_tests). Some cases must fail now, because the source is not changed yet. An ImportError or SyntaxError means STEP 1 was copied wrong: fix the copy, never the cases.
 
-STEP 3. Make the smallest change in life_graph/services/money.py (parse_alert) that makes those cases pass. Read the code first.
+STEP 3. Make the smallest change in life_graph/services/finance/money.py (parse_alert) that makes those cases pass. Read the code first.
 1. The amount is the first _SMS_AMOUNT match that is NOT introduced by a balance or limit word: the up-to-25 characters before the match end with "bal", "balance", "limit" or "lmt" as a whole word, then optionally spaces, ".", ":", "-", "is" or "of" ("Avl Bal Rs", "Avl Bal: INR", "balance is Rs", "credit limit is Rs", "Avl Lmt Rs"). Add one module-level pattern for it, anchored at the end, for example r"\b(?:bal|balance|limit|lmt)\b[\s.:\-]*(?:(?:is|of)\s*)?$" (re.I), searched in body[max(0, m.start() - 25):m.start()].
 2. If every amount in the message is a balance or limit, return None.
 3. In _SMS_CREDIT, "credit" must not count when "card" or "limit" follows: credit(?!\s+(?:card|limit)). "credited" still counts.
@@ -120,7 +120,7 @@ Change: <what you changed in parse_alert (and any helper you added), and why>
 Risk: <what could break, and which test in tests/unit/test_money_alert_amount.py or tests/unit/test_assistant_money.py shows it does not>
 
 Files you may touch:
-- life_graph/services/money.py (parse_alert)
+- life_graph/services/finance/money.py (parse_alert)
 - tests/unit/test_money_alert_amount.py (new; created in STEP 1)
 
 Do NOT:

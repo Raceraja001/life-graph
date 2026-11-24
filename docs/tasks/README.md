@@ -7,7 +7,7 @@
 Each `NN-*.md` file is one pipeline run: one source file and one new test file, pure logic, no
 database. Each file holds a ready-to-paste **instruction** that already contains its `## Spec`,
 with acceptance criteria bound to pytest node ids, in the format the pipeline parses
-(`services/acceptance.py`, `drivers/plan_spec.py::_SPEC_HEADINGS`).
+(`services/dev/acceptance.py`, `drivers/plan_spec.py::_SPEC_HEADINGS`).
 
 Every bug these tasks fix was reproduced on 6459f6b before the spec was written. On 2026-10-25
 every test file was checked twice on a scratch copy of c978a89: it fails on the current code, and

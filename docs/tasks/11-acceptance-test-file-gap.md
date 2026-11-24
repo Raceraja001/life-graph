@@ -10,7 +10,7 @@
 
 ## Why
 
-When a plan is filed for approval, `services/acceptance.py::spec_gaps` lists the problems a
+When a plan is filed for approval, `services/dev/acceptance.py::spec_gaps` lists the problems a
 reviewer should see. A criterion bound to a file that is not a test passes as "safe", for example
 `AC-2: ... — test: life_graph/services/x.py`. pytest then collects nothing (exit 5), and the
 `acceptance_tests_pass` verifier fails the task after the run, with no warning at approval time.
@@ -29,7 +29,7 @@ STEP 1. Create the new file tests/unit/test_acceptance_test_file_gap.py with exa
 ===== tests/unit/test_acceptance_test_file_gap.py =====
 import pytest
 
-from life_graph.services.acceptance import AcceptanceCriterion, spec_gaps
+from life_graph.services.dev.acceptance import AcceptanceCriterion, spec_gaps
 
 
 def gaps_for(test):
@@ -66,7 +66,7 @@ def test_test_files_are_not_flagged(test):
 
 STEP 2. Run it: run_tests with paths ["tests/unit/test_acceptance_test_file_gap.py"] (on OpenCode the tool is lg_tests_run_tests). Some cases must fail now, because the source is not changed yet. An ImportError or SyntaxError means STEP 1 was copied wrong: fix the copy, never the cases.
 
-STEP 3. Make the smallest change in life_graph/services/acceptance.py (spec_gaps) that makes those cases pass. Read the code first.
+STEP 3. Make the smallest change in life_graph/services/dev/acceptance.py (spec_gaps) that makes those cases pass. Read the code first.
 Make exactly two small edits. On the last run a code_edit call whose `old` was the whole multi-line spec_gaps function could not be parsed by the model server, and the run died. So keep every `old` to ONE line copied from the file, and write the new code with single quotes only, as below (no escaping needed; the formatter fixes the quotes later).
 Edit A: old is the one line
 def spec_gaps(criteria: list[AcceptanceCriterion], tasks: list[str]) -> list[str]:
@@ -91,7 +91,7 @@ Change: <what you changed in spec_gaps (and any helper you added), and why>
 Risk: <what could break, and which test in tests/unit/test_acceptance_test_file_gap.py or tests/unit/test_acceptance.py shows it does not>
 
 Files you may touch:
-- life_graph/services/acceptance.py (spec_gaps, and a new private helper _is_test_file)
+- life_graph/services/dev/acceptance.py (spec_gaps, and a new private helper _is_test_file)
 - tests/unit/test_acceptance_test_file_gap.py (new; created in STEP 1)
 
 Do NOT:
