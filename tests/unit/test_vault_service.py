@@ -607,7 +607,12 @@ async def test_no_refusal_or_success_ever_mentions_the_plaintext(caplog):
     await attempt(vault.resolve_for_origin(FakeSession(one_use), TENANT, "h4ndl3", "bank.com"))
 
     tampered = make_row(value=secret)
-    tampered.encrypted_value = tampered.encrypted_value[:-1] + bytes([0])
+    # Flip a bit rather than set a value: the tag is random, so overwriting its
+    # last byte with 0 left it unchanged 1 run in 256 and the "tampered" blob
+    # decrypted (CI #859).
+    tampered.encrypted_value = tampered.encrypted_value[:-1] + bytes(
+        [tampered.encrypted_value[-1] ^ 0x01]
+    )
     await attempt(
         vault.resolve_for_origin(FakeSession(tampered), TENANT, "h4ndl3", "netbanking.hdfcbank.com")
     )
