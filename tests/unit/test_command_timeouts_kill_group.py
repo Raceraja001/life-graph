@@ -35,7 +35,8 @@ def _alive(pid: int) -> bool:
     try:
         with open(f"/proc/{pid}/stat") as fh:
             state = fh.read().rsplit(")", 1)[1].split()[0]
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
+        # ProcessLookupError: the process exited between open() and read().
         return False
     return state != "Z"  # a zombie is dead, only not yet reaped by init
 

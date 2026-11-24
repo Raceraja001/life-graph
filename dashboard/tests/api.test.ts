@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 
 function mockFetch(impl: (url: string, init: RequestInit) => Response) {
-  const spy = vi.fn(async (u: unknown, i: unknown) =>
-    impl(String(u), (i ?? {}) as RequestInit),
+  // Typed so spy.mock.calls[n][1] is a RequestInit, not unknown.
+  const spy = vi.fn<(u: unknown, i: RequestInit) => Promise<Response>>(
+    async (u, i) => impl(String(u), i ?? {}),
   );
   vi.stubGlobal("fetch", spy);
   return spy;
