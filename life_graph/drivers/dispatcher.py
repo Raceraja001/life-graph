@@ -34,6 +34,7 @@ from life_graph.drivers.context import ContextPacketBuilder
 from life_graph.drivers.dispatch_approvals import (  # noqa: F401  (re-exported)
     AUTO_PR_MERGE_RATE,
     ApprovalFilingMixin,
+    end_transaction,
 )
 from life_graph.drivers.dispatch_stats import (  # noqa: F401  (re-exported)
     MAX_WIP_PER_PROJECT,
@@ -627,9 +628,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         factories use ``expire_on_commit=False``. A session that is not in a
         transaction (or a test's mock) is left alone.
         """
-        in_transaction = getattr(session, "in_transaction", None)
-        if callable(in_transaction) and in_transaction() is True:
-            await session.commit()
+        await end_transaction(session)
 
     async def _persist_checkpoint(self, run: _DispatchRun) -> None:
         """Flush the run's stage trail into the task row's properties.
