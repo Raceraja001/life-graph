@@ -35,6 +35,7 @@ from life_graph.core.errors import DomainError
 from life_graph.core.events import enable_redis_bridge, event_bus
 from life_graph.core.logging import setup_logging
 from life_graph.core.plugins import PluginManager
+from life_graph.core.startup_guards import check_auth_exposure
 from life_graph.runtime import close_arq_pool, get_arq_pool
 from life_graph.storage.database import async_session
 from life_graph.storage.redis import check_redis, close_redis, init_redis
@@ -488,6 +489,10 @@ async def lifespan(app: FastAPI):
     )
     if settings.is_development:
         logger.warning("Running in DEVELOPMENT mode — auth/tenant requirements relaxed")
+
+    # Startup — refuse to serve unauthenticated requests beyond this machine
+    # (audit M5). Fatal, so deliberately NOT wrapped in startup_step().
+    check_auth_exposure()
 
     # Startup — refuse to boot with no embedding backend at all.
     #
