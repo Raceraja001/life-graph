@@ -12,7 +12,7 @@
 - micro_consolidation: post-session cleanup
 
 Grouped here 2026-11-17; they were flat modules in life_graph/services/.
-Each old module (services/memory_retrieval.py and the rest) is an alias
-of the new module -- the same module object -- for code on other branches.
-Nothing is imported here, so importing one submodule loads only that one.
+The old-name aliases
+were deleted on 2026-11-24 (audit L1). Nothing is imported here, so
+importing one submodule loads only that one.
 """

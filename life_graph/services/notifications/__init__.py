@@ -7,7 +7,7 @@
 - telegram_delivery, telegram_binding: the brief over Telegram; chat pairing
 
 Grouped here 2026-11-18; they were flat modules in life_graph/services/.
-Each old module is an alias of the new one -- the same module object --
-for code on other branches. Nothing is imported here, so importing one
-submodule loads only that one.
+The old-name aliases
+were deleted on 2026-11-24 (audit L1). Nothing is imported here, so
+importing one submodule loads only that one.
 """

@@ -4,11 +4,11 @@
 - checkin: the money check-in -- where it went, what is over (was money_checkin)
 - invoices: draft, number, render, track and chase what clients owe
 
-Named finance, not money, so services/money.py can stay an alias of
-finance/money.py (a package and a module cannot share a name).
+Named finance, not money: a package and a module cannot share a name, and
+services/money.py was an alias of finance/money.py until 2026-11-24.
 
 Grouped here 2026-11-18; they were flat modules in life_graph/services/.
-Each old module is an alias of the new one -- the same module object --
-for code on other branches. Nothing is imported here, so importing one
-submodule loads only that one.
+The old-name aliases
+were deleted on 2026-11-24 (audit L1). Nothing is imported here, so
+importing one submodule loads only that one.
 """

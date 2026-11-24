@@ -1,10 +1,9 @@
-"""The memory services live in life_graph/services/memory/; the old names alias them.
+"""The memory services live in life_graph/services/memory/.
 
 They were flat modules (life_graph/services/memory_retrieval.py, recall.py,
-...) until 2026-11-17. Each old name is kept as an alias for code on other
-branches. It has to be the same module object, not a re-export: with two
-objects, a test's ``monkeypatch.setattr(old_module, ...)`` would miss every
-caller that imports the new path.
+...) until 2026-11-17, then old-name aliases until 2026-11-24, when the
+aliases were deleted (audit L1). These tests keep the old names from coming
+back.
 """
 
 import importlib
@@ -31,18 +30,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize("old", sorted(MOVES))
-def test_the_old_name_is_the_same_module(old):
-    moved = importlib.import_module(f"life_graph.services.memory.{MOVES[old]}")
-    assert importlib.import_module(f"life_graph.services.{old}") is moved
-
-
-def test_a_patch_through_the_old_name_reaches_new_path_callers(monkeypatch):
-    import life_graph.services.memory.recall as new
-    import life_graph.services.recall as old
-
-    sentinel = object()
-    monkeypatch.setattr(old, "_COOLDOWN_SECONDS", sentinel)
-    assert new._COOLDOWN_SECONDS is sentinel
+def test_the_old_name_is_gone(old):
+    # The aliases were deleted on 2026-11-24 (audit L1). Re-adding one would
+    # reopen the "edit the ten-line alias instead of the code" trap.
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(f"life_graph.services.{old}")
 
 
 def test_nothing_in_the_repo_imports_the_old_names():
@@ -50,10 +42,8 @@ def test_nothing_in_the_repo_imports_the_old_names():
     offenders = []
     for base in ("life_graph", "tests", "scripts"):
         for p in (ROOT / base).rglob("*.py"):
-            if p.parent == ROOT / "life_graph" / "services" and p.stem in MOVES:
-                continue  # the aliases themselves
             if p == Path(__file__).resolve():
-                continue  # imports an old name on purpose, to test the alias
+                continue  # names the old modules on purpose
             text = p.read_text(encoding="utf-8")
             for line in text.splitlines():
                 if line.strip().startswith("from life_graph.services import "):
