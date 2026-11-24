@@ -340,3 +340,37 @@ There was no `uv.lock` change and no new migration (alembic stays at 062). The `
   - #323: Vitest 5, which moves the dashboard CI and its Dockerfile to Node 22.
 - Left open until the upstream tools support them: TypeScript 7 (#284, #289) and ESLint 10 (#288).
 - **The next release must sync the shared venv and run `playwright install chromium`.**
+
+
+### D23. Release with the dependency pass and the H7 fix (2026-11-24)
+
+**Owner said "release".** Tag `prod-20261124-1144`, rollback `541bad2`. It contains:
+- The dependency pass from D22, and #321.
+- The H7 fix (#324).
+- Docs.
+
+There were no new migrations; alembic stays at 062. CI was green at `b0a4c5e`, and only the bot's `[skip ci]` docs commit came after it.
+
+**Shared venv** (`~/.venvs/life-graph`, editable on the main checkout):
+- Synced to `uv.lock` with `uv sync --locked --inexact --no-install-project` and the extras dev, multimodal, cold-start, watchers and browser-sandbox.
+- Exactly 5 upgrades:
+  - playwright 1.52.0 → 1.65.2
+  - ruff 0.16.1 → 0.17.6
+  - grimp 3.17 → 3.20
+  - google-auth 2.62.2 → 2.63.0
+  - icalendar 7.3.0 → 7.3.2
+- The spaCy model was kept.
+- Ran `playwright install chromium`, which downloaded headless shell v1255.
+- Backups in `~/life-graph-backups/release-20261124-2/`: `.env`, `pip freeze` and the uv plans.
+
+**Verified:**
+- Health 200, UI 200, and `/metrics` without a key 401.
+- API, UI and dev runner all active. Kill switch not paused.
+- Approving a fake approval id with the owner key gets 404.
+- Playwright Chromium launches.
+- 0 errors in the API and worker logs. Dev edition health 200.
+
+**Rollback:**
+1. Check out `541bad2` on `prod`.
+2. Restore the venv with `uv pip install -r ~/life-graph-backups/release-20261124-2/venv-freeze.before.txt`. Or sync from that commit's `uv.lock`.
+3. Run `./dev.sh restart`.
