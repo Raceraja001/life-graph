@@ -315,3 +315,28 @@ There was no `uv.lock` change and no new migration (alembic stays at 062). The `
 **Effect:** only your owner keys (the dashboard) or a paired phone can approve, reject, or use the admin routes that change the deployment or export data. The Claude Code/MCP key is the non-owner key and is refused.
 
 **Rollback:** set `LIFE_GRAPH_APPROVALS_REQUIRE_OWNER` and `LIFE_GRAPH_ADMIN_REQUIRE_OWNER` to false in prod `.env` (or restore the backup), then run `./dev.sh restart`. For the code, check out `0abb7f0` on the `prod` branch and restart.
+
+
+### D22. Kill switch verified live; `/metrics` locked; dependency pass (2026-11-24)
+
+**Kill switch, live on prod (tenant `raja`), 09:06 UTC:**
+- **Pause with the Claude Code/MCP key (non-owner): 200.** `autonomy_paused` was true and `capabilities_revoked` was 0, because no live capabilities existed. That count was checked before pausing.
+- **Resume with the same key: 403**, "needs the owner". Autonomy stayed paused.
+- **Owner resumed with an owner key: 200**, and `autonomy_paused` was false.
+- This confirms the runbook in `OPERATIONS.md` (#320): any key can stop autonomy, and only the owner can restart it.
+
+**`/metrics` locked (audit M7). Owner OK, 2026-11-24:**
+- Prod `.env` now has `LIFE_GRAPH_METRICS_REQUIRE_KEY=true`, then `./dev.sh restart`. The backup is in `~/life-graph-backups/metrics-lock-20261124/`.
+- Checked before the change: no Prometheus is running. Uptime Kuma only checks `/alive`. There were no `/metrics` requests in the last 2 days of logs.
+- **Verified:**
+  - No key: **401**. With a key: **200**.
+  - Health 200, UI 200, API, UI and dev runner all active, and 0 errors in the log.
+- **Rollback:** remove the line, or restore the backup, then run `./dev.sh restart`.
+
+**Dependency pass, merged on master and not yet released:**
+- #321 fixed two tests that blocked the updates: a `/proc` race in the kill-group test, and the typing of the dashboard fetch spy.
+- Merged updates:
+  - Dependabot: #279–#283 (Actions), #285 (tsup 9), #287 (happy-dom 21), #286 (dashboard minor), #322 (playwright 1.65, ruff 0.17, grimp 3.20, google-auth, icalendar).
+  - #323: Vitest 5, which moves the dashboard CI and its Dockerfile to Node 22.
+- Left open until the upstream tools support them: TypeScript 7 (#284, #289) and ESLint 10 (#288).
+- **The next release must sync the shared venv and run `playwright install chromium`.**
