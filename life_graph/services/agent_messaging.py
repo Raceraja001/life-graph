@@ -53,11 +53,16 @@ class AgentMessagingService:
                 expires_at=data.get("expires_at"),
             )
             session.add(msg)
-            await session.commit()
-            await session.refresh(msg)
+            await session.flush()  # assigns msg.id for the task's source_message_id
 
-            # Auto-create task for task_request messages
+            # Auto-create task for task_request messages. The task and the
+            # message's link to it share one savepoint: if either write fails,
+            # both roll back and the reply carries task_error, so it never
+            # reports a task id that was not saved (audit L8).
+            task_error: str | None = None
             if data["message_type"] == "task_request" and data.get("payload"):
+                linked_task_id = msg.task_id
+                nested = await session.begin_nested()
                 try:
                     task = AgentTask(
                         tenant_id=tenant_id,
@@ -77,14 +82,27 @@ class AgentMessagingService:
                         ],
                     )
                     session.add(task)
-                    await session.commit()
+                    await session.flush()
                     msg.task_id = task.id
-                    await session.commit()
+                    await session.flush()
+                    await nested.commit()
                 except Exception:
+                    await nested.rollback()
+                    msg.task_id = linked_task_id
+                    task_error = "Message sent, but its task could not be created."
                     logger.warning(
                         "Failed to auto-create task from message",
                         exc_info=True,
                     )
+
+            try:
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            await session.refresh(msg)
+            # Not a column: rides on the returned object into AgentMessageResponse.
+            msg.task_error = task_error
 
             # Publish to Redis for real-time delivery
             try:

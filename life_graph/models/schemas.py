@@ -718,6 +718,8 @@ class AgentMessageResponse(BaseModel):
     read_at: datetime | None = None
     expires_at: datetime | None = None
     properties: dict[str, Any] = {}
+    # Set on send when a task_request's task could not be created (audit L8).
+    task_error: str | None = None
 
 
 class MessageReply(BaseModel):
