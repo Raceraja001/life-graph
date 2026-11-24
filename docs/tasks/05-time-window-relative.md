@@ -106,7 +106,7 @@ Files you may touch:
 
 Do NOT:
 - change episodes_between, write_day, summarize or anything that touches the database;
-- change life_graph/services/memory_retrieval.py;
+- change life_graph/services/memory/retrieval.py;
 - parse explicit dates such as "21 October" (a separate task does that);
 - edit, rename or delete any existing test file;
 - add a database, a mock or a new dependency (this is pure logic).
