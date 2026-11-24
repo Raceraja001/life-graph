@@ -60,15 +60,14 @@ class _Pool:
 
 
 def _wire(monkeypatch, pool):
-    import arq
-
     session = _Session()
     monkeypatch.setattr(admin, "async_session", lambda: session)
 
-    async def _create_pool(*_a, **_k):
+    async def _get_arq_pool():
         return pool
 
-    monkeypatch.setattr(arq, "create_pool", _create_pool)
+    # The process's shared pool (L15), not a pool per call.
+    monkeypatch.setattr("life_graph.runtime.get_arq_pool", _get_arq_pool)
     set_tenant_context("acme", "user-1")
     return session
 
@@ -93,7 +92,7 @@ async def test_enqueued_job_gets_the_real_row_ids_and_is_searchable(monkeypatch)
     assert tenant == "acme"
     assert ids == [str(m.id) for m in session.added]
     assert all(uuid.UUID(i) for i in ids)  # not "None"
-    assert pool.closed
+    assert not pool.closed  # the shared pool outlives the request
 
 
 @pytest.mark.asyncio
@@ -133,7 +132,7 @@ async def test_enqueue_failure_is_logged_and_not_searchable(monkeypatch, caplog)
     assert data["searchable"] is False
     assert data["embedding_job_id"] is None
     assert "failed to enqueue embedding job" in caplog.text
-    assert pool.closed  # the pool is closed even when enqueue raises
+    assert not pool.closed  # the shared pool is not closed when enqueue raises
 
 
 @pytest.mark.asyncio

@@ -1764,9 +1764,7 @@ async def learn_project(
     queued → running → success/failed, with the same result shape this
     endpoint used to return inline now in that row's ``result``.
     """
-    from arq import create_pool
-
-    from life_graph.workers.settings import parse_redis_settings
+    from life_graph.runtime import get_arq_pool
 
     tenant_id = get_current_tenant_id()
     project = await svc.get_by_id(tenant_id, str(project_id))
@@ -1776,16 +1774,13 @@ async def learn_project(
             detail=f"Project {project_id} not found",
         )
 
-    pool = await create_pool(parse_redis_settings())
-    try:
-        job = await pool.enqueue_job(
-            "life_graph.workers.tasks.learn_project_task",
-            tenant_id,
-            str(project_id),
-            body.authors if body else None,
-        )
-    finally:
-        await pool.close()
+    pool = await get_arq_pool()  # shared; never closed here (L15)
+    job = await pool.enqueue_job(
+        "life_graph.workers.tasks.learn_project_task",
+        tenant_id,
+        str(project_id),
+        body.authors if body else None,
+    )
 
     return success_response(data={"job_id": job.job_id if job else None, "status": "queued"})
 

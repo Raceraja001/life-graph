@@ -345,7 +345,7 @@ async def test_job_triggers_stay_in_the_callers_tenant(
     monkeypatch, route, per_tenant, every_tenant
 ):
     pool = _Pool()
-    monkeypatch.setattr("arq.create_pool", AsyncMock(return_value=pool))
+    monkeypatch.setattr("life_graph.runtime.get_arq_pool", AsyncMock(return_value=pool))
     fn = getattr(admin, route)
     with tenant_scope("t1"):
         await fn(_service(), tenant_id=None)  # was: every tenant

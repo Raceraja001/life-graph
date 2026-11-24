@@ -851,19 +851,15 @@ async def bulk_import(body: BulkImportRequest, request: Request):
     searchable = False
     if body.generate_embeddings and memory_ids:
         try:
-            from arq import create_pool
+            from life_graph.runtime import get_arq_pool
 
-            from life_graph.workers.settings import parse_redis_settings
-
-            pool = await create_pool(parse_redis_settings())
-            try:
-                job = await pool.enqueue_job(
-                    "life_graph.workers.embeddings.generate_embeddings_batch",
-                    [str(mid) for mid in memory_ids],
-                    tenant_id,
-                )
-            finally:
-                await pool.close()
+            # The process's shared pool: never closed here (L15).
+            pool = await get_arq_pool()
+            job = await pool.enqueue_job(
+                "life_graph.workers.embeddings.generate_embeddings_batch",
+                [str(mid) for mid in memory_ids],
+                tenant_id,
+            )
             if job is not None:
                 embedding_job_id = job.job_id
                 searchable = True
@@ -1028,18 +1024,15 @@ async def enqueue_consolidation(request: Request, tenant_id: str | None = None):
     """
     tenant_id = _tenant_in_reach(request, tenant_id)
     try:
-        from arq import create_pool
+        from life_graph.runtime import get_arq_pool
 
-        from life_graph.workers.settings import parse_redis_settings
-
-        pool = await create_pool(parse_redis_settings())
+        pool = await get_arq_pool()  # shared; never closed here (L15)
         if tenant_id:
             job = await pool.enqueue_job(
                 "life_graph.workers.tasks.run_tenant_consolidation", tenant_id
             )
         else:
             job = await pool.enqueue_job("life_graph.workers.tasks.run_all_consolidations")
-        await pool.close()
         return success_response(data={"job_id": job.job_id, "status": "enqueued"})
     except Exception:
         # Fallback: run the legacy consolidation
@@ -1066,11 +1059,9 @@ async def enqueue_cleanup_memories(request: Request, tenant_id: str | None = Non
     Without ``tenant_id`` an owner key cleans every tenant; anyone else their own.
     """
     tenant_id = _tenant_in_reach(request, tenant_id)
-    from arq import create_pool
+    from life_graph.runtime import get_arq_pool
 
-    from life_graph.workers.settings import parse_redis_settings
-
-    pool = await create_pool(parse_redis_settings())
+    pool = await get_arq_pool()  # shared; never closed here (L15)
     # Full dotted names — must match WorkerSettings.functions registration, or
     # ARQ logs "<name> not found" and the job silently never runs.
     if tenant_id:
@@ -1079,5 +1070,4 @@ async def enqueue_cleanup_memories(request: Request, tenant_id: str | None = Non
         )
     else:
         job = await pool.enqueue_job("life_graph.workers.cleanup.cleanup_memories_all")
-    await pool.close()
     return success_response(data={"job_id": job.job_id, "status": "enqueued"})
