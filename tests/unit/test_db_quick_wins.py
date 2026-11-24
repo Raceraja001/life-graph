@@ -151,12 +151,93 @@ def test_api_enqueue_sites_use_the_shared_pool():
     """The per-call create_pool sites this batch converted stay converted."""
     import inspect
 
-    from life_graph.api import conversations, transcript_ingest
+    from life_graph.api import admin, conversations, kernel, transcript_ingest
     from life_graph.services import multimodal
     from life_graph.workers import distill, tasks
 
-    for mod in (conversations, transcript_ingest, multimodal, distill, tasks):
+    for mod in (admin, conversations, kernel, transcript_ingest, multimodal, distill, tasks):
         assert "create_pool(" not in inspect.getsource(mod), mod.__name__
+
+
+class _SharedPool:
+    def __init__(self):
+        self.jobs: list[tuple] = []
+        self.closed = False
+
+    async def enqueue_job(self, name, *args):
+        self.jobs.append((name, args))
+        from types import SimpleNamespace
+
+        return SimpleNamespace(job_id=f"j{len(self.jobs)}")
+
+    async def close(self):
+        self.closed = True
+
+
+def _admin_and_kernel_enqueues():
+    """(label, coroutine factory) for each enqueue the 2026-11-24 recheck found."""
+    import uuid
+
+    from life_graph.api import admin, kernel
+    from tests.conftest import fake_request
+
+    svc = AsyncMock()
+    svc.get_by_id.return_value = {"is_active": True}
+    pid = uuid.uuid4()
+    return [
+        ("consolidate", lambda: admin.enqueue_consolidation(fake_request(), tenant_id="t1")),
+        ("cleanup", lambda: admin.enqueue_cleanup_memories(fake_request(), tenant_id="t1")),
+        ("learn", lambda: kernel.learn_project(pid, None, svc)),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_admin_and_kernel_enqueues_use_the_shared_pool_and_leave_it_open(monkeypatch):
+    """L15 (recheck): no pool per request, and the shared one is never closed."""
+    from life_graph.core.tenant import tenant_scope
+
+    pool = _SharedPool()
+
+    async def no_new_pool(*a, **k):
+        raise AssertionError("an endpoint created its own arq pool")
+
+    monkeypatch.setattr("arq.create_pool", no_new_pool)
+    monkeypatch.setattr("life_graph.runtime.get_arq_pool", AsyncMock(return_value=pool))
+
+    with tenant_scope("t1"):
+        for label, call in _admin_and_kernel_enqueues():
+            out = await call()
+            assert out["data"]["job_id"], label
+
+    assert [name.rsplit(".", 1)[-1] for name, _ in pool.jobs] == [
+        "run_tenant_consolidation",
+        "cleanup_memories_tenant",
+        "learn_project_task",
+    ]
+    assert not pool.closed
+
+
+@pytest.mark.asyncio
+async def test_admin_and_kernel_enqueues_keep_their_redis_down_behaviour(monkeypatch):
+    """Redis down: consolidation still falls back to a sync run; the other two
+    raise the connection error as they did when they built their own pool."""
+    from life_graph.core.tenant import tenant_scope
+
+    monkeypatch.setattr(
+        "life_graph.runtime.get_arq_pool",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    )
+    scheduler = AsyncMock()
+    scheduler.run_consolidation.return_value = type("R", (), {"gathered": 3})()
+    monkeypatch.setattr("life_graph.api.dependencies.get_job_scheduler", lambda: scheduler)
+
+    with tenant_scope("t1"):
+        calls = dict(_admin_and_kernel_enqueues())
+        out = await calls["consolidate"]()
+        assert out["data"] == {"status": "completed_sync", "gathered": 3}
+        for label in ("cleanup", "learn"):
+            with pytest.raises(ConnectionError):
+                await calls[label]()
 
 
 # ── M9: the Telegram message key ─────────────────────────────

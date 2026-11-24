@@ -21,10 +21,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from sqlalchemy import func, select, update
 
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.core.utils import cosine_similarity as _cosine_similarity
+from life_graph.core.utils import cosine_similarity as _cosine_similarity  # noqa: F401 - tests import it here
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate
 from life_graph.scoring.decay import DecayCalculator
@@ -34,6 +35,7 @@ from life_graph.storage.postgres import PostgresMemoryStore
 
 if TYPE_CHECKING:
     import uuid
+    from collections.abc import Sequence
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -64,6 +66,62 @@ class ConsolidationReport:
 
 
 # ── Cosine helper ─────────────────────────────────────────────────────────────
+
+
+def _has_vector(vec: Sequence[float] | None) -> bool:
+    """A non-empty embedding (``len``, not truthiness, so arrays work too)."""
+    return vec is not None and len(vec) > 0
+
+
+class _CosineRows:
+    """Cosine similarity of one embedding against all the others, with numpy.
+
+    The audit (L14) found ``_cluster`` and ``_dedup_cluster`` calling the pure
+    Python ``cosine_similarity`` once per pair. Each pair still gets the same
+    value: the same edge cases (0.0 when either vector is None or empty, the
+    lengths differ, or either has zero magnitude) and the same
+    ``dot / (norm_a * norm_b)`` arithmetic in float64, so a pair that sits
+    exactly on a threshold compares the same way. Only the summation order
+    inside the dot product differs (last-bit rounding).
+
+    Vectors are grouped by length and stacked once. A row is one
+    matrix-vector product, so memory stays O(n * dim) however many memories a
+    run gathers; no n x n matrix is built.
+    """
+
+    def __init__(self, vectors: Sequence[Sequence[float] | None]) -> None:
+        self._n = len(vectors)
+        # For each vector: (its length, its row in that length's group), or None.
+        self._where: list[tuple[int, int] | None] = []
+        rows_by_len: dict[int, list[int]] = {}
+        for i, vec in enumerate(vectors):
+            if vec is None or len(vec) == 0:
+                self._where.append(None)
+                continue
+            members = rows_by_len.setdefault(len(vec), [])
+            self._where.append((len(vec), len(members)))
+            members.append(i)
+        self._groups: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+        for length, idx in rows_by_len.items():
+            mat = np.array([vectors[i] for i in idx], dtype=np.float64)
+            norms = np.sqrt(np.einsum("ij,ij->i", mat, mat))
+            self._groups[length] = (np.array(idx, dtype=np.intp), mat, norms)
+
+    def row(self, i: int) -> np.ndarray:
+        """Similarity of vector *i* to every vector (index-aligned, float64)."""
+        out = np.zeros(self._n, dtype=np.float64)
+        where = self._where[i]
+        if where is None:
+            return out
+        idx, mat, norms = self._groups[where[0]]
+        norm_i = norms[where[1]]
+        if norm_i == 0.0:
+            return out
+        with np.errstate(divide="ignore", invalid="ignore"):
+            sims = (mat @ mat[where[1]]) / (norm_i * norms)
+        sims[norms == 0.0] = 0.0
+        out[idx] = sims
+        return out
 
 
 _TIER_RANK: dict[str, int] = {"low": 0, "normal": 1, "high": 2, "critical": 3}
@@ -226,27 +284,28 @@ class ConsolidationPipeline:
         with any member. Otherwise a new cluster is created.
         """
         clusters: list[list[Memory]] = []
+        # Every earlier memory is a member of exactly one cluster, so "the
+        # first cluster with any member above the threshold" is the lowest
+        # cluster index among the earlier memories above it. Members without
+        # an embedding never match.
+        cosines = _CosineRows([m.embedding for m in memories])
+        has_embedding = np.array([m.embedding is not None for m in memories], dtype=bool)
+        cluster_of = np.full(len(memories), -1, dtype=np.intp)
 
-        for memory in memories:
+        for i, memory in enumerate(memories):
             if memory.embedding is None:
                 # No embedding — put in its own cluster
+                cluster_of[i] = len(clusters)
                 clusters.append([memory])
                 continue
 
-            placed = False
-            for cluster in clusters:
-                for member in cluster:
-                    if member.embedding is None:
-                        continue
-                    sim = _cosine_similarity(memory.embedding, member.embedding)
-                    if sim > self._CLUSTER_THRESHOLD:
-                        cluster.append(memory)
-                        placed = True
-                        break
-                if placed:
-                    break
-
-            if not placed:
+            match = has_embedding[:i] & (cosines.row(i)[:i] > self._CLUSTER_THRESHOLD)
+            if match.any():
+                target = int(cluster_of[:i][match].min())
+                clusters[target].append(memory)
+                cluster_of[i] = target
+            else:
+                cluster_of[i] = len(clusters)
                 clusters.append([memory])
 
         logger.debug("Formed %d clusters from %d memories", len(clusters), len(memories))
@@ -278,20 +337,25 @@ class ConsolidationPipeline:
         kept: list[Memory] = []
         removed_ids: set[uuid.UUID] = set()
 
-        for mem in sorted_mems:
+        cosines = _CosineRows([m.embedding for m in sorted_mems])
+
+        for k, mem in enumerate(sorted_mems):
             if mem.id in removed_ids:
                 continue
 
-            # Mark shorter duplicates for removal
-            for other in sorted_mems:
-                if other.id == mem.id or other.id in removed_ids:
-                    continue
-                if mem.embedding and other.embedding:
-                    sim = _cosine_similarity(mem.embedding, other.embedding)
-                    if sim > self._DEDUP_THRESHOLD:
-                        removed_ids.add(other.id)
-                        if pairs is not None:
-                            pairs.append((mem, other, sim))
+            # Mark shorter duplicates for removal (in sorted order, as before;
+            # only the pairs above the threshold are visited).
+            if _has_vector(mem.embedding):
+                sims = cosines.row(k)
+                for j in np.flatnonzero(sims > self._DEDUP_THRESHOLD):
+                    other = sorted_mems[j]
+                    if other.id == mem.id or other.id in removed_ids:
+                        continue
+                    if not _has_vector(other.embedding):
+                        continue
+                    removed_ids.add(other.id)
+                    if pairs is not None:
+                        pairs.append((mem, other, float(sims[j])))
 
             kept.append(mem)
 
