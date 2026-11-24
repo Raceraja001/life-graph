@@ -17,5 +17,5 @@ trap 'rm -f claude-bin' EXIT
 cp "$bin" claude-bin
 
 image="${1:-life-graph-claude-driver:latest}"
-docker build -t "$image" .
+docker build --label life-graph.keep=true -t "$image" .
 echo "built $image from $bin"
