@@ -258,3 +258,30 @@ The runtime panel shows `failures` (info), from earlier failed tasks.
 - The real proof is the next reboot: check `systemctl --user is-active life-graph-dev-runner` afterwards.
 
 **Rollback:** restore the backup file, then run `systemctl --user daemon-reload` and `systemctl --user reenable life-graph-dev-runner`.
+
+### D20. Dev tasks could not be verified: a blocked download host and deleted sandbox images (2026-11-24)
+
+**What happened:** every life-graph dev task from 2026-11-20 to 11-24 ended "could not verify". There were two separate causes, one behind the other.
+
+**Cause 1, the setup guard refused the manifests:**
+- #298 added `[[tool.uv.index]] pytorch-cpu` to `pyproject.toml`, and `uv.lock` now names `download.pytorch.org` and `download-r2.pytorch.org`.
+- The verifier setup guard refuses hosts outside the toolchain registries unless the project lists them in `sandbox_setup_allow`.
+- The life-graph `sandbox_setup` already skips torch/nvidia/triton, so nothing is actually fetched from those hosts.
+
+**Fix 1:** the owner added both hosts to the life-graph project's `sandbox_setup_allow`, at 03:56 UTC with the owner key. Adding allowed hosts is an owner-only loosening, because auto_merge is on. The call is `PATCH /api/v1/kernel/projects/{id}` with `X-Tenant-ID: raja`; the dashboard has no form for project settings. The guard scan on master went from 31 violations to 0.
+
+**Cause 2, the sandbox images were gone:**
+- `/etc/cron.weekly/gh-runner-prune` (added 2026-10-13 for the self-hosted CI runners) runs `docker system prune -af --filter until=168h`.
+- The sandbox images are used for only minutes per task, so 7 days after they were built (11-18) the 11-22 run deleted all four:
+  - `life-graph-verifier:py3.12-821beec`
+  - `life-graph-verifier:node22-821beec`
+  - `life-graph-sandbox-egress:6ce846a`
+  - `life-graph-claude-driver:a3aa3f4-cli2.1.328`
+
+**Fix 2:** all four were rebuilt at the same tags, from the commits the tags name (`git archive`). The claude-driver image was built with the installed CLI, which is 2.1.328. Each image carries the label `life-graph.keep=true`.
+
+**Still open:** the prune job must skip that label (`--filter 'label!=life-graph.keep'`). Editing the root-owned cron file was refused by the agent's permission check, so it needs the owner. Until that is done, the images will be deleted again at the next weekly run after 2026-11-30.
+
+**Verified:** test task 1e2261c4 (a new unit test file) passed every check, including `tests_pass` on the full unit suite in the no-network sandbox (6727 passed). This also confirms the #313 network-test fix end to end.
+
+**Rollback:** remove the two hosts from `sandbox_setup_allow`. The images are additive.
