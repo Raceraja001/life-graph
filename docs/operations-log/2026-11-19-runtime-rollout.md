@@ -285,3 +285,33 @@ The runtime panel shows `failures` (info), from earlier failed tasks.
 **Verified:** test task 1e2261c4 (a new unit test file) passed every check, including `tests_pass` on the full unit suite in the no-network sandbox (6727 passed). This also confirms the #313 network-test fix end to end.
 
 **Rollback:** remove the two hosts from `sandbox_setup_allow`. The images are additive.
+
+### D21. Startup auth guard released; owner locks on for approvals and admin (2026-11-24)
+
+**Owner decision (2026-11-24):**
+- Wire the startup guard in.
+- Check, then turn on `approvals_require_owner` and `admin_require_owner`.
+
+**Released:** tag `prod-20261124-0508` (rollback `0abb7f0`), containing:
+- #317: `main.lifespan` calls `check_auth_exposure()` first, and the call is fatal.
+- #313: the network-test fix, with `tests/no_network.py`.
+- Docs #314–#316.
+
+There was no `uv.lock` change and no new migration (alembic stays at 062). The `.env` backup is in `~/life-graph-backups/release-20261124/`.
+
+**Checks before turning the locks on:**
+- The prod dashboard (`life-graph-ui-prod`, `VITE_API_KEY`) uses an owner key, compared by fingerprint without printing the key.
+- 2 owner keys and 3 paired phones; `lockout_risk=false`; Telegram approvals are off.
+- Nothing in the last 7 days of API logs, scripts or cron calls the approve or admin-write routes.
+- Both editions have `SERVICE_API_KEYS` set, so the startup guard returns at once for both.
+
+**Verified live:**
+- Health 200, UI 200, dev runner active.
+- Approving a non-existent approval: the non-owner key gets **403**, and the owner key gets **404** (it passed the lock).
+- The readiness panel shows `approvals_require_owner: true`.
+- 0 errors in the API and worker logs after the restart.
+- Dev edition restarted, health 200.
+
+**Effect:** only your owner keys (the dashboard) or a paired phone can approve, reject, or use the admin routes that change the deployment or export data. The Claude Code/MCP key is the non-owner key and is refused.
+
+**Rollback:** set `LIFE_GRAPH_APPROVALS_REQUIRE_OWNER` and `LIFE_GRAPH_ADMIN_REQUIRE_OWNER` to false in prod `.env` (or restore the backup), then run `./dev.sh restart`. For the code, check out `0abb7f0` on the `prod` branch and restart.
