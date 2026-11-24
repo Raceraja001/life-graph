@@ -609,9 +609,13 @@ Where coding drivers run, and how to run them safely. Design and threat model:
 ### Enable the task runtime
 
 ```bash
-docker build -t life-graph-sandbox-egress:dev -f Dockerfile.egress .   # the proxy
-bash docker/claude-driver/build.sh                                       # life-graph-claude-driver:latest
-docker build -t life-graph-verifier:py3.12 docker/verifier              # verifier (and -node/-jvm if used)
+# --label life-graph.keep=true is required: the host's weekly `docker system prune`
+# (/etc/cron.weekly/gh-runner-prune) skips only labelled images. These images run for
+# minutes per task, so without the label they are deleted after 7 days (decision log D20).
+# Use the tags prod's .env names (LIFE_GRAPH_*_IMAGE), not the defaults below.
+docker build --label life-graph.keep=true -t life-graph-sandbox-egress:dev -f Dockerfile.egress .   # the proxy
+bash docker/claude-driver/build.sh                                       # life-graph-claude-driver:latest (adds the label)
+docker build --label life-graph.keep=true -t life-graph-verifier:py3.12 docker/verifier              # verifier (and -node/-jvm if used)
 # .env
 LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=task
 LIFE_GRAPH_VERIFIER_SANDBOX=docker
