@@ -6,6 +6,7 @@ Tags: [drivers]
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 
@@ -16,6 +17,8 @@ from life_graph.api.responses import success_response
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/kernel/drivers", tags=["drivers"])
 
@@ -193,7 +196,7 @@ async def driver_stats(
     status_code=status.HTTP_201_CREATED,
     summary="Dispatch a task to a driver (testing)",
 )
-async def dispatch_task(body: DispatchRequest):
+async def dispatch_task(body: DispatchRequest, request: Request):
     """Dispatch a task to a driver for testing purposes.
 
     Uses the full dispatch pipeline: driver selection, context building,
@@ -248,9 +251,14 @@ async def dispatch_task(body: DispatchRequest):
         )
 
     except Exception as e:
+        # The detail stays in the server log; the client gets a fixed message,
+        # and the app's HTTPException handler adds the request_id (audit M3).
+        logger.exception(
+            "Driver dispatch failed [rid=%s]", getattr(request.state, "request_id", "")
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Dispatch failed: {str(e)}",
+            detail="Dispatch failed.",
         ) from e
 
 

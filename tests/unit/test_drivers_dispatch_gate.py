@@ -80,3 +80,26 @@ def test_dispatch_runs_when_switched_on(client, calls, monkeypatch):
     resp = client.post("/kernel/drivers/dispatch", json=BODY)
     assert resp.status_code == 201
     assert len(calls) == 1 and calls[0]["tenant_id"] == "t1"
+
+
+def test_dispatch_failure_hides_raw_error(client, calls, monkeypatch, caplog):
+    """A dispatch crash returns a fixed message; the detail goes to the log (audit M3)."""
+    secret = "connect to postgres://admin:hunter2@10.0.0.5 failed"
+
+    class BoomDispatcher:
+        def __init__(self, **kwargs):
+            pass
+
+        async def dispatch_task(self, **kwargs):
+            raise RuntimeError(secret)
+
+    import life_graph.drivers.dispatcher as dispatcher_mod
+
+    monkeypatch.setattr(dispatcher_mod, "TaskDispatcher", BoomDispatcher)
+    monkeypatch.setattr(settings, "drivers_dispatch_endpoint", True)
+    with caplog.at_level("ERROR", logger=drivers_api.__name__):
+        resp = client.post("/kernel/drivers/dispatch", json=BODY)
+    assert resp.status_code == 500
+    assert "hunter2" not in resp.text
+    assert resp.json()["detail"] == "Dispatch failed."
+    assert secret in caplog.text
