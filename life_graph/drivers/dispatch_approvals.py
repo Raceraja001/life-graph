@@ -30,6 +30,19 @@ logger = logging.getLogger(__name__)
 AUTO_PR_MERGE_RATE = 0.8
 
 
+async def end_transaction(session) -> None:
+    """Commit the session's open transaction before a slow, non-database step.
+
+    The next statement on the same session begins a fresh transaction. The
+    app's session factories use ``expire_on_commit=False``, so ORM objects
+    survive it. A session not in a transaction (or a test's mock) is left
+    alone.
+    """
+    in_transaction = getattr(session, "in_transaction", None)
+    if callable(in_transaction) and in_transaction() is True:
+        await session.commit()
+
+
 class ApprovalFilingMixin:
     """The approvals a dispatch files; the host class provides ``_emit``."""
 
@@ -293,6 +306,9 @@ class ApprovalFilingMixin:
             from life_graph.models.db import Approval
             from life_graph.services.dev.github_pr import describe_landing
 
+            # Drafting the description and the second opinion call a model;
+            # the resume path arrives here mid-transaction (audit H7).
+            await end_transaction(session)
             landing = await describe_landing(repo_path, branch, base_branch=base_branch)
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else branch
             pr_description = await self._draft_pr_description(repo_path, landing, instruction)
@@ -440,6 +456,12 @@ class ApprovalFilingMixin:
         if not allowed:
             logger.info("Auto-open PR skipped for %s: %s", driver_name, why)
             return
+        # git push + gh pr create are slow network calls: don't hold the
+        # transaction across them (audit H7). This also makes the pending
+        # driver_pr approval durable first, so a crash mid-open leaves it
+        # pending for a person; opening again is safe (push and create are
+        # idempotent, see open_pull_request).
+        await end_transaction(session)
         try:
             outcome = await open_pull_request(appr.payload or {})
         except PullRequestError as exc:
