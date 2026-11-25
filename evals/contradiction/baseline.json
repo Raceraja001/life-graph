@@ -1,10 +1,10 @@
 {
-  "dataset_sha256": "ee3163b3cc8c9eb3be4c65eda37e20fb7779e3c31b9e78ea80686422564b95ad",
+  "dataset_sha256": "c92db07f32e45fd023030cfbdd56687922c659b710eb790547fd1c6f639c0984",
   "overall": {
     "contradiction_precision": 1.0,
-    "contradiction_recall": 0.4,
+    "contradiction_recall": 0.871,
     "paraphrase_merge_rate": 1.0,
-    "false_merge_rate": 0.0811
+    "false_merge_rate": 0.0727
   },
   "by_category": {
     "negation": {
@@ -16,12 +16,12 @@
       "false_merge_rate": 0.0
     },
     "value_change": {
-      "contradiction_recall": 0.0,
+      "contradiction_recall": 1.0,
       "false_merge_rate": 0.0
     },
     "compatible_addition": {
       "false_contradiction_rate": 0.0,
-      "false_merge_rate": 0.4286
+      "false_merge_rate": 0.2105
     },
     "scoped": {
       "false_contradiction_rate": 0.0,

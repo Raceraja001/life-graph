@@ -43,7 +43,7 @@ def report():
 def test_pairs_are_labeled_consistently():
     data = json.loads(PAIRS_PATH.read_text(encoding="utf-8"))
     pairs = data["pairs"]
-    assert 30 <= len(pairs) <= 50
+    assert 30 <= len(pairs) <= 80
     assert len({p["id"] for p in pairs}) == len(pairs)
     cats = {p["category"] for p in pairs}
     assert cats == set(POSITIVE_CATEGORIES) | set(NEGATIVE_CATEGORIES)
@@ -71,8 +71,8 @@ def test_committed_baseline_matches_the_code_today(report):
 
 
 def test_value_change_recall_is_recorded_not_hidden(report):
-    # Recorded as found on 2026-11-25: no rule catches a changed date, number,
-    # place or person. A fix should raise this and re-record the baseline.
+    # Recorded as found on 2026-11-25 (recall 0.0), then raised by the
+    # value-change rule the same day. The baseline pins the number.
     entry = report["by_category"]["value_change"]
     assert entry["pairs"] >= 8
     assert "contradiction_recall" in entry
