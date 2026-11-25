@@ -63,6 +63,10 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
         "lock holder, lease ages, queue depth and failure counts; returns counts and "
         "issue codes only, never task data"
     ),
+    ("kernel/recovery.py", "fail_interrupted_kernel_tasks"): (
+        "startup recovery of the one database's abandoned kernel tasks, every "
+        "tenant's: fails rows far past their own timeout, returns a count only"
+    ),
     ("services/dev/task_runtime.py", "sweep_orphans"): (
         "runner-process cleanup: reads only the ids of running tasks across all "
         "tenants so no tenant's live container is removed; returns no task data"
