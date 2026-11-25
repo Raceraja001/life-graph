@@ -179,8 +179,15 @@ class SynthesisService:
             tags = ", ".join(mem.get("tags") or [])
             importance = mem.get("importance") or 0
             created = mem.get("created_at") or "unknown"
+            # A replaced or ended fact (an as_of question can bring one back)
+            # says so; a current one reads exactly as before.
+            extra = ""
+            if mem.get("status") and mem["status"] != "active":
+                extra += f", status: {mem['status']}"
+            if mem.get("valid_until"):
+                extra += f", true until: {mem['valid_until']}"
             context_parts.append(
-                f"[Memory {i}] (tags: {tags}, importance: {importance:.1f}, date: {created})\n{content}"
+                f"[Memory {i}] (tags: {tags}, importance: {importance:.1f}, date: {created}{extra})\n{content}"
             )
 
         context_block = "\n\n".join(context_parts)

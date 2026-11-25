@@ -187,5 +187,7 @@ class TestTheTopicWidensThePool:
         assert [c["content"] for c in candidates] == ["about billing", "about memory recall"]
         assert candidates[1]["semantic_score"] == pytest.approx(1.0)
         kwargs = store.search_similar.await_args.kwargs
-        assert kwargs["filters"] == {"status": "active"} and kwargs["embedding"] == [1.0, 0.0]
+        # Active and still true now: an ended fact is no longer a candidate.
+        assert kwargs["filters"]["status"] == "active" and kwargs["embedding"] == [1.0, 0.0]
+        assert set(kwargs["filters"]) == {"status", "valid_at"}
         assert embedder.embed_async.await_count == 1  # one embedding serves both steps

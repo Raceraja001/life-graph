@@ -673,6 +673,9 @@ async def retrieve(
         query_text=question,
         limit=CANDIDATES * 2 if by_strength else CANDIDATES,
         statuses=search_statuses,
+        # Valid at the question's instant, the same one the filter below uses:
+        # a fact that ended before now but was true on as_of is still found.
+        valid_at=_ensure_utc(as_of) if as_of is not None else None,
     )
     if by_strength:
         hits = strength_order(hits)[:CANDIDATES]
