@@ -9,6 +9,7 @@ the stream, as in test_temporary_chat.
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -32,10 +33,12 @@ class _Persona:
 
 
 class _PM:
-    """Records each spawn and ends its stream at once."""
+    """Records each spawn and ends its stream at once (after ``children``:
+    (child_id, persona, text) helpers to publish first, none by default)."""
 
     def __init__(self):
         self.spawns: list[dict] = []
+        self.children: list[tuple[str, str, str]] = []
 
     @property
     def inputs(self) -> list[dict]:
@@ -50,6 +53,12 @@ class _PM:
 
         async def publish():
             await asyncio.sleep(0)
+            for child_id, persona, text in self.children:
+                for event in ({"type": "token", "content": text}, {"type": "done"}):
+                    bus.publish(
+                        task_id,
+                        {"task_id": child_id, "agent_name": persona, "depth": 1, "event": event},
+                    )
             bus.publish(
                 task_id,
                 {"task_id": task_id, "agent_name": "jarvis", "depth": 0, "event": {"type": "done"}},
@@ -283,6 +292,28 @@ async def test_pin_refuses_other_tenants_other_personas_and_temporary_chats(clie
 
 
 # ── AC-W6.3 regenerate ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_regenerate_sends_helper_events_only_when_asked(pm, client):
+    """Regenerate streams like /jarvis/chat: helper events need X-Jarvis-Events."""
+    _, (t1,) = await _conversation(TENANT, [("what is on today", "nothing")])
+    pm.children = [("child-r", "scout", "looked")]
+
+    r = await client.post(f"{API}/turns/{t1}/regenerate")
+    assert r.status_code == 200, r.text
+    assert '"helper"' not in r.text and '"type": "done"' in r.text
+
+    r = await client.post(f"{API}/turns/{t1}/regenerate", headers={"X-Jarvis-Events": "helpers"})
+    assert r.status_code == 200, r.text
+    frames = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
+    assert frames[:3] == [
+        {"type": "helper", "state": "start", "id": "child-r", "persona": "scout"},
+        {"type": "helper", "state": "text", "id": "child-r", "persona": "scout", "text": "looked"},
+        {"type": "helper", "state": "done", "id": "child-r", "persona": "scout"},
+    ]
+    assert frames[-1]["type"] == "done"
 
 
 @pytest.mark.asyncio

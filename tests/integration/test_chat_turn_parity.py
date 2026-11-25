@@ -110,9 +110,9 @@ async def client():
         yield c
 
 
-async def _frames(client, path: str, body: dict) -> tuple[int, list]:
+async def _frames(client, path: str, body: dict, headers: dict | None = None) -> tuple[int, list]:
     """Status and every frame, with this run's ids replaced by placeholders."""
-    async with client.stream("POST", path, json=body) as resp:
+    async with client.stream("POST", path, json=body, headers=headers) as resp:
         if resp.status_code != 200:
             await resp.aread()
             error = resp.json()["error"]
@@ -165,6 +165,47 @@ JARVIS_FRAMES = [
     {"type": "token", "content": "lo"},
     {"type": "done", "conversation_id": "<session_id>", "route": "local", "task_id": "<task_id>"},
 ]
+
+
+# What a phone that asks for helpers (X-Jarvis-Events: helpers) receives for the
+# same run: JARVIS_FRAMES plus each tool call and each delegated child, in order.
+JARVIS_HELPER_FRAMES = [
+    {"type": "token", "content": "Hel"},
+    {"type": "tool", "name": "clock"},
+    {"type": "helper", "state": "start", "id": "child-1", "persona": "scout"},
+    {"type": "helper", "state": "text", "id": "child-1", "persona": "scout", "text": "child says"},
+    {"type": "helper", "state": "done", "id": "child-1", "persona": "scout"},
+    {"type": "helper", "state": "start", "id": "child-2", "persona": "analyst"},
+    {"type": "helper", "state": "done", "id": "child-2", "persona": "analyst"},
+    {
+        "type": "helper",
+        "state": "error",
+        "id": "child-3",
+        "persona": "coder",
+        "message": "child broke",
+    },
+    {"type": "token", "content": "lo"},
+    {"type": "done", "conversation_id": "<session_id>", "route": "local", "task_id": "<task_id>"},
+]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_phone_that_asks_for_helpers_sees_them_in_order(pm, client):
+    status, phone = await _frames(
+        client,
+        "/api/v1/jarvis/chat",
+        {"message": "hi"},
+        headers={"X-Jarvis-Events": "helpers"},
+    )
+    assert status == 200
+    assert phone == JARVIS_HELPER_FRAMES
+    # Any other value is an older or unknown app: the stream as before.
+    status, phone = await _frames(
+        client, "/api/v1/jarvis/chat", {"message": "hi"}, headers={"X-Jarvis-Events": "cards"}
+    )
+    assert status == 200
+    assert phone == JARVIS_FRAMES
 
 
 @pytest.mark.asyncio
