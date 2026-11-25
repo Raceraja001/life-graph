@@ -116,19 +116,27 @@ def mostly_tamil(text_: str) -> bool:
     return tamil > other
 
 
-def _or_tsquery(text_: str) -> str:
-    """A to_tsquery() expression matching ANY word of *text_*: "a | b | c".
+def _query_words(text_: str) -> list[str]:
+    """The distinct words of *text_*, lowercased, in order, at most 32.
 
-    Only word characters reach to_tsquery, so its operators (& | ! : ( ))
-    cannot be smuggled in; English stop words are dropped by the 'english'
-    configuration itself. Empty when there are no words.
+    Only word characters, so to_tsquery's operators (& | ! : ( )) cannot be
+    smuggled in through a word.
     """
-    words = []
+    words: list[str] = []
     for w in _WORD.findall(text_ or ""):
         w = w.lower()
         if w and w not in words:
             words.append(w)
-    return " | ".join(words[:32])
+    return words[:32]
+
+
+def _or_tsquery(text_: str) -> str:
+    """A to_tsquery() expression matching ANY word of *text_*: "a | b | c".
+
+    English stop words are dropped by the 'english' configuration itself.
+    Empty when there are no words.
+    """
+    return " | ".join(_query_words(text_))
 
 
 def _raw_filter_sql(filters: dict | None) -> tuple[str, dict]:
@@ -528,6 +536,19 @@ class PostgresMemoryStore:
         # and the score is normalised to 0-1 (1 = first in both lists) because
         # tri_search adds a fixed graph boost on that scale.
         #
+        # The keyword leg ranks by how rare the matched words are (2026-11-25).
+        # ts_rank_cd has no idea how common a word is, so with "any word"
+        # matching a note that shares two everyday words with the question
+        # ("work", "day") outranked the only note with the rare one
+        # ("cricket"). Each question word now scores BM25's IDF,
+        # ln(1 + (N - df + 0.5) / (df + 0.5)), counted over this tenant's
+        # searchable memories (same status and filters); a note scores the sum
+        # over the words it contains, ts_rank_cd breaks ties. Measured on the
+        # memory lab's tuning split through the production arm
+        # (scripts/eval_production_retrieval.py, mean of 4 runs): with bge-m3
+        # vectors R@1 0.592 -> 0.624, R@5 0.916 -> 0.934; with the hashing
+        # stand-in, whose vectors are word-based too, within one question.
+        #
         # Raw SQL for the tsvector column: it is GENERATED, not mapped in the ORM.
         raw_sql = text(f"""
             WITH vector_candidates AS (
@@ -539,16 +560,49 @@ class PostgresMemoryStore:
                 ORDER BY embedding <=> :query_embedding
                 LIMIT :pool
             ),
-            bm25_matches AS (
-                SELECT id, row_number() OVER (
-                           ORDER BY ts_rank_cd(content_tsv, to_tsquery('english', :tsquery), 32) DESC
-                       ) AS rk
+            -- One tsquery per distinct question word; a stop word gives an
+            -- empty one (numnode 0) and drops out. MATERIALIZED throughout:
+            -- the planner guesses one row for each CTE, and an inlined count
+            -- was re-run once per matching memory (500 ms at 5,000 memories).
+            query_terms AS MATERIALIZED (
+                SELECT DISTINCT to_tsquery('english', w) AS tq
+                FROM unnest(CAST(:terms AS text[])) AS w
+            ),
+            keyword_matches AS MATERIALIZED (
+                SELECT id, content_tsv,
+                       ts_rank_cd(content_tsv, to_tsquery('english', :tsquery), 32) AS tr
                 FROM memories
                 WHERE tenant_id = :tenant_id
                   AND status = ANY(:statuses){extra}
                   AND :tsquery <> ''
                   AND content_tsv @@ to_tsquery('english', :tsquery)
-                ORDER BY ts_rank_cd(content_tsv, to_tsquery('english', :tsquery), 32) DESC
+            ),
+            -- (memory, word) for every question word a matching memory holds.
+            -- Every memory holding a word matches the OR query, so counting
+            -- these per word is the word's document frequency.
+            word_hits AS MATERIALIZED (
+                SELECT km.id, km.tr, qt.tq
+                FROM keyword_matches km
+                JOIN query_terms qt ON numnode(qt.tq) > 0 AND km.content_tsv @@ qt.tq
+            ),
+            word_df AS MATERIALIZED (
+                SELECT tq, count(*) AS df FROM word_hits GROUP BY tq
+            ),
+            searchable AS MATERIALIZED (
+                SELECT count(*) AS n FROM memories
+                WHERE tenant_id = :tenant_id
+                  AND status = ANY(:statuses){extra}
+            ),
+            bm25_matches AS (
+                SELECT wh.id, row_number() OVER (
+                           ORDER BY sum(ln(1 + (s.n - wd.df + 0.5) / (wd.df + 0.5))) DESC,
+                                    max(wh.tr) DESC
+                       ) AS rk
+                FROM word_hits wh
+                JOIN word_df wd ON wd.tq = wh.tq
+                CROSS JOIN searchable s
+                GROUP BY wh.id
+                ORDER BY rk
                 LIMIT :pool
             )
             SELECT COALESCE(v.id, b.id) AS id,
@@ -564,6 +618,7 @@ class PostgresMemoryStore:
             LIMIT :result_limit
         """)
 
+        tamil = mostly_tamil(query_text)
         async with async_session() as session:
             # HNSW returns at most ef_search rows (pgvector default 40), so the
             # vector pool of 100 asked for above was silently 40.
@@ -573,7 +628,8 @@ class PostgresMemoryStore:
                 {
                     "query_embedding": str(embedding),
                     # No keyword leg for a Tamil question (mostly_tamil): meaning only.
-                    "tsquery": "" if mostly_tamil(query_text) else _or_tsquery(query_text),
+                    "tsquery": "" if tamil else _or_tsquery(query_text),
+                    "terms": [] if tamil else _query_words(query_text),
                     "tenant_id": tenant_id,
                     "vw": float(vector_weight),
                     "bw": float(bm25_weight),
