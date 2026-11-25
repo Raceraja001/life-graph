@@ -19,6 +19,7 @@ from life_graph.models.db import AgentTask
 
 if TYPE_CHECKING:
     import uuid
+    from collections.abc import Callable
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -215,8 +216,16 @@ class DelegationEngine:
         task_id: uuid.UUID,
         tenant_id: str,
         reason: str = "Cancelled by user",
+        *,
+        stop_local: Callable[[uuid.UUID], object] | None = None,
     ) -> AgentTask:
-        """Cancel a task and all its descendants recursively."""
+        """Cancel a task and all its open descendants, then revoke capabilities.
+
+        stop_local, when given, is called with the task's id and each open
+        descendant's id before the cancel is committed. The kernel cancel
+        route passes ProcessManager.stop_local, so a run this process holds
+        is stopped too, not only marked cancelled (stop first, revoke second).
+        """
         async with self._sf() as session:
             task = await session.get(AgentTask, task_id)
             if not task or task.tenant_id != tenant_id:
@@ -266,6 +275,10 @@ class DelegationEngine:
                     )
                     child.status_history = child_history
                     stopped.append(child.id)
+
+            if stop_local is not None:
+                for stopped_id in stopped:
+                    stop_local(stopped_id)
 
             await session.commit()
             await session.refresh(task)

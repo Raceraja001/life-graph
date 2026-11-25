@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from life_graph.api.dependencies import (
     get_chief_router,
+    get_delegation_engine,
     get_notification_engine,
     get_persona_service,
     get_process_manager,
@@ -28,6 +29,7 @@ from life_graph.api.dependencies import (
 )
 from life_graph.api.responses import paginated_response, success_response
 from life_graph.config import settings
+from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.chat_turn import (
     SSE_HEADERS,
@@ -36,6 +38,7 @@ from life_graph.services.chat_turn import (
     prepare_turn,
     stream_turn,
 )
+from life_graph.services.delegation import CapabilityRevokeError
 from life_graph.services.llm.model_catalog import get_model_catalog
 
 router = APIRouter(prefix="/kernel", tags=["kernel"])
@@ -285,11 +288,21 @@ async def get_task(
 async def cancel_task(
     task_id: uuid.UUID,
     pm: Any = Depends(get_process_manager),
+    engine: Any = Depends(get_delegation_engine),
 ):
-    """Cancel a running or queued task.
+    """Cancel a running or queued task and every task it delegated.
+
+    The task and each open descendant (parent_task_id chain) are marked
+    cancelled and their live capabilities revoked (DelegationEngine
+    .cancel_task). Each one this process is running is also stopped
+    (ProcessManager.stop_local). A descendant running in ANOTHER process
+    (e.g. the ARQ worker) is only marked and revoked: its run is not
+    interrupted here.
 
     Returns 409 if the task is already in a terminal state
-    (completed, failed, cancelled, timeout).
+    (completed, failed, cancelled, timeout), and 503 if the cancel stands
+    but the capability store could not be reached (call again to retry the
+    revocation), as POST /agent-tasks/{id}/cancel does.
     """
     tenant_id = get_current_tenant_id()
 
@@ -330,16 +343,40 @@ async def cancel_task(
             detail=f"Task {task_id} is already {task.status} — cannot cancel",
         )
 
-    cancelled = await pm.cancel(task_id, tenant_id)
-    if not cancelled and task.status == "queued":
-        # For queued tasks not yet running, update status directly
-        await pm.cancel_queued(str(task_id))
+    tree: list[uuid.UUID] = []
+    stopped_here: list[uuid.UUID] = []
+
+    def stop_local(tid: uuid.UUID) -> None:
+        tree.append(tid)
+        if pm.stop_local(tid):
+            stopped_here.append(tid)
+
+    revoke_error: CapabilityRevokeError | None = None
+    try:
+        await engine.cancel_task(task_id, tenant_id, "Cancelled by user", stop_local=stop_local)
+    except CapabilityRevokeError as exc:
+        revoke_error = exc  # the cancel itself is committed
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    for tid in tree:
+        await event_bus.emit(
+            EventType.TASK_CANCELLED,
+            {"task_id": str(tid), "tenant_id": tenant_id},
+            source="process_manager",
+        )
+    if revoke_error is not None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(revoke_error)
+        ) from revoke_error
 
     return success_response(
         data={
             "id": str(task_id),
             "status": "cancelled",
             "message": "Task cancelled successfully",
+            "cancelled_descendants": max(0, len(tree) - 1),
+            "stopped_in_process": len(stopped_here),
         }
     )
 

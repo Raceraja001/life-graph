@@ -215,20 +215,39 @@ class ProcessManager:
             "status": "queued",
         }
 
+    def stop_local(self, task_id: uuid.UUID) -> bool:
+        """Stop this task's run if THIS process is running it. No DB write.
+
+        Returns True if a live asyncio task was found and told to stop. False
+        if this process does not hold it: already finished, never started
+        here, or running in another process (e.g. the ARQ worker). The kernel
+        cancel route calls this for the task and each delegated descendant;
+        the DB status and capability revocation are done by
+        DelegationEngine.cancel_task.
+        """
+        bg_task = self._running.pop(task_id, None)
+        if bg_task is None or bg_task.done():
+            return False
+        bg_task.cancel()
+        return True
+
     async def cancel(self, task_id: uuid.UUID, tenant_id: str) -> bool:
-        """Cancel a running or queued task.
+        """Cancel one task: stop its local run (if any) and mark it cancelled.
+
+        Only this one task: delegated children are not touched. The kernel
+        cancel route cascades with DelegationEngine.cancel_task + stop_local
+        instead.
 
         Args:
             task_id: The task to cancel.
             tenant_id: Tenant scope for validation.
 
         Returns:
-            True if the task was cancelled, False if not found.
+            True if this process was running the task and stopped it. False
+            if it was not running here (queued, finished, or in another
+            process); the row is marked cancelled either way.
         """
-        bg_task = self._running.get(task_id)
-        if bg_task is not None:
-            bg_task.cancel()
-            self._running.pop(task_id, None)
+        held = self.stop_local(task_id)
 
         await self._update_task_status(
             task_id,
@@ -246,7 +265,7 @@ class ProcessManager:
         )
 
         logger.info("Cancelled task %s", task_id)
-        return True
+        return held
 
     @property
     def running_count(self) -> int:
