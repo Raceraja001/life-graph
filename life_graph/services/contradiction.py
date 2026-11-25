@@ -5,7 +5,9 @@ Detects contradictions between new content and existing memories using:
   2. Negation flip detection via regex
   3. Entity swap detection — an exclusive verb ("prefer", "switched to",
      "favourite … is") with a different object
-  4. Scope difference detection (either memory scoped to a different
+  4. Value change detection — the same statement with one value replaced
+     ("Priya lives in Chennai" → "Priya lives in Bangalore"), 2026-11-25
+  5. Scope difference detection (either memory scoped to a different
      project/module = both valid)
 
 A detection is only a suspicion: MemoryManager records it and the supersede
@@ -19,6 +21,7 @@ assumed similar (0.8). All three are fixed below.
 
 from __future__ import annotations
 
+import difflib
 import logging
 import re
 from dataclasses import dataclass
@@ -65,7 +68,7 @@ class Contradiction:
     existing_memory_id: str
     existing_content: str
     new_content: str
-    conflict_type: str  # 'negation', 'preference_change', 'scope'
+    conflict_type: str  # 'negation', 'preference_change', 'value_change', 'scope'
     similarity: float
     resolution: str  # 'supersede' (newer wins, once the owner agrees), 'scope' (keep both)
     reason: str
@@ -161,7 +164,8 @@ class ContradictionDetector:
            (cosine >= ``settings.contradiction_similarity_threshold``)
         2. Run negation flip detection (regex patterns)
         3. Run entity swap detection (exclusive verb, different object)
-        4. Check scope differences (different context = both valid)
+        4. Run value change detection (same statement, one value replaced)
+        5. Check scope differences (different context = both valid)
 
     Usage::
 
@@ -254,11 +258,14 @@ class ContradictionDetector:
                 continue
 
             # Check for negation flips, then entity swaps (exclusive verb,
-            # different object)
+            # different object), then a plain change of value
             found = _check_negation_flip(new_content, memory.content)
             if not found:
                 swap = _check_entity_swap(new_content, memory.content)
                 found = ("preference_change", swap) if swap else None
+            if not found:
+                change = _check_value_change(new_content, memory.content)
+                found = ("value_change", change) if change else None
             if not found:
                 continue
             conflict_type, reason = found
@@ -508,6 +515,178 @@ def _check_entity_swap(new_text: str, existing_text: str) -> str | None:
     return None
 
 
+# ── Value change ──────────────────────────────────────────────
+#
+# "Priya lives in Chennai" → "Priya lives in Bangalore", "birthday is 3 May"
+# → "4 May", "rent is 18,000" → "21,000": the same sentence with one value
+# swapped. Every flag becomes an owner approval, so the rule is narrow on
+# purpose (added 2026-11-25). Two facts that can both be true ("I speak
+# Tamil" / "I speak English", "Priya lives in Chennai" / "Arun lives in
+# Bangalore") must not be flagged; a missed change only costs a duplicate.
+
+# Words as compared: letters and digits, keeping "18,000", "7:30" and "3.5" whole.
+_TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:[.,:/][0-9]+)*")
+# Words that may be added or dropped without changing the statement
+# ("I live in Chennai now", "is on 3 May").
+_FILLER = frozenset(
+    ("now", "currently", "actually", "really", "still", "today", "these", "days", "on", "at", "the")
+)
+# A second value alongside the first, not instead of it.
+_ADDITIVE = frozenset(("also", "too", "another", "both", "either", "besides"))
+# The value is one item of a list ("friends with Anand", "Tamil and English").
+_LIST_JOINERS = frozenset(("with", "and", "or", "nor"))
+# Relations that hold many values at once ("is friends with", "is interested
+# in", "is a fan of").
+_MULTI_VALUE = frozenset(("friend", "friends", "interested", "fan", "member", "part", "allergic"))
+# A copula whose subject has one value at a time ("my manager is", "the
+# dentist appointment is on"). Not "was": two past values can both be true.
+_COPULAS = frozenset(("is", "are"))
+# Present-tense verbs that hold one value at a time, with the words that must
+# follow them (None: any). Past forms are left out: "I lived in Pune" and "I
+# lived in Delhi" can both be true.
+_SINGLE_VALUE_VERBS: dict[str, frozenset[str] | None] = {
+    **dict.fromkeys(
+        ("live", "lives", "living", "stay", "stays", "staying", "based"), frozenset(("in", "at"))
+    ),
+    **dict.fromkeys(("work", "works", "working"), frozenset(("at", "for"))),
+    **dict.fromkeys(
+        (
+            "leave",
+            "leaves",
+            "depart",
+            "departs",
+            "arrive",
+            "arrives",
+            "start",
+            "starts",
+            "begin",
+            "begins",
+            "end",
+            "ends",
+            "due",
+        ),
+        frozenset(("at", "on", "in")),
+    ),
+    **dict.fromkeys(("weigh", "weighs", "cost", "costs", "earn", "earns"), None),
+}
+# At most this many words on each side of the swapped value ("VS Code").
+_MAX_VALUE_TOKENS = 3
+
+
+def _tokens(text: str) -> tuple[list[str], list[str]]:
+    """The text's words as written, and lowercased with one spelling per value."""
+    raw = _TOKEN_RE.findall(text)
+    return raw, [_SAME_VALUE.get(w.lower(), w.lower()) for w in raw]
+
+
+def _has_single_value_cue(prefix: list[str]) -> bool:
+    """Whether the words before the value say it has one value at a time.
+
+    A copula ("is", "are") not followed by an -ing verb ("Raja is working on
+    X" is an activity, and people do several), or a verb from
+    ``_SINGLE_VALUE_VERBS`` with its preposition ("lives in", "works at").
+    """
+    for i, word in enumerate(prefix):
+        nxt = prefix[i + 1] if i + 1 < len(prefix) else ""
+        if word in _COPULAS and not nxt.endswith("ing"):
+            return True
+        if word in _SINGLE_VALUE_VERBS:
+            follow = _SINGLE_VALUE_VERBS[word]
+            if follow is None or nxt in follow:
+                return True
+    return False
+
+
+def _value_words(block: list[str], text: str, other_words: set[str]) -> list[str]:
+    """Words of *block* that are values (``_details``, or carry a digit, like
+    "5th") and that the other text does not mention at all."""
+    details = {_SAME_VALUE.get(d.lower(), d.lower()) for d in _details(text)}
+    return [
+        w for w in block if (w in details or any(c.isdigit() for c in w)) and w not in other_words
+    ]
+
+
+def _changed_block(old: list[str], new: list[str]) -> tuple[int, int, int, int] | None:
+    """The one place where *old* and *new* differ, as (i1, i2, j1, j2).
+
+    None unless, after ignoring added or dropped filler words, exactly one
+    run of words was replaced by another, each at most ``_MAX_VALUE_TOKENS``
+    long. Two changed places ("Priya lives in Chennai" / "Arun lives in
+    Bangalore") mean a different subject or a different statement.
+    """
+    matcher = difflib.SequenceMatcher(a=old, b=new, autojunk=False)
+    changed = [
+        op
+        for op in matcher.get_opcodes()
+        if op[0] != "equal"
+        and not (op[0] == "delete" and set(old[op[1] : op[2]]) <= _FILLER)
+        and not (op[0] == "insert" and set(new[op[3] : op[4]]) <= _FILLER)
+    ]
+    if len(changed) != 1 or changed[0][0] != "replace":
+        return None
+    _, i1, i2, j1, j2 = changed[0]
+    if i2 - i1 > _MAX_VALUE_TOKENS or j2 - j1 > _MAX_VALUE_TOKENS:
+        return None
+    return i1, i2, j1, j2
+
+
+def _check_value_change(new_text: str, existing_text: str) -> str | None:
+    """Whether the new text is the existing statement with one value replaced.
+
+    All of these must hold:
+
+    * neither text has a negating word (those are the negation rules' job)
+      and neither says "also", "too", "another" (a second value, not a new one);
+    * the two are the same words except one replaced run (``_changed_block``),
+      so the subject and the predicate are the same. "Priya's birthday" vs
+      "Maha's birthday" changes the subject, which comes before the verb, and
+      is not flagged;
+    * the words before that run say the slot holds one value at a time
+      (``_has_single_value_cue``: "is", "lives in", "works at", "leaves at"),
+      do not end in a list word ("friends with"), and name no many-valued
+      relation (``_MULTI_VALUE``). "I speak Tamil" / "I speak English" and
+      "I visited Delhi in March" / "in June" have no such word;
+    * both sides of the run carry a value (``_details``: a number, date, name,
+      number word or colour) that the other text does not mention, so "My
+      manager is Anand" / "My manager is a nice guy" is not flagged.
+
+    Returns:
+        Explanation string if a value change is detected, else None.
+    """
+    if _has_negator(new_text) or _has_negator(existing_text):
+        return None
+    old_raw, old = _tokens(existing_text)
+    new_raw, new = _tokens(new_text)
+    if _ADDITIVE & (set(old) | set(new)):
+        return None
+    block = _changed_block(old, new)
+    if block is None:
+        return None
+    i1, i2, j1, j2 = block
+    prefix = old[:i1]
+    if _LIST_JOINERS & set(prefix[-1:]) or _MULTI_VALUE & set(prefix):
+        return None
+    if not _has_single_value_cue(prefix):
+        return None
+    if not _value_words(old[i1:i2], existing_text, set(new)) or not _value_words(
+        new[j1:j2], new_text, set(old)
+    ):
+        return None
+    was = _trim_filler(old_raw[i1:i2], old[i1:i2])
+    now = _trim_filler(new_raw[j1:j2], new[j1:j2])
+    return f"Value change: '{was}' → '{now}'"
+
+
+def _trim_filler(raw: list[str], words: list[str]) -> str:
+    """The words as written, without filler at either end ("Coimbatore now")."""
+    start, end = 0, len(words)
+    while start < end and words[start] in _FILLER:
+        start += 1
+    while end > start and words[end - 1] in _FILLER:
+        end -= 1
+    return " ".join(raw[start:end])
+
+
 def _purposes_differ(text_a: str, text_b: str) -> bool:
     """Both texts state a purpose ("for X") and the purposes differ."""
     a = _PURPOSE_RE.search(text_a)
@@ -599,8 +778,9 @@ def _determine_resolution(conflict_type: str, memory: Memory) -> str:
     """Determine the best resolution strategy for a contradiction.
 
     Rules:
-        - negation / preference_change: supersede (newer wins — applied only
-          once the owner approves, see MemoryManager._process_fact)
+        - negation / preference_change / value_change: supersede (newer
+          wins — applied only once the owner approves, see
+          MemoryManager._process_fact)
         - anything else: keep both
 
     There used to be a third answer, ``ask_user``, but nothing produced it
@@ -615,7 +795,7 @@ def _determine_resolution(conflict_type: str, memory: Memory) -> str:
     Returns:
         Resolution strategy string: ``supersede`` or ``scope``.
     """
-    if conflict_type in ("negation", "preference_change"):
+    if conflict_type in ("negation", "preference_change", "value_change"):
         return "supersede"
     return "scope"
 
