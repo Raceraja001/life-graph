@@ -417,6 +417,14 @@ async def stream_turn(tenant_id: str, body: ChatStreamRequest, pm: Any) -> Async
             task_name=f"chat:{body.target_agent}",
             session_id=session_id,
             project_id=body.project_id,
+            # No automatic retry for a streamed turn. A retry is a new task
+            # with its own stream that no client is reading, it can run the
+            # turn's tools (memory_save, reminder_set) a second time, and the
+            # kernel waits out its backoff before it sends this stream its
+            # error. The client gets one prompt error frame instead and can
+            # resend or regenerate. The phone's waited-for turn (api/jarvis.py
+            # _answer) and Telegram already spawn with 0.
+            max_retries=0,
         )
     except Exception as exc:
         yield sse({"type": "error", "message": str(exc)})
