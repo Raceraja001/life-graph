@@ -8,7 +8,10 @@ bitemporal validity, zero forgetting/deletion leakage, and the abstention probe
 
 from __future__ import annotations
 
+import ast
+import inspect
 import json
+import re
 import subprocess
 import sys
 from datetime import date
@@ -37,7 +40,12 @@ from life_graph.evals.memory_benchmark import (
     sweep_confidence_floors,
 )
 from life_graph.services.memory.retrieval import EARLY_EXIT_CONFIDENCE, EARLY_EXIT_ENTAILMENT
-from scripts.eval_memory_benchmark import verify_report
+from scripts.eval_memory_benchmark import (
+    BRIDGE_MAX_COST,
+    STAGE4_MIN_RECALL_GAIN,
+    STAGE5_MIN_TEMPORAL_GAIN,
+    verify_report,
+)
 
 
 @pytest.fixture(scope="module")
@@ -58,40 +66,179 @@ def test_tuning_and_heldout_datasets_are_distinct_and_hashed(benchmark_report):
     assert tuple(held_out["methods"].keys()) == BENCHMARK_METHODS
 
 
+#: Per-split margins, measured 2026-11-25 once the lab's lists stopped naming
+#: held-out strings. The lists come from the tuning split, so its margins are
+#: the larger ones; the held-out margins sit below what was measured there.
+LADDER_MARGINS = {
+    "tuning_dev": {
+        "s4_recall_at_5": 0.08,  # measured +0.136
+        "s5_temporal": 0.10,  # measured +0.120
+        "s5_supersession": 0.20,  # measured +0.333
+        "s5_recall_at_1_slack": 0.0,  # measured +0.024
+    },
+    "held_out": {
+        "s4_recall_at_5": STAGE4_MIN_RECALL_GAIN,  # measured +0.041
+        "s5_temporal": STAGE5_MIN_TEMPORAL_GAIN,  # measured +0.058
+        # Measured +0.000: on held-out data the reranker no longer improves
+        # correction supersession over stage 4; it only must not hurt it.
+        "s5_supersession": 0.0,
+        # Measured -0.006 (one question): the reranker costs held-out R@1.
+        "s5_recall_at_1_slack": 0.01,
+    },
+}
+
+
 @pytest.mark.parametrize("split_name", ["tuning_dev", "held_out"])
 def test_single_variable_ablation_ladder_improves_target_metrics(benchmark_report, split_name):
     methods = benchmark_report["splits"][split_name]["methods"]
+    margin = LADDER_MARGINS[split_name]
     s1 = methods["1_lexical_bm25"]["overall"]
     s3 = methods["3_hybrid_rrf"]["overall"]
     s4 = methods["4_graph_entity_expansion"]["overall"]
     s5 = methods["5_rerank_temporal_provenance"]["overall"]
     s6 = methods["6_multistep_bridge"]["overall"]
 
-    # Hybrid RRF improves over pure lexical BM25 on Recall@1, Recall@5, and MRR
+    # Hybrid RRF improves over pure lexical BM25 on Recall@1 and MRR, and does
+    # not lose Recall@5 (held-out: equal, 0.7633 both).
     assert s3["recall_at_1"] > s1["recall_at_1"]
-    assert s3["recall_at_5"] > s1["recall_at_5"]
+    assert s3["recall_at_5"] >= s1["recall_at_5"]
     assert s3["mrr"] > s1["mrr"]
 
     # Graph & alias expansion improves Recall@1, Recall@5, MRR, and full support
     assert s4["recall_at_1"] > s3["recall_at_1"]
-    assert s4["recall_at_5"] >= s3["recall_at_5"] + 0.08
+    assert s4["recall_at_5"] >= s3["recall_at_5"] + margin["s4_recall_at_5"]
     assert s4["mrr"] > s3["mrr"]
     assert s4["full_support_at_5"] > s3["full_support_at_5"]
 
-    # Temporal supersession reranking improves temporal accuracy, correction supersession, and R@1
-    assert s5["recall_at_1"] >= s4["recall_at_1"]
-    assert s5["temporal_accuracy"] >= s4["temporal_accuracy"] + 0.10
-    assert s5["correction_supersession_rate"] >= s4["correction_supersession_rate"] + 0.20
+    # Temporal supersession reranking improves temporal accuracy and full support
+    assert s5["recall_at_1"] >= s4["recall_at_1"] - margin["s5_recall_at_1_slack"]
+    assert s5["temporal_accuracy"] >= s4["temporal_accuracy"] + margin["s5_temporal"]
+    assert (
+        s5["correction_supersession_rate"]
+        >= s4["correction_supersession_rate"] + margin["s5_supersession"]
+    )
     assert s5["full_support_at_5"] > s4["full_support_at_5"]
 
-    # The multi-step bridge must not cost support or recall. It used to be
-    # asserted to abstain with P/R >= 0.95 and support >= 0.84, which it met
-    # through term lists naming these datasets' unanswerable questions; it no
-    # longer abstains, and abstention is measured by the probe below.
-    assert s6["full_support_at_5"] >= s5["full_support_at_5"]
-    assert s6["recall_at_5"] >= s5["recall_at_5"]
+    # The multi-step bridge no longer helps on either split once the lists are
+    # honest (2026-11-25: -0.007 support tuning; -0.012 R@5, -0.005 support
+    # held-out). The test only caps what it may cost. It never abstains:
+    # abstention is measured by the probe below.
+    assert s6["full_support_at_5"] >= s5["full_support_at_5"] - BRIDGE_MAX_COST
+    assert s6["recall_at_5"] >= s5["recall_at_5"] - BRIDGE_MAX_COST
     assert s6["abstention_precision"] == 0.0
     assert s6["abstention_recall"] == 0.0
+
+
+# --- No held-out knowledge in the lab (2026-11) ----------------------------
+
+_WORD = r"[\w\u0B80-\u0BFF]"
+
+
+def _dataset_text(path: Path) -> str:
+    """Every string in a dataset file (messages, questions, gold answers), lowercased."""
+
+    def leaves(obj):
+        if isinstance(obj, str):
+            yield obj
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                yield from leaves(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                yield from leaves(v)
+
+    return "\n".join(leaves(json.loads(path.read_text(encoding="utf-8")))).lower()
+
+
+@pytest.fixture(scope="module")
+def split_texts() -> tuple[str, str]:
+    return _dataset_text(TUNING_DATASET), _dataset_text(memory_benchmark.HELDOUT_DATASET)
+
+
+def _held_out_only(s: str, tuning: str, held_out: str) -> bool:
+    """*s* occurs in the held-out split but not in the tuning split.
+
+    Checked two ways, since the lab matches both ways: as a plain substring
+    (catches prefixes like "thyro") and as a whole word or phrase (catches
+    "ma", which is a substring of many tuning words but a word only in
+    held-out).
+    """
+    s = s.lower().strip()
+    if not re.search(_WORD, s):  # punctuation such as the date label's ", "
+        return False
+    if s in held_out and s not in tuning:
+        return True
+    bounded = re.compile(rf"(?<!{_WORD}){re.escape(s)}(?!{_WORD})")
+    return bool(bounded.search(held_out)) and not bounded.search(tuning)
+
+
+def _leaked(strings, tuning: str, held_out: str) -> list[str]:
+    """The strings, or content words of them, that only the held-out split has."""
+    found = set()
+    for s in strings:
+        for candidate in (s, *memory_benchmark._tokenize(s)):
+            if _held_out_only(candidate, tuning, held_out):
+                found.add(candidate)
+    return sorted(found)
+
+
+def test_leakage_check_sees_held_out_names(split_texts):
+    """The check itself works: held-out names count, tuning names do not."""
+    tuning, held_out = split_texts
+    for name in ("senthil", "saibaba colony", "thenral", "redmi", "ma", "நிலா"):
+        assert _held_out_only(name, tuning, held_out), name
+    for name in ("priya", "adyar", "tessera", "farmlink", "coimbatore", "anu"):
+        assert not _held_out_only(name, tuning, held_out), name
+
+
+def test_lab_rule_lists_name_nothing_only_the_held_out_split_has(split_texts):
+    """Stage 4-5 lists come from the tuning split alone.
+
+    Until 2026-11 they named the held-out person's family, places, employers
+    and phones, so held-out R@5 for stages 4-5 (0.86-0.90) was an upper bound.
+    """
+    tuning, held_out = split_texts
+    strings = memory_benchmark.lab_rule_strings()
+    assert len(strings) > 100  # the lists are all in there
+    assert _leaked(strings, tuning, held_out) == []
+
+
+def test_corpus_and_rule_code_add_no_held_out_only_strings(split_texts):
+    """No inline string in the corpus-building and rule functions is held-out-only.
+
+    `retrieve_for_method` is not scanned: it reads the datasets' gold `kind`
+    labels ("old_fact", "connected" exist only in the held-out split), which is
+    a separate known issue.
+    """
+    tuning, held_out = split_texts
+    functions = (
+        memory_benchmark.build_corpus,
+        memory_benchmark._build_facets,
+        memory_benchmark._detect_slots,
+        memory_benchmark._extract_entities,
+        memory_benchmark._expand_alias_tokens,
+    )
+    strings = []
+    for fn in functions:
+        tree = ast.parse(inspect.getsource(fn))
+        body = tree.body[0].body
+        doc = body[0].value if body and isinstance(body[0], ast.Expr) else None
+        strings += [
+            n.value
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and n is not doc
+        ]
+    assert _leaked(strings, tuning, held_out) == []
+
+
+@pytest.mark.parametrize("dataset", [TUNING_DATASET, memory_benchmark.HELDOUT_DATASET])
+def test_rendered_memory_is_its_date_and_its_own_words(dataset):
+    """Nothing is appended to a memory: scoring reads the rendered text, so a
+    note naming the answer would score as a hit."""
+    corpus = build_corpus(json.loads(dataset.read_bytes().decode("utf-8")))
+    for mem in corpus:
+        assert mem.rendered_text.startswith(f"[{mem.msg_date.isoformat()} ("), mem.id
+        assert mem.rendered_text.split("] ", 1)[1] == mem.raw_text, mem.id
 
 
 def test_lifecycle_invariants_bitemporal_forgetting_and_provenance():
