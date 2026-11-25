@@ -1184,6 +1184,9 @@ class PostgresMemoryStore:
                 await session.flush()
                 old.superseded_by = new_id
 
+            # When we stopped believing it (retrieval.is_known_at). Set after the
+            # replacement copied the old properties, so it does not inherit it.
+            old.properties = {**(old.properties or {}), "superseded_at": now.isoformat()}
             await session.commit()
             await session.refresh(old)
             if replacement:

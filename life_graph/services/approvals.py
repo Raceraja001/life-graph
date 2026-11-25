@@ -1093,8 +1093,14 @@ class ApprovalService:
         loser.status = "superseded"
         loser.superseded_by = winner.id
         # A duplicate, not an earlier value: the cold tier must not show it as
-        # "later replaced" (services/memory/tiers.py).
-        loser.properties = {**(loser.properties or {}), "merged_into": str(winner.id)}
+        # "later replaced" (services/memory/tiers.py). superseded_at: from now
+        # the winner holds the belief (retrieval.is_known_at). No valid_until:
+        # the merged words were never untrue, only said twice.
+        loser.properties = {
+            **(loser.properties or {}),
+            "merged_into": str(winner.id),
+            "superseded_at": datetime.now(UTC).isoformat(),
+        }
         winner.supersedes = loser.id
 
     async def _apply_archive(self, tenant_id: str, appr: Approval, approve: bool) -> None:
@@ -1191,6 +1197,11 @@ class ApprovalService:
         if old.status == "superseded" and (new is None or old.superseded_by == new.id):
             old.status = "active"
             old.superseded_by = None
+            # Undone on every timeline: without this the restored fact still
+            # read as replaced to a question "as of now" (retrieval.is_known_at).
+            old.properties = {
+                k: v for k, v in (old.properties or {}).items() if k != "superseded_at"
+            }
             if new is not None and new.supersedes == old.id:
                 new.supersedes = None
 
@@ -1220,6 +1231,12 @@ class ApprovalService:
             new.status = "active"
         old.status = "superseded"
         old.superseded_by = new.id
+        # When it stopped being the current belief (retrieval.is_known_at).
+        # Reassigned, never mutated: see the payload note below.
+        old.properties = {
+            **(old.properties or {}),
+            "superseded_at": datetime.now(UTC).isoformat(),
+        }
         new.supersedes = old.id
         # Reassign: in-place mutation of a JSONB dict is not change-tracked.
         appr.payload = {**payload, "applied": True}

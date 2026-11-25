@@ -473,8 +473,13 @@ def _temporal(memory: Any, *names: str) -> datetime | None:
     """The first of *names* carried by *memory* as an attribute or in ``properties``.
 
     ``recorded_at`` and ``superseded_at`` have no columns of their own
-    (models/memory.py): consolidation and correction write them into the JSONB
-    ``properties``. Reading both places keeps one predicate for either shape.
+    (models/memory.py), so they live in the JSONB ``properties``. Every path
+    that supersedes a memory writes ``superseded_at`` there (MemoryManager.
+    supersede and _as_said, tools/memory_search.py _supersede, the approvals
+    contradiction and merge applies, micro-consolidation dedup, store.deny,
+    identity supersede), and every undo removes it. ``recorded_at`` is written
+    only where a path sets it explicitly; otherwise ``created_at`` stands in.
+    Reading both places keeps one predicate for either shape.
     """
     props = getattr(memory, "properties", None)
     if not isinstance(props, dict):

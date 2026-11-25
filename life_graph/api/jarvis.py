@@ -1135,8 +1135,11 @@ async def undo_save(memory_id: uuid.UUID):
             # taking the correction back must not leave neither of them active.
             await session.execute(
                 text(
+                    # superseded_at goes too, or the restored fact still reads
+                    # as replaced to a question "as of now" (retrieval.is_known_at).
                     "UPDATE memories SET status = 'active', superseded_by = NULL,"
-                    " updated_at = NOW()"
+                    " updated_at = NOW(),"
+                    " properties = COALESCE(properties, '{}'::jsonb) - 'superseded_at'"
                     " WHERE tenant_id = :t AND superseded_by = :id AND status = 'superseded'"
                 ),
                 {"id": memory_id, "t": tenant_id},

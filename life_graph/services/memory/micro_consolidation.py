@@ -15,13 +15,13 @@ to the nightly :class:`ConsolidationPipeline`.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import cast, func, select, update
+from sqlalchemy import func, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 
 from life_graph.config import settings
@@ -39,6 +39,21 @@ if TYPE_CHECKING:
     from life_graph.services.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
+
+
+def _with_merged_note(winner_id: object) -> Any:
+    """SQL for a near-duplicate's properties once it is folded into *winner_id*.
+
+    ``merged_into`` tells the cold tier it is a duplicate, not an earlier value
+    (services/memory/tiers.py); ``superseded_at`` says from when the winner holds
+    the belief (services/memory/retrieval.py is_known_at).
+
+    ``literal(dict, JSONB)``: this was ``cast(json.dumps(...), JSONB)``, and the
+    JSONB type encodes its bind value again, so the note arrived as a JSON
+    *string* and ``properties || string`` turned the properties into an array.
+    """
+    note = {"merged_into": str(winner_id), "superseded_at": datetime.now(UTC).isoformat()}
+    return func.coalesce(Memory.properties, literal({}, JSONB)).op("||")(literal(note, JSONB))
 
 
 # ── Report ────────────────────────────────────────────────────────────────────
@@ -231,10 +246,9 @@ class MicroConsolidator:
                             .values(
                                 status="superseded",
                                 superseded_by=existing.id,
-                                # A duplicate, not an earlier value (services/memory/tiers.py).
-                                properties=func.coalesce(Memory.properties, cast("{}", JSONB)).op(
-                                    "||"
-                                )(cast(json.dumps({"merged_into": str(existing.id)}), JSONB)),
+                                # A duplicate, not an earlier value (services/memory/tiers.py),
+                                # replaced as of now (retrieval.is_known_at).
+                                properties=_with_merged_note(existing.id),
                             )
                         )
                         await session.commit()

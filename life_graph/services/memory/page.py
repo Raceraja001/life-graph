@@ -529,7 +529,10 @@ async def _restore_replaced(tenant_id: str, memory_id: uuid.UUID) -> None:
     async with async_session() as session:
         await session.execute(
             text(
-                "UPDATE memories SET status = 'active', superseded_by = NULL, updated_at = NOW()"
+                # superseded_at goes too: an undo restores the old value as
+                # current belief on every timeline (retrieval.is_known_at).
+                "UPDATE memories SET status = 'active', superseded_by = NULL, updated_at = NOW(),"
+                " properties = COALESCE(properties, '{}'::jsonb) - 'superseded_at'"
                 " WHERE tenant_id = :t AND superseded_by = :id AND status = 'superseded'"
                 " AND NOT (COALESCE(properties, '{}'::jsonb) ? 'merged_into')"
             ),

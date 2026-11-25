@@ -282,6 +282,8 @@ class IdentityService:
                     supersedes=mem.id,
                 )
                 mem.superseded_by = new_mem.id
+                # After new_mem copied the properties, so it does not inherit it.
+                mem.properties = {**(mem.properties or {}), "superseded_at": now.isoformat()}
                 session.add(new_mem)
                 logger.info("Belief superseded: %s → %s", memory_id, new_mem.id)
 

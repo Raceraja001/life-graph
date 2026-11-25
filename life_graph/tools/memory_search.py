@@ -600,21 +600,31 @@ async def _queue_replacement(
 
 
 async def _supersede(tenant_id: str, old_id: Any, new_id: Any) -> str | None:
-    """Mark the owner's active memory *old_id* replaced by *new_id*; its content, or None."""
+    """Mark the owner's active memory *old_id* replaced by *new_id*; its content, or None.
+
+    ``properties.superseded_at`` records when (services/memory/retrieval.py
+    is_known_at): a question "as of now" must not read the old value as
+    current belief. Undo paths remove it again (services/memory/page.py
+    _restore_replaced, api/jarvis.py undo_save, a rejected contradiction).
+    """
+    from datetime import UTC, datetime
+
     from sqlalchemy import text
 
     from life_graph.storage.database import async_session
 
+    stamp = json.dumps({"superseded_at": datetime.now(UTC).isoformat()})
     async with async_session() as session:
         old = (
             await session.execute(
                 text(
                     "UPDATE memories SET status = 'superseded', superseded_by = :new,"
-                    " updated_at = NOW()"
+                    " updated_at = NOW(),"
+                    " properties = COALESCE(properties, '{}'::jsonb) || CAST(:stamp AS jsonb)"
                     " WHERE id = :old AND tenant_id = :t AND status = 'active' AND id <> :new"
                     " RETURNING content"
                 ),
-                {"old": old_id, "new": new_id, "t": tenant_id},
+                {"old": old_id, "new": new_id, "t": tenant_id, "stamp": stamp},
             )
         ).first()
         if old is not None:
