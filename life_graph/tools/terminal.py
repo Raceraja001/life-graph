@@ -18,6 +18,13 @@ is a mistake-catcher, NOT a security boundary — denylisting a shell cannot
 work, and should not be reasoned about as though it does. The real controls
 are the tenant gate and the master switch. Anything a shell can reach, a
 persona holding this tool can reach.
+
+Inside a driver run (:func:`life_graph.tools._guards.confine_to`, e.g. the
+local driver working in a task worktree) ``full`` mode no longer inherits
+the API process's environment: the shell gets
+:func:`life_graph.tools.shell_allowlist.child_env` (PATH, HOME, locale), so
+an agent cannot read the database URL, provider keys or any
+``LIFE_GRAPH_*`` setting with ``env`` (Stage 0, 2026-11-25).
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ from life_graph.tools._guards import (
     ToolDeniedError,
     check_command,
     check_tenant,
+    confined,
     resolve_cwd,
 )
 from life_graph.tools.registry import tool
@@ -109,6 +117,9 @@ async def run_command(command: str, working_directory: str | None = None) -> str
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(cwd),
+                # Under a driver: no secrets in the shell's environment. None
+                # (inherit) only for the chat personas outside a task.
+                env=shell_allowlist.child_env() if confined() else None,
                 start_new_session=True,
             )
 

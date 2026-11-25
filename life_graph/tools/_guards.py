@@ -135,6 +135,11 @@ def confine_to(*paths: str | Path) -> Iterator[None]:
         _task_roots.reset(token)
 
 
+def confined() -> bool:
+    """Whether a driver has confined the host tools to a task (:func:`confine_to`)."""
+    return _task_roots.get() is not None
+
+
 def _allowed_roots() -> list[Path]:
     scoped = _task_roots.get()
     if scoped is not None:

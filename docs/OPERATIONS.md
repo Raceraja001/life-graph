@@ -636,7 +636,7 @@ Where coding drivers run, and how to run them safely. Design and threat model:
 | `claude_code`, `=docker` (legacy) | container on docker's default bridge (open network) | yes, inside the container | as above, minus the network policy |
 | `claude_code`, `=none` | host, as the API user | **denied** unless `DRIVER_ALLOW_HOST_SHELL=true` | allowlist (`drivers/host_exec.py`) |
 | `opencode` (**parked**: `DRIVER_OPENCODE_ENABLED=false`, reports unavailable) | host, as the API user | **denied** unless `DRIVER_OPENCODE_ALLOW_BASH=true` | allowlist |
-| `local` | in the API process | `run_command`: `TOOL_SHELL_MODE=allowlist` (read-only programs) | `shell_allowlist.child_env()` |
+| `local` | in the API process | `run_command`: `TOOL_SHELL_MODE=allowlist` (read-only programs) | `shell_allowlist.child_env()`, also in `full` mode while a driver has confined the tools to a task (`confine_to`) |
 | verifiers | `VERIFIER_SANDBOX=docker`: checks in a `--network none` container; dependency setup on an internal network, egress only via the proxy to package registries (see "Verifier setup egress"). `=none`: code-executing checks are **inconclusive** unless `VERIFIER_ALLOW_HOST_EXECUTION=true` | — | — |
 
 ### Enable the task runtime
