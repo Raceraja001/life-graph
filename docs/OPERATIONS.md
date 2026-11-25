@@ -161,6 +161,58 @@ docker compose -f docker-compose.production.yml exec postgres \
   WHERE job_name IN ('backup','restore_drill') ORDER BY started_at DESC LIMIT 14;"
 ```
 
+## Moving a tenant's data (`scripts/move_tenant_data.py`)
+
+A client that sends no `X-Tenant-ID` header writes into the server's default
+tenant `dev`. To move what landed there into the owner's tenant (`raja`):
+
+```bash
+# 1. Back up first (scripts/backup.sh, see Manual Operations, or a pg_dump -Fc).
+#    --apply refuses unless --backup-file names an existing, non-empty file.
+
+# 2. Dry run (the default): a READ ONLY transaction that prints, per table,
+#    the rows in each tenant, how many would move, how many are folded into
+#    an equal target row, and how many stay. Writes nothing.
+python scripts/move_tenant_data.py --source dev --target raja
+
+# 3. Apply: one transaction, then a check; any mismatch rolls it all back.
+python scripts/move_tenant_data.py --source dev --target raja --apply \
+  --backup-file /backups/before-tenant-move.dump
+```
+
+Exit codes: 0 done, 2 refused (nothing written), 3 rolled back (nothing written).
+
+**What moves.** The owner's knowledge: memories (all statuses, so pending ones
+can be reviewed in the target), their links, entity mentions, entities and
+sessions, the memory review items in `approvals` (kinds `contradiction`,
+`merge`, `entity_alias`, `archive`), conversations, preferences and evidence,
+review cards, documents, money transactions, invoices, captures, corrections,
+decisions and predictions. **What stays:** configuration (tenant settings,
+devices, owner keys, personas, Telegram bindings, connectors, schedules,
+rules) and operational history (agent tasks, job runs, budgets, audit log,
+other approval kinds). The script lists every table and why; it refuses to
+run if the schema has a tenant table it does not know.
+
+**Collisions.** A memory that exactly duplicates a live target memory (same
+`content_hash`, both active or pending) is not copied: every reference to it
+is repointed to the target's memory and the source copy is deleted. Entities
+with the same key are merged the same way (mention counts added). Duplicate
+links, mentions, approvals and money transactions are dropped; an invoice
+whose number the target already uses stays in the source and is reported.
+
+**Refusals.** Same source and target; a tenant with neither a
+`tenant_configs` row nor any memory; `--apply` without the backup file; a
+schema the lists do not cover; and rows that would point across tenants after
+the move (for example an `agent_sessions` row that stays but points at a
+session that moves). Read the dry-run report, then pass `--allow-cross-refs`
+if that is acceptable.
+
+**Afterwards.** The Apache AGE graph is not moved (the dry run prints how many
+vertices carry the source tenant); it is a best-effort mirror. Clients that
+still send no header keep writing into `dev` until they are fixed, so fix
+them before (or re-run the move after). Short-lived Redis keys (recall
+"surfaced" markers) are per tenant and simply expire.
+
 ## Dependencies: installing from `uv.lock`
 
 `uv.lock` is the authority for which package versions run. CI (`uv sync
