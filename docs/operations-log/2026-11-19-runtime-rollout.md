@@ -126,12 +126,12 @@ The limits did not change. The agent never prints secrets, never raises the $10 
   - all teardowns succeeded and nothing was left behind.
 - **The 12th runtime could not start:** "all predefined address pools have been fully subnetted". Each runtime has its own network, and 18 of the daemon's ~32 default pools are held by other stacks. It failed closed, with a clear error and no host fallback.
 - **Decision:** prod stays at concurrency 1 (max 3).
-- **Recommended fix (not done):** allocate runtime networks from a dedicated private range (e.g. `/28`s from `10.213.0.0/16`) with `--subnet`, so the daemon config, and with it every container's restart, is not touched.
+- **Recommended fix (done later: D17, #270):** allocate runtime networks from a dedicated private range (e.g. `/28`s from `10.213.0.0/16`) with `--subnet`, so the daemon config, and with it every container's restart, is not touched.
 
 ### D15. Backup and restore (verified by a read-only check)
 - **Mechanism:** `life_graph_backup` runs `pg_dump -Fc` daily at 14:00 UTC and at each start, keeps 30 days, and stores to `/mnt/h/DevTools/Backups/life-graph` (7 GB, 165 dumps). A drill runs on Sundays.
 - **The newest dump (03:46 UTC) restores:** 11–13 s into a throwaway container, and the relational rows match prod exactly as of the dump time.
-- **Problems found, not fixed:**
+- **Problems found, not fixed:** *(the restore order and strict drill were fixed in D17/#272; the strict drill's shared-memory failure in D25/#341)*
   - **The AGE graph does not restore.** The `ag_label` COPY fails on `fk_graph_oid`, the label catalog comes back empty, and a cypher query crashed the copy (signal 11). The weekly drill only counts rows and tolerates restore errors, so it doesn't catch this.
   - **The off-site restic copy has failed since 2026-11-12:** 183 "repository unreachable" attempts, all recorded as `status=success`.
   - Local dumps sit on the same SSD as prod, unencrypted and world-readable.
@@ -212,7 +212,7 @@ The read-only audit (`docs/audits/2026-11-19-code-quality-audit.html`) found 0 c
 
 The runtime panel shows `failures` (info), from earlier failed tasks.
 
-**Waiting for the owner:**
+**Waiting for the owner:** *(since done: owner keys and approvals lock D21, `/metrics` D22, owner-only `/admin` D21, H9 #306, aliases D24. Still open: micro-consolidation dedup, the scan of past captures, the 18 dead schemas, default environment.)*
 - Put the dashboard key in `LIFE_GRAPH_OWNER_API_KEYS`, then turn on `LIFE_GRAPH_APPROVALS_REQUIRE_OWNER` (release it on its own).
 - Decide whether to enable micro-consolidation dedup.
 - A one-off scan of past captures for leaked keys.
@@ -280,7 +280,7 @@ The runtime panel shows `failures` (info), from earlier failed tasks.
 
 **Fix 2:** all four were rebuilt at the same tags, from the commits the tags name (`git archive`). The claude-driver image was built with the installed CLI, which is 2.1.328. Each image carries the label `life-graph.keep=true`.
 
-**Still open:** the prune job must skip that label (`--filter 'label!=life-graph.keep'`). Editing the root-owned cron file was refused by the agent's permission check, so it needs the owner. Until that is done, the images will be deleted again at the next weekly run after 2026-11-30.
+**Still open:** *(done by the owner 2026-11-24; see `docs/OPERATIONS.md`)* the prune job must skip that label (`--filter 'label!=life-graph.keep'`). Editing the root-owned cron file was refused by the agent's permission check, so it needs the owner. Until that is done, the images will be deleted again at the next weekly run after 2026-11-30.
 
 **Verified:** test task 1e2261c4 (a new unit test file) passed every check, including `tests_pass` on the full unit suite in the no-network sandbox (6727 passed). This also confirms the #313 network-test fix end to end.
 
@@ -399,3 +399,34 @@ There were no new migrations; alembic stays at 062. There were also no changes t
 **Backups:** `.env` and `pip freeze` in `~/life-graph-backups/release-20261125/`.
 
 **Rollback:** check out `5f99eded` on `prod`, then run `./dev.sh restart`.
+
+### D25. Phase 2 Stage 0 and the owner's M1 decisions (2026-11-25)
+
+**Stage 0:** a current-truth report on the Phase 2 roadmap (`docs/audits/2026-11-25-stage0-current-truth.html`). Its main correction: the secure runtime has been deployed since 2026-11-19, so the "not deployed" docs were stale. Six P0 findings came out of it.
+
+**Owner said "you decide for me and continue".** Decisions, and why:
+- **Kill switch:** make it stop what the docs promise, not narrow the docs. It only restricts, so it is safe to decide. Done in #342.
+- **Backups:** fix the drill (#341). Bringing the laptop rest-server back is owner-only, because it is another machine. Encrypting local dumps stays open from D17.
+- **Approval backlog** (1273 pending memories): left alone. Approvals are the owner's.
+- **`LIFE_GRAPH_ENVIRONMENT=production`:** not switched yet. It needs proof that every client sends `X-Tenant-ID`, or such requests would start getting 400.
+- **Legacy `docker` driver mode:** to be fenced, not used as the rollback. Not done yet.
+- **Personal memory stays local in code**, not just by config (distill, /ask). Not done yet.
+
+**M1 merged:**
+
+| Finding | Fix |
+|---|---|
+| Bounce skipped the tamper check | #336 |
+| Venv binaries ran on the host | #337 |
+| Unknown sandbox value meant host | #338 |
+| Lossy near-duplicate merge | #339 |
+| Temporary voice turn not temporary | #340 |
+| Restore drill failed on `/dev/shm` | #341 |
+| Kill switch narrower than documented | #342 |
+
+**Drill evidence (prod, 2026-11-25), against today's 207 MB dump:**
+- The current `scripts/verify_restore.sh` fails with the shared-memory error.
+- With the #341 `lib_backup.sh` it **passes** in 18 s, with graph labels, vertices, edges and every table matching.
+
+**Not yet released:** prod is at `prod-20261125-0126`. #332-#342 are on master.
+

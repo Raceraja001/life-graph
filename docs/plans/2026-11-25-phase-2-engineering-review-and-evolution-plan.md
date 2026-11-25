@@ -55,6 +55,8 @@ The following are observations from repository documentation and recent Git hist
 
 The associated security probe report records meaningful controls and a successful end-to-end coding task, but also explicitly lists untested or environment-dependent areas, including OpenCode inside the new runtime, concurrent long-running tasks under pressure, and production activation. The older legacy Claude sandbox and verifier dependency-setup network path also need careful review.
 
+> **Verified 2026-11-25 (Stage 0):** prod switched to the task runtime on 2026-11-19, and the work order's "not deployed" table was stale (now updated). Prod `.env` shows `DRIVER_CLAUDE_SANDBOX=task` and `VERIFIER_SANDBOX=docker`. See `docs/audits/2026-11-25-stage0-current-truth.html`.
+
 **Therefore, production activation and effective runtime configuration are P0 verification tasks. Do not infer that a source default or a successful workstation probe proves the production host is using the intended boundary.**
 
 ### Other documented frontier items

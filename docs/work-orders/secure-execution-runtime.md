@@ -209,16 +209,28 @@ After approval, submit a focused PR containing the problem statement, ADR/threat
 
 **Definition of success:** Life Graph executes a real software task in a task-isolated environment, survives process interruption, verifies the result and returns an auditable diff—without granting the coding agent unrestricted host access.
 
-## Status (updated 2026-11-18)
+## Status (updated 2026-11-25)
+
+The table below was "implemented, not deployed" until 2026-11-18. Prod switched to the task runtime on 2026-11-19 (`prod-20261119-0417`, `docs/operations-log/2026-11-19-runtime-rollout.md` D1-D17). On 2026-11-25 the prod `.env` was observed with `DRIVER_CLAUDE_SANDBOX=task`, `VERIFIER_SANDBOX=docker` and `DEV_TASK_RUNNER_MODE=worker`, with all four configured images present (`docs/audits/2026-11-25-stage0-current-truth.html` §2).
 
 | Stage | State | Evidence |
 |---|---|---|
 | 0 — current truth | Done | Stage 0 report (PR description); gaps verified against `0987505` |
 | 1 — boundary design | Done | `docs/design/adr-secure-task-runtime.md` (ADR + threat model) |
-| 2 — vertical slice (claude_code) | Implemented, not deployed | `services/dev/task_runtime.py`; `docs/security/runtime-probe-results-2026-11-18.md`; one real task end to end |
-| 3 — durable worker boundary | Implemented, not deployed | `services/dev/runner.py`, `workers/dev_runner.py`; ADR §Stage 3; runner integration tests; worker smoke run |
-| 4 — interactive sessions/UI | Implemented, not deployed | live session log + long-poll/SSE API, cancel, per-task timeout; life-graph-ui run page; ADR §Stage 4 |
-| 5 — benchmark and hardening | Done (not deployed) | benchmark 10 tasks/5 categories (`evals/driver_bench/README.md`); reliability 8/8 (`scripts/runtime_reliability.py`); symlink-escape veto; probes re-run (`docs/security/`) |
+| 2 — vertical slice (claude_code) | Deployed 2026-11-19; operationally verified | `services/dev/task_runtime.py`; probes in `docs/security/`; prod task runs (ops log D16, D20) |
+| 3 — durable worker boundary | Deployed (worker mode); operationally verified | `services/dev/runner.py`, `workers/dev_runner.py`; SIGKILL/restart drill (ops log D16); runner unit fix (D19) |
+| 4 — interactive sessions/UI | Deployed with the prod releases since 2026-11-19 | live session log + long-poll/SSE API, cancel, per-task timeout; life-graph-ui run page |
+| 5 — benchmark and hardening | Done | benchmark 10 tasks/5 categories (`evals/driver_bench/README.md`); reliability 8/8; symlink-escape veto; probes re-run |
+
+**Follow-ups found on 2026-11-25 (Phase 2 Stage 0):**
+- The bounced attempt skipped the tamper check. Fixed in #336.
+- Venv binaries ran on the host. Fixed in #337.
+- An unknown sandbox value silently meant host execution. Fixed in #338.
+- Still open:
+  - the legacy `docker` driver mode is on the default bridge;
+  - Read and WebFetch are unconfined in host (`none`) mode;
+  - `tool_shell_mode=full` inherits the API environment;
+  - images are pinned by tag only.
 
 Acceptance criteria:
 
