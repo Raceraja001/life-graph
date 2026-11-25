@@ -4,7 +4,7 @@ which turns a regeneration replaced.
 A regenerated turn is a new top-level AgentTask whose ``input.regenerates``
 names the turn it re-ran. Both versions stay in the conversation; only the
 newer one, once it completed, is what the persona is shown next
-(api/kernel.py ``_load_chat_history``) and what the list of messages marks as
+(services/chat_turn.py ``load_chat_history``) and what the list of messages marks as
 the current reply (api/jarvis.py ``messages``).
 """
 

@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from life_graph.api import kernel
+from life_graph.services import chat_turn
 
 
 def task(asked, answered, *, status="completed", parent=None, regenerates=None):
@@ -52,7 +52,7 @@ def rows(monkeypatch):
                 captured["stmt"] = stmt
                 return _Result()
 
-        monkeypatch.setattr(kernel, "async_session", lambda: _Session(), raising=False)
+        monkeypatch.setattr(chat_turn, "async_session", lambda: _Session(), raising=False)
         import life_graph.storage.database as db
 
         monkeypatch.setattr(db, "async_session", lambda: _Session())
@@ -64,7 +64,7 @@ def rows(monkeypatch):
 async def test_a_turn_becomes_a_user_message_and_a_reply(rows):
     rows([task("what is the capital", "Chennai")])
 
-    history = await kernel._load_chat_history("raja", uuid.uuid4())
+    history = await chat_turn.load_chat_history("raja", uuid.uuid4())
 
     assert history == [
         {"role": "user", "content": "what is the capital"},
@@ -78,7 +78,7 @@ async def test_oldest_turn_comes_first(rows):
     # backwards.
     rows([task("second", "2"), task("first", "1")])
 
-    history = await kernel._load_chat_history("raja", uuid.uuid4())
+    history = await chat_turn.load_chat_history("raja", uuid.uuid4())
 
     assert [m["content"] for m in history] == ["first", "1", "second", "2"]
 
@@ -89,7 +89,7 @@ async def test_a_turn_that_produced_no_reply_is_dropped(rows):
     # reply.
     rows([task("answered", "yes"), task("abandoned", "")])
 
-    history = await kernel._load_chat_history("raja", uuid.uuid4())
+    history = await chat_turn.load_chat_history("raja", uuid.uuid4())
 
     assert history == [
         {"role": "user", "content": "answered"},
@@ -100,35 +100,35 @@ async def test_a_turn_that_produced_no_reply_is_dropped(rows):
 async def test_a_row_with_no_message_is_dropped(rows):
     rows([task(None, "a reply to nothing")])
 
-    assert await kernel._load_chat_history("raja", uuid.uuid4()) == []
+    assert await chat_turn.load_chat_history("raja", uuid.uuid4()) == []
 
 
 async def test_an_empty_conversation_is_empty(rows):
     rows([])
 
-    assert await kernel._load_chat_history("raja", uuid.uuid4()) == []
+    assert await chat_turn.load_chat_history("raja", uuid.uuid4()) == []
 
 
 async def test_history_is_bounded(rows):
     # A local model's context window is finite: an unbounded thread would start
     # silently pushing the system prompt out of it.
-    assert kernel.CHAT_HISTORY_TURNS > 0
-    rows([task(f"q{i}", f"a{i}") for i in range(kernel.CHAT_HISTORY_TURNS)])
+    assert chat_turn.CHAT_HISTORY_TURNS > 0
+    rows([task(f"q{i}", f"a{i}") for i in range(chat_turn.CHAT_HISTORY_TURNS)])
 
-    history = await kernel._load_chat_history("raja", uuid.uuid4())
+    history = await chat_turn.load_chat_history("raja", uuid.uuid4())
 
-    assert len(history) == kernel.CHAT_HISTORY_TURNS * 2
+    assert len(history) == chat_turn.CHAT_HISTORY_TURNS * 2
 
 
 async def test_history_is_bounded_with_more_rows_than_turns(rows):
     # The query reads extra rows to make room for replaced versions; the cut
     # still keeps only the most recent turns.
-    n = kernel.CHAT_HISTORY_TURNS + 5
+    n = chat_turn.CHAT_HISTORY_TURNS + 5
     rows([task(f"q{i}", f"a{i}") for i in reversed(range(n))])
 
-    history = await kernel._load_chat_history("raja", uuid.uuid4())
+    history = await chat_turn.load_chat_history("raja", uuid.uuid4())
 
-    assert len(history) == kernel.CHAT_HISTORY_TURNS * 2
+    assert len(history) == chat_turn.CHAT_HISTORY_TURNS * 2
     assert history[-1]["content"] == f"a{n - 1}"
 
 
@@ -137,7 +137,7 @@ async def test_a_failed_turn_is_not_history(rows):
     # keeps only completed turns.
     rows([task("broke", "half an answer", status="failed"), task("ok", "fine")])
 
-    history = await kernel._load_chat_history("raja", uuid.uuid4())
+    history = await chat_turn.load_chat_history("raja", uuid.uuid4())
 
     assert [m["content"] for m in history] == ["ok", "fine"]
 
@@ -147,7 +147,7 @@ async def test_a_regenerated_turn_shows_only_the_kept_version(rows):
     again = task("pick a film", "Vikram", regenerates=first)
     rows([task("thanks", "welcome"), again, first])  # newest first, as queried
 
-    history = await kernel._load_chat_history("raja", uuid.uuid4())
+    history = await chat_turn.load_chat_history("raja", uuid.uuid4())
 
     assert [m["content"] for m in history] == ["pick a film", "Vikram", "thanks", "welcome"]
 
@@ -157,7 +157,7 @@ async def test_a_failed_regeneration_keeps_the_original(rows):
     again = task("pick a film", None, status="failed", regenerates=first)
     rows([again, first])
 
-    history = await kernel._load_chat_history("raja", uuid.uuid4())
+    history = await chat_turn.load_chat_history("raja", uuid.uuid4())
 
     assert [m["content"] for m in history] == ["pick a film", "Jailer"]
 
@@ -168,6 +168,6 @@ async def test_regenerating_leaves_out_the_turn_and_its_earlier_versions(rows):
     again = task("pick a film", "Vikram", regenerates=first)
     rows([again, first, before])
 
-    history = await kernel._load_chat_history("raja", uuid.uuid4(), excluding=again.id)
+    history = await chat_turn.load_chat_history("raja", uuid.uuid4(), excluding=again.id)
 
     assert [m["content"] for m in history] == ["hello", "hi"]

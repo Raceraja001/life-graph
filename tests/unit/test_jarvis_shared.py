@@ -103,7 +103,9 @@ async def _spawned_input(monkeypatch, **body):
 
     pm = SimpleNamespace(spawn=AsyncMock(return_value={"task_id": "t-1"}))
     personas = SimpleNamespace(get_by_name=AsyncMock(return_value={"name": "jarvis"}))
-    monkeypatch.setattr(kernel, "_load_chat_history", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        "life_graph.services.chat_turn.load_chat_history", AsyncMock(return_value=[])
+    )
     from life_graph.core.tenant import tenant_scope
 
     with tenant_scope("t1"):
@@ -135,7 +137,7 @@ async def test_chat_without_shared_text_is_unchanged(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_jarvis_chat_captures_shared_text_as_external(monkeypatch):
-    from life_graph.api import dependencies, jarvis, kernel
+    from life_graph.api import jarvis
     from life_graph.core.tenant import tenant_scope
     from life_graph.core.trust import TrustTier
 
@@ -147,18 +149,16 @@ async def test_jarvis_chat_captures_shared_text_as_external(monkeypatch):
     ):
         captured.append((text, kind, trust_tier))
 
-    async def fake_stream(body, pm, personas):
+    async def fake_turn_frames(body):
         sent["body"] = body
 
         async def gen():
             yield 'data: {"type": "done"}\n\n'
 
-        return SimpleNamespace(body_iterator=gen(), headers={})
+        return gen()
 
     monkeypatch.setattr(jarvis, "_capture", fake_capture)
-    monkeypatch.setattr(kernel, "chat_stream", fake_stream)
-    monkeypatch.setattr(dependencies, "get_process_manager", lambda: None)
-    monkeypatch.setattr(dependencies, "get_persona_service", lambda: None)
+    monkeypatch.setattr(jarvis, "_turn_frames", fake_turn_frames)
     with tenant_scope("t1"):
         await jarvis.chat(jarvis.ChatRequest(message="what is this?", shared="Pay now: link"))
     assert captured == [

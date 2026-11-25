@@ -6,7 +6,7 @@ there. The contract is the app's (life-graph-android docs/PLAN.md):
 
 * ``POST /jarvis/chat`` streams ``{type: token, content}`` events, then
   ``{type: done, conversation_id, route}`` or ``{type: error, message}``.
-  It is the dashboard's chat stream (api/kernel.py) with Jarvis as the persona,
+  It is the dashboard's chat turn (services/chat_turn.py) with Jarvis as the persona,
   in the app's simpler event shapes. The body is ``{message, shared?,
   conversation_id?}``: ``message`` is what the owner typed, ``shared`` text
   they shared from another app, which Jarvis treats as someone else's words.
@@ -60,6 +60,7 @@ import json
 import re
 import time
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -72,6 +73,13 @@ from sqlalchemy import func, select
 from life_graph.api.approval_identity import refuse_self_approval, require_owner, resolver
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.services.chat_turn import (
+    SSE_HEADERS,
+    ChatStreamRequest,
+    ChatTurnError,
+    prepare_turn,
+    stream_turn,
+)
 from life_graph.services.lead import LEAD
 from life_graph.services.memory.sources import source_label
 from life_graph.storage.database import async_session
@@ -248,7 +256,7 @@ async def chat(body: ChatRequest):
             headers=_SSE_HEADERS,
         )
     conversation_id = body.conversation_id
-    from life_graph.api.kernel import session_is_temporary
+    from life_graph.services.chat_turn import session_is_temporary
 
     # A temporary chat teaches memory nothing: its words are never captured.
     temporary = body.temporary or await session_is_temporary(tenant_id, conversation_id)
@@ -259,9 +267,9 @@ async def chat(body: ChatRequest):
         # A failed turn run again: its words were captured the first time, and
         # it goes on in the conversation that turn opened.
         conversation_id = prior.session_id
-    inner = await _start_chat(body, conversation_id)
+    frames = await _start_chat(body, conversation_id)
     return StreamingResponse(
-        _app_frames(inner, tenant_id), media_type="text/event-stream", headers=dict(inner.headers)
+        _app_frames(frames, tenant_id), media_type="text/event-stream", headers=SSE_HEADERS
     )
 
 
@@ -281,11 +289,8 @@ async def _capture_chat(tenant_id: str, body: ChatRequest) -> None:
 
 
 async def _start_chat(body: ChatRequest, conversation_id: uuid.UUID | None):
-    """The dashboard's chat stream (api/kernel.py) for one turn with Jarvis."""
-    from life_graph.api.dependencies import get_persona_service, get_process_manager
-    from life_graph.api.kernel import ChatStreamRequest, chat_stream
-
-    return await chat_stream(
+    """One turn with Jarvis: the dashboard stream's frames (services/chat_turn.py)."""
+    return await _turn_frames(
         ChatStreamRequest(
             message=body.message,
             target_agent=LEAD,
@@ -293,17 +298,27 @@ async def _start_chat(body: ChatRequest, conversation_id: uuid.UUID | None):
             shared=body.shared,
             client_id=body.client_id,
             temporary=body.temporary,
-        ),
-        pm=get_process_manager(),
-        personas=get_persona_service(),
+        )
     )
 
 
-async def _app_frames(inner, tenant_id: str | None = None):
+async def _turn_frames(request: ChatStreamRequest) -> AsyncIterator[str]:
+    """The turn's checks, then its frames; a refusal is the route's HTTP error."""
+    from life_graph.api.dependencies import get_persona_service, get_process_manager
+
+    tenant_id = get_current_tenant_id()
+    try:
+        request = await prepare_turn(tenant_id, request, get_persona_service())
+    except ChatTurnError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+    return stream_turn(tenant_id, request, get_process_manager())
+
+
+async def _app_frames(frames: AsyncIterator[str], tenant_id: str | None = None):
     """The dashboard stream's frames, in the app's event shapes, each tool
     result's answer cards after its own event (services/jarvis/cards.py)."""
     state: dict = {}
-    async for chunk in inner.body_iterator:
+    async for chunk in frames:
         text = chunk.decode() if isinstance(chunk, bytes) else chunk
         for frame in text.split("\n\n"):
             if frame.startswith(":"):
@@ -404,7 +419,7 @@ async def _replay_chat(tenant_id: str, prior, body: ChatRequest):
     Still running: waited for, with heartbeats so the stream stays open.
     Failed meanwhile: run again, which is what the phone's resend wants.
     """
-    from life_graph.api.kernel import CHAT_STREAM_HEARTBEAT_SECONDS
+    from life_graph.services.chat_turn import CHAT_STREAM_HEARTBEAT_SECONDS
 
     task, beat = prior, time.monotonic()
     if prior.status not in _TERMINAL:
@@ -615,27 +630,22 @@ async def regenerate(task_id: uuid.UUID, body: RegenerateRequest | None = None):
     the older reply ``superseded_by``. Nothing is captured: the words were
     captured when first sent. A temporary chat stays temporary, and with Jarvis
     only. 404: not this tenant's Jarvis turn; 409: not the latest, or still
-    being answered (api/kernel.py ``_regeneration``)."""
-    from life_graph.api.dependencies import get_persona_service, get_process_manager
-    from life_graph.api.kernel import ChatStreamRequest, chat_stream
-
+    being answered (services/chat_turn.py ``regeneration``)."""
     tenant_id = get_current_tenant_id()
     turn = await _own_turn(tenant_id, task_id)
     if turn.session_id is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "turn not found")
     await _own_conversation(tenant_id, turn.session_id)
-    inner = await chat_stream(
+    frames = await _turn_frames(
         ChatStreamRequest(
             target_agent=(body.persona if body and body.persona else LEAD),
             session_id=turn.session_id,
             regenerates=task_id,
             model=body.model if body else None,
-        ),
-        pm=get_process_manager(),
-        personas=get_persona_service(),
+        )
     )
     return StreamingResponse(
-        _app_frames(inner, tenant_id), media_type="text/event-stream", headers=dict(inner.headers)
+        _app_frames(frames, tenant_id), media_type="text/event-stream", headers=SSE_HEADERS
     )
 
 
@@ -785,14 +795,14 @@ async def _answer(
 ) -> dict:
     """One Jarvis turn, waited for: {reply, conversation_id, route, saved, reminded}."""
     from life_graph.api.dependencies import get_process_manager
-    from life_graph.api.kernel import _load_chat_history, _start_chat_session
+    from life_graph.services.chat_turn import load_chat_history, start_chat_session
 
     pm = get_process_manager()
     if conversation_id is None:
-        conversation_id = await _start_chat_session(tenant_id, LEAD, question)
+        conversation_id = await start_chat_session(tenant_id, LEAD, question)
         history: list[dict[str, str]] = []
     else:
-        history = await _load_chat_history(tenant_id, conversation_id)
+        history = await load_chat_history(tenant_id, conversation_id)
     input_data: dict = {"message": question, "history": history}
     if client_id:
         input_data["client_id"] = client_id
@@ -966,7 +976,7 @@ async def voice(
         conv = prior.session_id  # a failed turn run again, in the conversation it opened
     if prior is None or not heard:
         heard = await _transcribe(audio)
-        from life_graph.api.kernel import session_is_temporary
+        from life_graph.services.chat_turn import session_is_temporary
 
         # A retry's words were captured the first time; a temporary chat's never are.
         if prior is None and not await session_is_temporary(tenant_id, conv):

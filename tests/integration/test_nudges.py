@@ -259,11 +259,15 @@ async def _promise(tenant: str, what: str, conv_id, now: datetime):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_a_nudge_is_said_in_the_chat_it_was_promised_in(client):
-    from fastapi import HTTPException
 
-    from life_graph.api.kernel import ChatStreamRequest, _load_chat_history, _regeneration
     from life_graph.models.db import Intention
     from life_graph.services import nudges
+    from life_graph.services.chat_turn import (
+        ChatStreamRequest,
+        ChatTurnError,
+        load_chat_history,
+        regeneration,
+    )
     from life_graph.storage.database import async_session
 
     # Its own tenant: the 3-a-day limit is per tenant, and the test above spends it.
@@ -302,12 +306,12 @@ async def test_a_nudge_is_said_in_the_chat_it_was_promised_in(client):
     assert all("nudge" not in m for m in (r.json().get("data") or []))
 
     # The next turn's history is the owner's own exchanges; it cannot be asked again.
-    assert await _load_chat_history(tenant, conv) == [
+    assert await load_chat_history(tenant, conv) == [
         {"role": "user", "content": "I'll call the insurer this week"},
         {"role": "assistant", "content": "Noted."},
     ]
-    with pytest.raises(HTTPException) as refused:
-        await _regeneration(tenant, ChatStreamRequest(regenerates=uuid.UUID(said["task_id"])))
+    with pytest.raises(ChatTurnError) as refused:
+        await regeneration(tenant, ChatStreamRequest(regenerates=uuid.UUID(said["task_id"])))
     assert refused.value.status_code == 409
 
     # Done from the chat's button; the message then shows it settled.
