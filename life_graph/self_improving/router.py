@@ -7,14 +7,20 @@ Prefix: /self-improving
 
 Choosing which prompt a task runs on is the owner's alone
 (api/approval_identity.py ``owner_only``): activating a version, rolling back
-to one, and approving or rejecting an optimization run. A service key could
-otherwise create a prompt and make it live. Each of those writes one
+to one, approving or rejecting an optimization run, and running an
+optimization by hand (it deploys its best candidate when that clears the
+gate). A service key could otherwise create a prompt and make it live, or
+start a deploy. Each of those writes one
 audit_log row (``prompt_change``) naming who did it, best effort as for the
 kill switch: a failed audit write is logged and the change stands.
 
 ``/prompt-versions/deactivate`` stays open to any caller: it can only put a
 task back on its built-in prompt (the undo named in the optimizer's deploy
 notice), never make a stored prompt live.
+
+Suites and eval runs belong to a tenant: a suite or run id from another
+tenant is answered 404, the same as an id that does not exist (an eval run
+has no tenant column of its own, so it is checked through its suite).
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import select
 
 from life_graph.api.approval_identity import owner_only, resolver
 from life_graph.api.responses import success_response
@@ -38,11 +45,13 @@ from life_graph.runtime import (
     get_optimizer_service,
     get_prompt_version_service,
 )
+from life_graph.self_improving.models import EvalRun, EvalSuite
 from life_graph.self_improving.schemas import (
     EvalCaseCreate,
     EvalSuiteCreate,
     PromptVersionCreate,
 )
+from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +96,31 @@ class ReviewDecisionRequest(BaseModel):
 
 class RunEvalSuiteRequest(BaseModel):
     prompt_version_id: uuid.UUID | None = None
+
+
+# ── Tenant checks ────────────────────────────────────────────
+
+
+async def _require_own_suite(suite_id: uuid.UUID, tenant_id: str) -> None:
+    """404 unless the suite exists and belongs to this tenant."""
+    async with async_session() as session:
+        suite = await session.get(EvalSuite, suite_id)
+    if suite is None or suite.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Suite not found")
+
+
+async def _require_own_run(run_id: uuid.UUID, tenant_id: str) -> None:
+    """404 unless the eval run exists and its suite belongs to this tenant."""
+    async with async_session() as session:
+        owner = await session.scalar(
+            select(EvalSuite.tenant_id)
+            .join(EvalRun, EvalRun.suite_id == EvalSuite.id)
+            .where(EvalRun.id == run_id)
+        )
+    if owner != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"EvalRun {run_id} not found"
+        )
 
 
 # ── Eval Suites ──────────────────────────────────────────────
@@ -138,7 +172,8 @@ async def add_eval_case(
     body: AddEvalCaseRequest,
     eval_service=Depends(get_eval_service),
 ):
-    """Add a single evaluation case to a suite."""
+    """Add a single evaluation case to a suite (404 for another tenant's suite)."""
+    await _require_own_suite(suite_id, get_current_tenant_id())
     data = EvalCaseCreate(
         input_text=body.input_text,
         expected_output=body.expected_output,
@@ -157,9 +192,10 @@ async def bulk_import_cases(
     body: BulkImportCasesRequest,
     eval_service=Depends(get_eval_service),
 ):
-    """Bulk import evaluation cases into a suite."""
+    """Bulk import evaluation cases into a suite (404 for another tenant's suite)."""
     from life_graph.self_improving.schemas import EvalCaseBulkCreate
 
+    await _require_own_suite(suite_id, get_current_tenant_id())
     bulk_data = EvalCaseBulkCreate(
         cases=[
             EvalCaseCreate(
@@ -226,7 +262,8 @@ async def get_eval_run(
     run_id: uuid.UUID,
     eval_service=Depends(get_eval_service),
 ):
-    """Get an eval run by ID, including results."""
+    """Get an eval run by ID, including results (404 for another tenant's run)."""
+    await _require_own_run(run_id, get_current_tenant_id())
     try:
         run = await eval_service.get_run(run_id)
     except ValueError as exc:
@@ -245,7 +282,8 @@ async def get_eval_run_failures(
     run_id: uuid.UUID,
     eval_service=Depends(get_eval_service),
 ):
-    """Get failure analysis for an eval run."""
+    """Get failure analysis for an eval run (404 for another tenant's run)."""
+    await _require_own_run(run_id, get_current_tenant_id())
     # Confirm the run exists first. Returning 200 with an empty list for a
     # run that does not exist makes "this run had no failures" — a good
     # result — indistinguishable from "there is no such run". The sibling
@@ -398,18 +436,33 @@ async def _audit_prompt_change(tenant_id: str, request: Request, what: str, deta
 )
 async def trigger_optimization(
     suite_id: uuid.UUID,
+    request: Request,
     optimizer=Depends(get_optimizer_service),
 ):
-    """Run one optimization for a suite now (same as the nightly pass).
+    """Run one optimization for a suite now (same as the nightly pass; owner only).
 
     Evaluates the active prompt, tries few-shot candidates built from reviewed
     captures, and deploys the best only if it clears the gate. Synchronous;
-    expect minutes on a local model.
+    expect minutes on a local model. The nightly job calls the optimizer
+    directly, not this route, so it is not affected by the gate.
     """
+    owner_only(request, "Running an optimization")
     tenant_id = get_current_tenant_id()
     result = await optimizer.optimize(tenant_id, suite_id)
     if result.get("status") == "error" and result.get("optimization_run_id") is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(result["details"]))
+    await _audit_prompt_change(
+        tenant_id,
+        request,
+        "optimize",
+        {
+            "suite_id": str(suite_id),
+            "status": result.get("status"),
+            "optimization_run_id": (
+                str(result["optimization_run_id"]) if result.get("optimization_run_id") else None
+            ),
+        },
+    )
     return success_response(data=_serialize(result))
 
 
