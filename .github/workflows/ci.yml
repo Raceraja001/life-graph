@@ -262,6 +262,20 @@ jobs:
       - name: Verify Memory Evaluation Laboratory Gates
         run: python scripts/eval_memory_benchmark.py --verify
 
+      # Contradiction detector and ingest near-duplicate merge, over labeled
+      # synthetic pairs (evals/contradiction/pairs.json). Fails only when a
+      # number is worse than evals/contradiction/baseline.json.
+      - name: Verify Contradiction and False-Merge Gates
+        run: python scripts/eval_contradiction.py --verify
+
+      - name: Upload contradiction eval report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: contradiction-eval-report
+          path: evals/contradiction/report.json
+          if-no-files-found: warn
+
       - name: Verify Confidence Calibration Gates
         run: python scripts/eval_confidence_calibration.py --verify
 

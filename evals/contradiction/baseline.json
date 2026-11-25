@@ -1,0 +1,35 @@
+{
+  "dataset_sha256": "ee3163b3cc8c9eb3be4c65eda37e20fb7779e3c31b9e78ea80686422564b95ad",
+  "overall": {
+    "contradiction_precision": 1.0,
+    "contradiction_recall": 0.4,
+    "paraphrase_merge_rate": 1.0,
+    "false_merge_rate": 0.3243
+  },
+  "by_category": {
+    "negation": {
+      "contradiction_recall": 0.5714,
+      "false_merge_rate": 0.4286
+    },
+    "preference_swap": {
+      "contradiction_recall": 0.8571,
+      "false_merge_rate": 0.1429
+    },
+    "value_change": {
+      "contradiction_recall": 0.0,
+      "false_merge_rate": 0.1818
+    },
+    "compatible_addition": {
+      "false_contradiction_rate": 0.0,
+      "false_merge_rate": 0.5714
+    },
+    "scoped": {
+      "false_contradiction_rate": 0.0,
+      "false_merge_rate": 0.4
+    },
+    "paraphrase": {
+      "false_contradiction_rate": 0.0,
+      "merge_rate": 1.0
+    }
+  }
+}
