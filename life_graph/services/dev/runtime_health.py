@@ -258,6 +258,15 @@ async def collect(session_factory, *, now: datetime | None = None) -> Report:
 def evaluate(report: Report) -> None:
     """Turn the collected numbers into issues (pure: no I/O)."""
     runner, tasks, containers = report.runner, report.tasks, report.containers
+    if settings.driver_claude_sandbox == "docker":
+        report.issues.append(
+            Issue(
+                "driver_sandbox_fenced",
+                CRITICAL,
+                "driver_claude_sandbox=docker is switched off; every claude_code task "
+                "fails until it is set to task",
+            )
+        )
     if runner.get("enabled") and not runner.get("lock_holders"):
         report.issues.append(
             Issue("runner_down", CRITICAL, "no process holds the dev-task runner lock")
@@ -280,7 +289,7 @@ def evaluate(report: Report) -> None:
             Issue("failures", WARNING, f"{tasks['failed_24h']} dev tasks failed in the last 24 h")
         )
     if not containers.get("available", True):
-        if settings.driver_claude_sandbox in ("task", "docker"):
+        if settings.driver_claude_sandbox == "task":
             report.issues.append(
                 Issue("docker_unavailable", WARNING, containers.get("reason", "docker unavailable"))
             )

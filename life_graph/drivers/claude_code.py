@@ -417,8 +417,8 @@ class ClaudeCodeDriver:
                     "workdir": str(cwd),
                     "isolated": worktree is not None,
                     "sandboxed": sandboxed,
-                    # Which execution boundary this run had: "host", "docker"
-                    # (legacy open-network container) or "task" (task_runtime).
+                    # Which execution boundary this run had: "host" or "task"
+                    # (task_runtime). "docker" (fenced) only appears on a refusal.
                     "boundary": boundary,
                     "host_shell": "denied" if host_shell_denied else "allowed",
                     **audit,
@@ -472,7 +472,7 @@ class ClaudeCodeDriver:
                 either path.
             sandbox.SandboxUnavailableError: sandboxing is configured on
                 but docker, the image, or the container itself is not
-                available. Never falls back to the host path — see
+                available, or the fenced "docker" mode is set. Never falls back to the host path — see
                 driver_claude_sandbox's comment in config/drivers.py.
         """
         api_key = _api_key()
@@ -506,6 +506,10 @@ class ClaudeCodeDriver:
                 raise
             return proc.returncode, out, err
 
+        # The old open-network "docker" mode is fenced (D25): refuse before
+        # any login is staged or container started.
+        sandbox.refuse_legacy_driver_sandbox()
+
         # API-key mode stages no personal credentials at all. OAuth mode uses
         # the long-lived token (nothing copied, nothing refreshed); copying
         # the host's login file is a legacy opt-in, since a refresh inside
@@ -525,15 +529,10 @@ class ClaudeCodeDriver:
                 "api_key" if api_key else "oauth_token" if oauth_token else "staged_copy"
             )
         try:
-            if sandbox.task_runtime_enabled():
-                result = await self._run_in_task_runtime(
-                    args, cwd, creds_dir, timeout=timeout, api_key=api_key, packet=packet,
-                    audit=audit, oauth_token=oauth_token,
-                )  # fmt: skip
-            else:
-                result = await sandbox.run_driver(
-                    args, cwd, creds_dir, timeout=timeout, api_key=api_key, oauth_token=oauth_token
-                )
+            result = await self._run_in_task_runtime(
+                args, cwd, creds_dir, timeout=timeout, api_key=api_key, packet=packet,
+                audit=audit, oauth_token=oauth_token,
+            )  # fmt: skip
         except sandbox.SandboxUnavailableError as exc:
             if "timed out" in str(exc):
                 raise TimeoutError(str(exc)) from exc

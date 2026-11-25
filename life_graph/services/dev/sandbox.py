@@ -212,7 +212,12 @@ def enabled() -> bool:
 
 
 def driver_sandbox_enabled() -> bool:
-    """Whether the claude_code driver runs in a container at all ("docker" or "task")."""
+    """Whether the claude_code driver is meant to run in a container ("docker" or "task").
+
+    "docker" still counts, so that mode is never treated as the host: it is
+    fenced, and every dispatch in it fails closed
+    (:func:`refuse_legacy_driver_sandbox`).
+    """
     return settings.driver_claude_sandbox in ("docker", "task")
 
 
@@ -685,109 +690,41 @@ def gradle_tasks(command: str | None, default: str = "test") -> list[str]:
     return argv or [default]
 
 
-async def _driver_image_id() -> str:
-    image = settings.driver_claude_sandbox_image
-    res = await _exec(["docker", "image", "inspect", "--format", "{{.Id}}", image], timeout=30)
-    if res.returncode != 0:
-        raise SandboxUnavailableError(
-            f"claude_code sandbox image {image!r} not available — build it with "
-            "docker/claude-driver/build.sh"
-        )
-    return res.stdout.strip()
+# Owner decision D25 (2026-11-25): the old "docker" driver mode is fenced, not
+# kept as a rollback. It ran the claude CLI on docker's default bridge (open
+# network, the host reachable on its gateway) and skipped validate_spec.
+LEGACY_DRIVER_SANDBOX_FENCED = (
+    "driver_claude_sandbox=docker is switched off: that mode ran the agent on docker's "
+    "open default network and skipped the container policy check. Set "
+    "LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=task (the per-task runtime). To roll back, use the "
+    "previous task image tag (docs/OPERATIONS.md, 'Rollback')"
+)
 
 
-async def run_driver(
-    argv: list[str],
-    workdir: Path,
-    credentials_dir: Path | None,
-    *,
-    timeout: int = 300,
-    api_key: str | None = None,
-    oauth_token: str | None = None,
-) -> SandboxResult:
-    """Run the claude_code driver's CLI invocation inside a container.
+def refuse_legacy_driver_sandbox() -> None:
+    """Raise :class:`SandboxUnavailableError` when the fenced "docker" mode is set.
 
-    Unlike :func:`run` (the verifier's read-only, network-denied check
-    phase) this is the OPPOSITE on both axes: *workdir* is mounted
-    read-write — the driver's job is to edit it — and the network stays on,
-    since the CLI is an API-backed tool. What's contained instead:
+    Called before any login is staged or container started, so a stale
+    ``.env`` fails the dispatch closed (``sandbox_unavailable``) instead of
+    running the agent on an open network. It never falls back to the host.
+    """
+    if settings.driver_claude_sandbox == "docker":
+        raise SandboxUnavailableError(LEGACY_DRIVER_SANDBOX_FENCED)
 
-    - filesystem: only *workdir* and *credentials_dir* are visible from the
-      host; root filesystem is read-only with a tmpfs /tmp scratch.
-    - credentials: preferably *oauth_token*, the long-lived
-      ``claude setup-token`` login, passed by name. It does not refresh.
-      The legacy alternative is *credentials_dir*, a throwaway copy of the
-      login file (see :func:`stage_credentials`), never the live
-      ``~/.claude``. It is mounted read-write because the CLI refreshes an
-      expired access token in place, and that refresh rotates the refresh
-      token, which REVOKES the host's own copy (prod, 2026-11-19). That is
-      why the copy is opt-in (driver_claude_code_allow_staged_login).
-    - capabilities/resources: same caps-dropped, no-new-privileges,
-      pids/memory/cpu limits as the verifier sandbox, and the container
-      runs as the host uid so files it writes land owned correctly for the
-      host-side landing commit that follows.
+
+async def run_driver(*_args: object, **_kwargs: object) -> SandboxResult:
+    """Fenced: the old open-network driver container no longer runs.
+
+    It used to start the claude CLI with ``docker run`` on the default
+    bridge, outside :func:`validate_spec`. The per-task runtime
+    (``services/dev/task_runtime.py``, ``driver_claude_sandbox=task``) is the
+    only container path for the driver now. Kept as a stub so any caller
+    left behind fails closed with a clear message.
 
     Raises:
-        SandboxUnavailableError: docker, the image, or the container itself
-            could not run, or the timeout was hit.
+        SandboxUnavailableError: always.
     """
-    await _driver_image_id()
-    container = f"lg-driver-{uuid.uuid4().hex[:12]}"
-    if api_key:
-        # Commercial mode: an API key, never the personal login. Passed by
-        # NAME (-e VAR, value from the docker client's environment), so the
-        # key never appears in a process listing the way -e VAR=value would.
-        auth = ["-e", "ANTHROPIC_API_KEY", "-e", "CLAUDE_CONFIG_DIR=/tmp/.claude"]
-        client_env = {"ANTHROPIC_API_KEY": api_key}
-    elif oauth_token:
-        # The long-lived login, by name like the API key; nothing is mounted.
-        auth = ["-e", "CLAUDE_CODE_OAUTH_TOKEN", "-e", "CLAUDE_CONFIG_DIR=/tmp/.claude"]
-        client_env = {"CLAUDE_CODE_OAUTH_TOKEN": oauth_token}
-    else:
-        if credentials_dir is None:
-            raise SandboxUnavailableError("claude_code sandbox needs credentials or an API key")
-        # Legacy staged copy, rw: the CLI writes a refreshed token back into
-        # it (and in doing so revokes the host's copy -- see the docstring).
-        auth = [
-            "-e",
-            "CLAUDE_CONFIG_DIR=/claude-config",
-            "-v",
-            f"{credentials_dir}:/claude-config",
-        ]
-        client_env = None
-    docker_argv = [
-        "docker",
-        "run",
-        "--rm",
-        "--name",
-        container,
-        "--read-only",
-        "--tmpfs",
-        "/tmp:rw,exec,size=512m",
-        *_limits(
-            memory=settings.driver_claude_sandbox_memory, cpus=settings.driver_claude_sandbox_cpus
-        ),
-        "-e",
-        "HOME=/tmp",
-        *auth,
-        "-v",
-        f"{workdir}:{WORK}",
-        "-w",
-        WORK,
-        # The image's own binary, not argv[0]: argv[0] is the host's
-        # configured path (driver_claude_code_bin, e.g. ~/.local/bin/claude),
-        # which does not exist inside the container.
-        "--entrypoint",
-        DRIVER_CLI,
-        settings.driver_claude_sandbox_image,
-        *argv[1:],
-    ]
-    res = await _exec(docker_argv, timeout=timeout, container=container, env=client_env)
-    if res.returncode in (125, 126, 127) and not res.stdout:
-        raise SandboxUnavailableError(
-            f"claude_code sandbox could not start: {res.stderr.strip()[-400:]}"
-        )
-    return res
+    raise SandboxUnavailableError(LEGACY_DRIVER_SANDBOX_FENCED)
 
 
 async def stage_credentials(source: Path) -> Path:

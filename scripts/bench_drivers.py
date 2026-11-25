@@ -330,7 +330,8 @@ async def main() -> None:
     parser.add_argument("--engine", action="append", required=True)
     parser.add_argument("--task", action="append")
     parser.add_argument("--category", action="append")
-    parser.add_argument("--runtime", default="task", choices=["task", "docker", "none"])
+    # No "docker": that driver mode is fenced (D25).
+    parser.add_argument("--runtime", default="task", choices=["task", "none"])
     parser.add_argument("--driver-image", help="claude_code runtime image (default: settings)")
     parser.add_argument("--verifier-image", help="python verifier image (default: settings)")
     parser.add_argument("--verifier-node-image", help="node verifier image (default: settings)")

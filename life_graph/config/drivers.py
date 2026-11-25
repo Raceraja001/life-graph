@@ -167,15 +167,13 @@ class DriverSettings(BaseModel):
     )
     # Where the claude_code driver itself executes. "none" runs it on the
     # host as this process's user (scoped only by the CLI's own
-    # --allowedTools/--permission-mode). "docker" runs it in a container
-    # (life_graph/services/dev/sandbox.py:run_driver) with the worktree mounted
-    # read-write, only its own OAuth token available (a throwaway copy, not
-    # the live ~/.claude), and no other host path visible. Unlike the
-    # verifier sandbox this needs network (the CLI calls the Anthropic API),
-    # so isolation is filesystem + capabilities, not network denial. With
-    # "docker", a missing daemon or image fails the dispatch rather than
-    # silently falling back to unsandboxed host execution. "task" is the
-    # per-task runtime below (network allowlisted through a proxy); prefer it.
+    # --allowedTools/--permission-mode). "task" is the per-task runtime below
+    # (network allowlisted through a proxy): use it. "docker" was an older
+    # container on docker's open default network that skipped the container
+    # policy check. It is fenced (owner decision D25, 2026-11-25): the value
+    # still loads, but every claude_code dispatch refuses
+    # (sandbox_unavailable) and runtime health reports driver_sandbox_fenced.
+    # It never falls back to the host.
     # Only these values: before, an unknown one ("Task", "tasks") was not
     # "docker" or "task", so it silently meant host execution (Stage 0,
     # 2026-11-25). Now it stops startup.
@@ -201,8 +199,9 @@ class DriverSettings(BaseModel):
     # egress proxy allowing just the hosts below, the worktree as the only
     # writable host path (refused unless it sits under the dispatch scratch
     # root), labels for audit and orphan cleanup, an in-container deadline,
-    # and every spec checked by sandbox.validate_spec. docker is the older
-    # open-network container, kept as the rollback; none is the host.
+    # and every spec checked by sandbox.validate_spec. docker (the older
+    # open-network container) is fenced; none is the host. Roll back by
+    # pointing driver_claude_sandbox_image at the previous image tag.
     driver_runtime_egress_image: str = "life-graph-sandbox-egress:dev"
     # Hostnames (optionally https://host[:port]) the driver may reach through
     # the proxy. The Claude CLI talks to the API and refreshes its OAuth
