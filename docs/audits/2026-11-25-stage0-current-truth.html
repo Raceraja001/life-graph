@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stage 0 Truth Report</title>
+<style>
+:root {
+  --bg: #fbfaf7; --fg: #1d1d1b; --muted: #5d5c57; --line: #dedbd2; --card: #ffffff;
+  --p0: #b3261e; --p1: #9a5b00; --p2: #3d5a80; --ok: #2e7d32; --code: #f1efe9;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161614; --fg: #ecebe6; --muted: #a8a69e; --line: #36352f; --card: #1f1f1c;
+    --p0: #ff8a80; --p1: #ffcc80; --p2: #9ec5ff; --ok: #9be7a0; --code: #262622;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161614; --fg: #ecebe6; --muted: #a8a69e; --line: #36352f; --card: #1f1f1c;
+  --p0: #ff8a80; --p1: #ffcc80; --p2: #9ec5ff; --ok: #9be7a0; --code: #262622;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 1.7rem; margin: 0 0 4px; }
+h2 { font-size: 1.3rem; margin: 40px 0 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+h3 { font-size: 1.05rem; margin: 22px 0 6px; }
+p, li { max-width: 78ch; }
+.meta { color: var(--muted); font-size: .92rem; }
+code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .88em; word-break: break-word; }
+pre { background: var(--code); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: .82rem; line-height: 1.4; }
+.table-wrap { overflow-x: auto; margin: 8px 0 16px; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; background: var(--card); }
+th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+th { background: var(--code); }
+.p0 { color: var(--p0); font-weight: 700; }
+.p1 { color: var(--p1); font-weight: 700; }
+.p2 { color: var(--p2); font-weight: 700; }
+.ok { color: var(--ok); font-weight: 600; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+.label { display: inline-block; font-size: .75rem; padding: 0 6px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+<h1>Stage 0: current-truth report</h1>
+<p class="meta">Life Graph · 2026-11-25 · for owner review · roadmap: <code>docs/plans/2026-11-25-phase-2-engineering-review-and-evolution-plan.md</code> (merged as #335)</p>
+
+<div class="card">
+<p><strong>Baseline.</strong> Code was read at master <code>262e6093</code>. Master is now <code>2550efea</code> plus bot doc commits: #334 merged during the audit, and it changes only <code>api/jarvis.py</code>, <code>runtime.py</code> and <code>api/multimodal.py</code>. Production runs tag <code>prod-20261125-0126</code> (<code>0945191a</code>), 6 commits behind master: #332, #333, #334, #335 and docs.</p>
+<p><strong>Method.</strong> The work was read-only:</p>
+<ul>
+<li>Five parallel code audits (runtime and drivers; memory; kernel and authorization; chat, workers and backups; docs and issues).</li>
+<li>Observation of production: config with secret values redacted, systemd units, Docker images, backup logs, and read-only SQL with <code>default_transaction_read_only=on</code>.</li>
+</ul>
+<p>I personally re-checked every finding marked <em>verified</em>. Items marked <em>agent-reported</em> come from a code audit and have not been re-checked line by line.</p>
+<p>No code, config, schema or policy was changed. No tests were run in Stage 0; the test evidence cited is existing test names and earlier recorded runs.</p>
+<p><strong>Evidence labels:</strong> Implemented · Tested · Deployed · Operationally verified · Unverified.</p>
+</div>
+
+<h2>1. Headline</h2>
+<p>The secure runtime <strong>is deployed and in use in production</strong>. Several docs still say "not deployed", so the roadmap's §4.1 premise is out of date. The risks are elsewhere: a few host-side gaps around the runtime, an unproven backup, a kill switch narrower than documented, and a memory merge that can silently lose facts.</p>
+<div class="table-wrap"><table>
+<tr><th>#</th><th>Finding</th><th>Evidence</th><th>Priority</th></tr>
+<tr><td>1</td><td><strong>A bounced (second) attempt skips the tamper checks.</strong> After the driver re-runs, the verifier chain, <code>mechanical_autofix</code> and host git diff run without <code>worktree_intact</code> or <code>escaping_symlinks</code>. A second attempt that rewrites <code>.git/config</code> (for example <code>filter.*.clean</code> or <code>diff.external</code>) or plants an escaping symlink could get host git to run commands the agent chose.</td><td>Verified: <code>life_graph/drivers/dispatcher.py:1527-1551</code>. The first attempt has the checks at <code>:869-930</code>.</td><td class="p0">P0</td></tr>
+<tr><td>2</td><td><strong>Host runs binaries from a venv the agent influenced.</strong> With <code>verifier_sandbox=docker</code> (the prod setting), autofix runs <code>&lt;cached venv&gt;/bin/ruff</code> and the deps check runs <code>&lt;venv&gt;/bin/pip-audit</code> on the host. They inherit the full API environment (no <code>env=</code>). The venv is built from manifests the agent edited, and any PyPI package is allowed.</td><td>Verified: <code>life_graph/services/dev/verifiers.py:268-298</code> (ruff) and <code>:972-1013</code> (pip-audit).</td><td class="p0">P0</td></tr>
+<tr><td>3</td><td><strong>There is no proven restore or off-site backup.</strong>
+<ul>
+<li>Nightly local dumps work; the latest is 2026-11-25 03:37, 207 MB.</li>
+<li>The strict restore drill from #272 <em>failed</em> on 2026-11-22 with "could not resize shared memory segment … No space left on device", which looks like the container's <code>/dev/shm</code> being too small. The last successful drill was the old lenient one on 2026-11-15.</li>
+<li>The off-site restic copy last succeeded on 2026-11-19 10:52 and has failed 130 times since. The rest-server is refusing connections now.</li>
+<li>Local dumps are on the same SSD.</li>
+</ul></td><td>Operationally verified: prod <code>job_runs</code> and <code>life_graph_backup</code> logs. A <code>restic snapshots</code> call was refused.</td><td class="p0">P0</td></tr>
+<tr><td>4</td><td><strong>The kill switch stops less than the docs say.</strong> <code>is_autonomy_paused</code> is checked in exactly one place, the auto-fix pipeline. It does not stop kernel or persona tasks, the scheduler, watchers, the dev runner, or new capability issuance, and in-flight work keeps running. Revoking capabilities does work. <code>OPERATIONS.md</code> and the CHARTER say it "stops every autonomous action".</td><td>Verified: <code>life_graph/autonomy/pipeline/service.py:478</code> is the only call site. Kill switch Operationally verified for pause and resume plus revoke (D22).</td><td class="p0">P0 (needs your decision: widen the gate or fix the docs)</td></tr>
+<tr><td>5</td><td><strong>Ingest merges near-duplicates automatically and irreversibly at cosine ≥ 0.92.</strong> The new text is dropped and the old row's properties are overwritten. The only guard is a negation check, so "birthday 3 May" vs "4 May", or the same fact about two different people, can collapse silently. No test covers a near-duplicate pair with different values.</td><td>Verified: <code>life_graph/core/memory_manager.py:381-430</code> (guard at <code>:389-390</code>).</td><td class="p0">P0</td></tr>
+<tr><td>6</td><td><strong>A temporary-chat voice turn is not temporary.</strong> <code>_answer</code> never sets <code>temporary</code>, so it is not pinned to the local model and the memory tools are not removed.</td><td>Agent-reported: <code>life_graph/api/jarvis.py:790-812</code>. No test.</td><td class="p0">P0 (privacy promise)</td></tr>
+</table></div>
+
+<h2>2. Production: what is actually deployed</h2>
+<div class="table-wrap"><table>
+<tr><th>Item</th><th>Observed on prod (2026-11-25)</th><th>Note</th></tr>
+<tr><td>Code</td><td>branch <code>prod</code>, tag <code>prod-20261125-0126</code>, 6 behind master, 0 prod-only code commits</td><td>#332-#334 (chat-turn move) not yet released</td></tr>
+<tr><td>Coding driver boundary</td><td><code>DRIVER_CLAUDE_SANDBOX=task</code>; image <code>life-graph-claude-driver:a3aa3f4-cli2.1.328</code>; egress proxy <code>life-graph-sandbox-egress:6ce846a</code></td><td class="ok">Per-task runtime is Deployed. All 4 configured images are present and have <code>life-graph.keep=true</code>.</td></tr>
+<tr><td>Verifier</td><td><code>VERIFIER_SANDBOX=docker</code>; <code>life-graph-verifier:py3.12-821beec</code>, <code>:node22-821beec</code></td><td>This makes findings 1 and 2 live</td></tr>
+<tr><td>Runner</td><td><code>DEV_TASK_RUNNER_MODE=worker</code>, concurrency 1; the <code>life-graph-dev-runner</code> unit is active (since 11-25 01:26)</td><td>Matches D4 and D19</td></tr>
+<tr><td>Shell</td><td><code>TOOL_SHELL_MODE=allowlist</code>; host-shell and host-verifier flags not set (default false); OpenCode not enabled</td><td>OpenCode's host config is <em>invalid now</em> (<code>opencode models</code> → "Configuration is invalid"). It caused 11 task failures 11-13..11-18. Parked, so low impact.</td></tr>
+<tr><td>Owner locks</td><td><code>APPROVALS_REQUIRE_OWNER=true</code>, <code>ADMIN_REQUIRE_OWNER=true</code>, metrics key required</td><td>Deployed and Operationally verified (D21, D22)</td></tr>
+<tr><td>Models</td><td><code>USE_LOCAL_LLM=true</code>, <code>USE_HYBRID_LLM=false</code>; the cheap and expensive models are local qwen2.5-coder-14b; agent model qwen3:14b; dev cloud models are free OpenRouter ones (code only)</td><td>So /ask synthesis and the nightly distill stay local <em>in prod by config</em>. The code does not enforce it (see §5).</td></tr>
+<tr><td>Speech to text</td><td>No Groq or Cloudflare keys; local STT and TTS URLs are set</td><td>The cloud speech-to-text path the audit found is not active in prod</td></tr>
+<tr><td><code>LIFE_GRAPH_ENVIRONMENT</code></td><td><code>development</code></td><td class="p1">On prod, a request without <code>X-Tenant-ID</code> falls back to the default tenant instead of 400 (<code>api/middleware.py:154</code>). The other dev-mode relaxations only apply when no keys are set, and keys are set. Changing it is a prod config change, so it is your call.</td></tr>
+<tr><td>Backups</td><td>Sidecar <code>life_graph_backup</code> (restic + pg_dump + MinIO tar) at 14:00 UTC and on container start; drill Sundays 15:00</td><td>See finding 3. Also seen: a burst of a dump per minute on 11-11 (restart loop), and the dump grew 35 MB → 170 MB on 11-14.</td></tr>
+<tr><td>Stuck tasks</td><td>4 kernel tasks still <code>running</code> (3 scout from 11-03, 1 admin from 11-13)</td><td>Chat and persona tasks have no restart recovery (§6)</td></tr>
+<tr><td>Dev tasks, last 14 days</td><td>52 total: 10 completed, 39 failed, 3 cancelled. Life Graph project 1/39; pulse 9/13.</td><td>Failures by cause:
+<ul>
+<li>14 "checks did not run" (the verifier no-network and allowlist issues fixed 11-20 and 11-24)</li>
+<li>11 OpenCode config</li>
+<li>8 bounce verification</li>
+<li>3 no model available</li>
+<li>1 OAuth token revoked</li>
+<li>1 loop</li>
+<li>1 no edit</li>
+</ul>
+Most predate the fixes, so a fresh baseline is needed.</td></tr>
+<tr><td>Memory store</td><td>Memories: 255 active, 1273 pending, 3457 rejected, 845 archived, 1 superseded. 319 approvals pending.</td><td class="p1">Retrieval only sees "active", so it works from 255 memories. The approval backlog is the biggest limit on context quality.</td></tr>
+</table></div>
+
+<h2>3. Architecture and data flow</h2>
+<h3>3.1 Memory: ingest to answer</h3>
+<pre>INGEST   POST /memories (api/memories.py:76) | capture spine (services/capture_processors.py:393) | chat distill (services/distillation.py:151)
+  └ MemoryManager.ingest / store_facts            core/memory_manager.py:89 / :180
+EXTRACT  ExtractionPipeline.extract                extraction/pipeline.py:111   (LLM tier local-only, extraction/llm.py:457; min conf 0.45)
+SCORE    ImportanceTagger.score                    scoring/importance.py:182
+EMBED    bge-m3 1024-d                             core/memory_manager.py:790
+DEDUP    exact sha256 (storage/postgres.py:1195) → near-dup ≥0.92 MERGE in place (memory_manager.py:381-430)   ← finding 5
+CONTRA   ContradictionDetector (services/contradiction.py:233, regex + slot only, needs cosine ≥0.75) + same-slot clash (mm.py:502)
+GATE     trust_tier=='self' → active, else pending (mm.py:871 / :534)                                          ← 1273 pending in prod
+STORE    PostgresMemoryStore.store (storage/postgres.py:186) + entities + links; supersede waits on approval (mm.py:573)
+NIGHTLY  03:00 consolidation (jobs/consolidation.py:189): cluster → merge *approvals* → rescore → distill (model = llm_model_cheap) → decay proposals
+RETRIEVE services/memory/retrieval.py:581
+  hybrid_search RRF vector+BM25, tenant+status=active in SQL (storage/postgres.py:462, :521, :531)
+  → provenance tiebreak (:168) → evidence early-exit (:253) → entity expansion (:700) → links (:725)
+  → bitemporal filter (:731) → [cold tier] → local LLM relevance judge (:62, chat_local_only)
+PACK     /ask: api/search.py:837 (no status/valid_until passed)   |   Jarvis: services/memory/context.py:148 (local runs only)
+ANSWER   SynthesisService.synthesize (services/synthesis.py:127 → LMStudioClient.chat; cloud only if use_hybrid_llm)
+FEEDBACK metamemory.track_query, reinforce/deny, /jarvis …/wrong, impact.record_outcome</pre>
+
+<h3>3.2 Traced: one memory query (MCP <code>ask</code>)</h3>
+<ol>
+<li><code>mcp_server.py:307 ask</code> → <code>POST /api/v1/search/ask</code>, using the caller's own credential and tenant header (<code>mcp_server.py:81</code>).</li>
+<li><code>api/search.py:725 ask_brain</code>: embed (<code>:739</code>) → <code>retrieve()</code> (<code>:761</code>).</li>
+<li><code>retrieve()</code>:
+  <ul>
+  <li>The tenant and <code>status='active'</code> filters run in SQL, so pending, rejected and superseded rows never reach a model.</li>
+  <li>Valid-time filter, then the local judge.</li>
+  </ul></li>
+<li>Lineage (<code>:783</code>), then abstain if there are no rows or confidence is low (<code>:796</code>, <code>:814</code>). Build the evidence (<code>:837</code>), synthesise (<code>:854</code>), classify the epistemic status (<code>:656</code>).</li>
+<li>Cloud exposure: none in prod today (hybrid off). The code relies on config, not enforcement.</li>
+</ol>
+
+<h3>3.3 Traced: one coding-agent dev task</h3>
+<pre>MCP start_dev_task (mcp_server.py:739) → POST /api/v1/kernel/drivers/tasks (api/drivers.py:321)
+  └ tasks.create_dev_task (services/dev/tasks.py:112) — advisory xact lock on dedupe key (:145), row status=queued → notify_runner
+WORKER   workers/dev_runner.py:82 (runner lock pg_try_advisory_lock, fail_interrupted, sweep_orphans)
+  └ DevTaskRunner.fill → claim_next_queued (FOR UPDATE SKIP LOCKED, lease) (services/dev/tasks.py:1097-1250)
+  └ tasks._run (tasks.py:219) → TaskDispatcher.dispatch_task (drivers/dispatcher.py:312)
+       _prepare_packet → _select_driver → _budget_gate → resolve_workdir (git worktree, drivers/workdir.py:67)
+       claude_code._exec_cli → DockerTaskRuntime.run (services/dev/task_runtime.py:295)
+          per-task --internal network + egress proxy (allowlist), cap-drop ALL, ro root, uid≠0, pids/mem/cpu, deadline
+VERIFY   _check_worktree_link (worktree_intact + escaping_symlinks) → _check_files_changed → run_chain (containers, --network none)
+          → mechanical_autofix (HOST, venv ruff)  ← finding 2      → one bounce (no tamper re-check) ← finding 1
+LAND     preserve_verified_work → lg/task-* branch → _create_pr_approval → owner approves → github_pr / local_merge (host git, hooks off)
+OUTCOME  _finish_dispatch; result.metadata.runtime; worktree removed in finally</pre>
+<p>Side paths that bypass the runner's lock, concurrency limit and cancel: the autonomy pipeline (<code>autonomy/pipeline/service.py:504-521</code>), and <code>/drivers/dispatch</code>, which is off by default and in prod.</p>
+
+<h3>3.4 Chat turn through the kernel</h3>
+<pre>Auth (api/middleware.py:96 → api/auth.py:106) → tenant from X-Tenant-ID (middleware.py:146; device = its paired tenant)
+/kernel/chat/stream · /jarvis/chat · /jarvis/turns/{id}/regenerate → services/chat_turn.py prepare_turn → stream_turn   (#333)
+  → ProcessManager.spawn (kernel/process_manager.py:78; depth ≤5) → _execute_task (semaphore 8) → _run_agent
+      lead.route (personal → local model; general → cloud with personal tools cut, services/lead.py:160)
+  → AgentOrchestrator.run (agents/orchestrator.py:71; tool gate :388; taint latch :414)
+  → delegate_to_persona (tools/delegate.py:92): tainted run can't reach host-tool personas; child inherits taint, polls child ≤600 s
+  → ChatStreamBus (services/chat_stream.py) → map_bus_event → SSE frames (dashboard) / _app_frames (phone)</pre>
+
+<h2>4. Execution boundary, driver by driver</h2>
+<div class="table-wrap"><table>
+<tr><th>Phase</th><th>Where shell-capable work runs</th><th>Selector (source default → prod)</th><th>Status</th></tr>
+<tr><td>claude_code, <code>task</code></td><td>Per-task container, internal network, allowlist proxy on 443, read-only root, cap-drop ALL, limits, deadline, swept by label</td><td><code>driver_claude_sandbox</code> (<code>"none"</code>, <code>config/drivers.py:175</code>) → <code>task</code></td><td class="ok">Implemented, Tested, Deployed, Operationally verified (D16 drills, D20 task run)</td></tr>
+<tr><td>claude_code, <code>docker</code> (legacy rollback)</td><td>Container on Docker's <em>default bridge</em> (open egress, host reachable), no <code>validate_spec</code>, no labels</td><td>same setting</td><td class="p1">P1: retire it, or fence it before it is ever used as the rollback</td></tr>
+<tr><td>claude_code, <code>none</code></td><td>Host, as the API user. Bash denied, but Read, Glob, Grep, WebFetch and WebSearch are never denied (<code>drivers/claude_code.py:99</code>)</td><td>the source default</td><td class="p1">P1: an unknown value such as <code>Task</code> silently means host (<code>services/dev/sandbox.py:214-221</code>, no validation)</td></tr>
+<tr><td>opencode</td><td>Host; confined only by the app's own policy</td><td><code>driver_opencode_enabled=False</code> → not set</td><td>Parked. Move it into the runtime before un-parking. Host config currently invalid.</td></tr>
+<tr><td>local driver</td><td>In-process; file tools confined; <code>run_command</code> uses the allowlist and <code>child_env()</code>. In <code>full</code> mode it inherits the full API env (<code>tools/terminal.py:84-113</code>)</td><td><code>tool_shell_mode</code> (<code>allowlist</code>) → <code>allowlist</code></td><td>P1: refuse <code>full</code> mode inside <code>confine_to</code></td></tr>
+<tr><td>verifier setup (deps)</td><td>Container on its own internal network plus a registry-only proxy, after the setup_guard scan. No read-only root.</td><td><code>verifier_sandbox</code> (<code>"none"</code>) → <code>docker</code></td><td>Implemented, Tested. Residual: registries accept uploads.</td></tr>
+<tr><td>verifier checks</td><td><code>--network none</code> container, read-only mounts</td><td>same</td><td class="ok">Implemented, Tested, Deployed</td></tr>
+<tr><td>mechanical_autofix / pip-audit</td><td><strong>Host</strong>, venv binaries, full env</td><td>always</td><td class="p0">P0 (finding 2)</td></tr>
+<tr><td>bounce re-verify</td><td>Host git plus the verifier chain, with no tamper re-check</td><td>always</td><td class="p0">P0 (finding 1)</td></tr>
+<tr><td>review (pr-agent)</td><td>Host; diff on stdin; <em>fails open</em></td><td>—</td><td class="p2">P2: decide whether it should fail closed</td></tr>
+<tr><td>PR builder / landing / local merge</td><td>Host git with <code>core.hooksPath=/dev/null</code> and <code>fsmonitor=false</code>; <code>worktree_intact</code> re-checked at landing</td><td>—</td><td>Implemented. Filters and <code>diff.external</code> are not neutralised; see finding 1.</td></tr>
+</table></div>
+<p>Fail-closed checks hold for real runtime errors: missing image, wrong network, proxy failure, exit 125/126/127 and validator refusal all end as <code>sandbox_unavailable</code> with no host retry. The tests are <code>test_claude_code_sandbox.py::test_sandbox_unavailable_never_falls_back_to_the_host</code> and <code>test_task_runtime.py::test_a_missing_image_fails_before_anything_is_created</code>. Images are pinned by tag, not digest; there is no lock file yet.</p>
+
+<h2>5. Memory and context quality gaps</h2>
+<div class="table-wrap"><table>
+<tr><th>Gap</th><th>Evidence</th><th>Priority</th></tr>
+<tr><td>Lossy auto-merge at 0.92 (finding 5)</td><td><code>core/memory_manager.py:381-430</code></td><td class="p0">P0</td></tr>
+<tr><td>Supersede paths write neither <code>superseded_at</code> nor <code>valid_until</code>, so <code>as_of</code> and <code>recorded_as_of</code> queries return the old and new values together</td><td>Verified: no writer outside the evals; only <code>deny()</code> sets <code>valid_until</code> (<code>storage/postgres.py:1155</code>). The docstring at <code>services/memory/retrieval.py:475</code> claims otherwise.</td><td class="p1">P1</td></tr>
+<tr><td>A plain value change ("lives in Chennai" → "Bangalore") is not seen as a contradiction unless both rows share a <code>slot</code></td><td><code>services/contradiction.py:233-294</code></td><td class="p1">P1</td></tr>
+<tr><td>No valid-time filter on <code>/search</code> or proactive recall (expired facts keep appearing)</td><td>Agent-reported: <code>api/search.py:340-413</code>, <code>services/memory/recall.py:530-545</code></td><td class="p1">P1</td></tr>
+<tr><td>Personal data stays local only by config: the nightly distill uses <code>llm_model_cheap</code> (source default is a free OpenRouter model, <code>jobs/consolidation.py:539-544</code>), and /ask synthesis goes to the cloud when <code>use_hybrid_llm</code> is on. No per-memory sensitivity field exists, and /ask has no trust-tier fence.</td><td>Code verified; prod is local today</td><td class="p1">P1: enforce it in code</td></tr>
+<tr><td>A chat from a non-owner key (for example MCP) saying "remember X" is stored as <code>trust_tier=self</code>, active</td><td>Agent-reported: <code>tools/memory_search.py:351-480</code></td><td class="p1">P1</td></tr>
+<tr><td>Approval backlog: 1273 pending memories, only 255 active</td><td>Prod SQL</td><td class="p1">P1: a UX and triage task, needs your input</td></tr>
+<tr><td>The benchmark lab re-implements retrieval (it never calls <code>hybrid_search</code>, the judge or bge-m3). Its abstention P/R of 1.0 comes from hard-coded dataset terms.</td><td>Agent-reported: <code>life_graph/evals/memory_benchmark.py:723-827</code></td><td class="p1">P1: reported numbers are not production quality</td></tr>
+<tr><td>Missing measures: production-path precision@k, contradiction P/R, false-merge rate, /ask grounding, end-to-end p95</td><td>—</td><td class="p1">P1 (roadmap 4.4)</td></tr>
+<tr><td>A dead <code>status=="contradicted"</code> check; no "disputed" status; <code>valid_from</code> always the insert time</td><td><code>api/search.py:621</code></td><td class="p2">P2</td></tr>
+</table></div>
+<p>What works and has tests:
+<ul>
+<li>Tenant and status filters in SQL.</li>
+<li>A local judge with abstention.</li>
+<li>Contradiction → deferred supersede that can be undone.</li>
+<li>Nightly merges and decay only <em>propose</em>.</li>
+<li>Archive can be undone.</li>
+</ul>
+The best real-data recall measure is 2026-11-14's live set: hit@1 0.692 on 13 answerable questions, 15/15 abstained on unanswerable, 3.2 s per query. That sample is small and run on the owner's data.</p>
+
+<h2>6. Chat, delegation, voice, workers</h2>
+<div class="table-wrap"><table>
+<tr><th>Gap</th><th>Evidence</th><th>Priority</th></tr>
+<tr><td>Temporary-chat voice turn not temporary (finding 6)</td><td><code>api/jarvis.py:790-812</code></td><td class="p0">P0</td></tr>
+<tr><td>A delegated child's first token is dropped. It is pinned as current behaviour by <code>tests/integration/test_chat_turn_parity.py</code> and <code>tests/unit/test_chat_stream_mapper.py</code>.</td><td><code>services/chat_stream.py:187-190</code></td><td class="p1">P1</td></tr>
+<tr><td>Streamed chat turns retry silently (<code>max_retries</code> 2). The client's error is delayed, and a retry can run tools such as memory_save or reminder_set a second time.</td><td>Agent-reported: <code>kernel/process_manager.py:425-434</code>, <code>:958-981</code></td><td class="p1">P1</td></tr>
+<tr><td>No restart recovery for kernel and chat tasks; 4 are stuck "running" in prod. The phone can't retry a "running" orphan for 24 h.</td><td>Prod SQL plus agent-reported</td><td class="p1">P1</td></tr>
+<tr><td><code>done</code> is published before the result is saved, so an immediate regenerate gets 409</td><td>Agent-reported: <code>process_manager.py:755</code> vs <code>:414</code></td><td class="p2">P2</td></tr>
+<tr><td>Kernel cancel doesn't cascade to delegated children or revoke capabilities (<code>DelegationEngine.cancel_task</code> does)</td><td>Agent-reported: <code>api/kernel.py:285</code>, <code>process_manager.py:218</code></td><td class="p1">P1</td></tr>
+<tr><td>No reconnect or resume by task id. The phone shows no delegation or tool events. Telegram has no conversation history.</td><td><code>services/chat_turn.py</code>, <code>api/jarvis.py</code></td><td class="p2">P2 (roadmap 4.8)</td></tr>
+<tr><td>Typed turns are silent on the phone and Telegram; the dashboard uses browser TTS, not local</td><td>CHARTER item still open</td><td class="p2">P2</td></tr>
+<tr><td>Dashboard and Telegram speech-to-text are cloud-first if keys are set (not set in prod)</td><td><code>services/multimodal.py:470-475</code></td><td class="p2">P2: make it local-only in code to match CHARTER invariant 7</td></tr>
+<tr><td>Observability: nothing notices if the ARQ worker dies; backup and drill freshness are not on health or the panel; no chat metrics</td><td>—</td><td class="p1">P1 (would have caught finding 3)</td></tr>
+</table></div>
+
+<h2>7. Authorization and audit</h2>
+<p>What holds:
+<ul>
+<li>The owner-only and no-self-approval gates are code-enforced at the route layer, with tests. They are Deployed and Operationally verified.</li>
+<li>Exact-bound, one-use capabilities have tests.</li>
+<li>Run taint is passed into delegated children.</li>
+<li>No agent tool can approve anything, and the MCP server has no approve tool.</li>
+</ul>
+Gaps:</p>
+<div class="table-wrap"><table>
+<tr><th>Gap</th><th>Evidence</th><th>Priority</th></tr>
+<tr><td>Kill switch scope (finding 4)</td><td>verified</td><td class="p0">P0 (decision)</td></tr>
+<tr><td>Safety-rule changes, trust overrides and kill-switch pause/resume write no audit row (<code>log_rule_change</code> and <code>log_trust_override</code> are never called). The audit log is append-only by convention only.</td><td>Agent-reported: <code>autonomy/audit/service.py:155,177</code></td><td class="p1">P1</td></tr>
+<tr><td>Service keys aren't bound to tenants; any key can pick any tenant through the header. Tenant-isolation testing is mostly a static AST heuristic. Prod also runs with <code>environment=development</code>.</td><td><code>api/middleware.py:146-154</code>; <code>tests/unit/test_tenant_scoping.py</code></td><td class="p1">P1 (single-owner deployment today, so lower urgency)</td></tr>
+<tr><td>Delegation drops the parent's <code>tool_override</code>, so a read-only scheduled run can delegate to a child with its full tools</td><td>Agent-reported: <code>tools/delegate.py:151</code></td><td class="p1">P1</td></tr>
+<tr><td>Memories injected into the prompt, and file reads of repo files, don't taint the run</td><td>Agent-reported: <code>kernel/process_manager.py:695</code></td><td class="p2">P2</td></tr>
+<tr><td>Self-improving optimization review and prompt activate/rollback have no owner gate</td><td>Agent-reported: <code>self_improving/router.py:298,318,460</code></td><td class="p2">P2</td></tr>
+</table></div>
+
+<h2>8. Docs that disagree with reality</h2>
+<ul>
+<li><code>docs/work-orders/secure-execution-runtime.md:212-221</code>, <code>docs/AGENT_COMMUNICATION.md:21,87,101-113</code> and the roadmap §2 all say the runtime is "not deployed". In fact prod switched on 2026-11-19 (ops log, and observed today).</li>
+<li><code>docs/security/runtime-probe-results-2026-11-18.md:105</code> contradicts itself.</li>
+<li>Ops log entries D14, D15, D18 and D20 still say "open" or "not done" for items fixed later.</li>
+<li><code>docs/AI_WORK_ORDER.md</code> points at removed modules. The untracked <code>docs/audits/2026-11-24-audit-recheck.html</code> is stale (H7, M3, M7, L1, L8, L12, L14, L15 are fixed).</li>
+<li><code>CHANGELOG.md</code> stops at 1.1.0 (2026-07-11). The SDK READMEs exist but date from July. <code>ARCHITECTURE.md</code> was last verified 11-20, before #330 and #333.</li>
+<li>The kill-switch wording in <code>OPERATIONS.md</code> and <code>CHARTER.md</code> claims more than the code does (finding 4).</li>
+</ul>
+
+<h2>9. Open issues and PRs</h2>
+<div class="table-wrap"><table>
+<tr><th>#</th><th>Status</th><th>Suggestion</th></tr>
+<tr><td>#302 layering (core→services, storage→runtime)</td><td>Still open and unchanged (<code>pyproject.toml:484-503</code>)</td><td>Keep. Roadmap 4.15: push down <code>user_tz</code> and <code>differs_by_negation</code> first, then inject the embedder into HybridQueryEngine.</td></tr>
+<tr><td>#4 Recall UX / Brain viewer</td><td>Partly done</td><td>Re-scope against roadmap 4.6/4.10, or close it</td></tr>
+<tr><td>#5 Cold-start analyzers</td><td>Mostly done</td><td>Close, or narrow it to README parsing and reindex</td></tr>
+<tr><td>PR #186</td><td>Obsolete</td><td>You close it</td></tr>
+<tr><td>PRs #284, #288, #289</td><td>Waiting on upstream</td><td>Leave open</td></tr>
+</table></div>
+<p>Already done since the roadmap was written: #332, #333 and #334 (M16, chat-turn service), and the roadmap itself (#335). Earlier work covers much of 4.1 (#256-#272, #316), part of 4.2 (#272, #278, #293, #310, #324, #326, #327), the memory benchmark lab (#249) and the error envelope (#307).</p>
+
+<h2>10. Recommended next milestone (M1, smallest safe steps)</h2>
+<p>These are ordered by risk reduction per change. Each is one small PR with its own tests. None changes runtime policy, schema or autonomy level, except where marked <strong>owner</strong>.</p>
+<div class="table-wrap"><table>
+<tr><th>Step</th><th>Change</th><th>Acceptance criteria</th></tr>
+<tr><td>M1.1</td><td>Bounce path: run <code>_check_worktree_link</code> (both checks) after the second <code>driver.dispatch</code>, before any host step. Harden every host git call against config-defined filters and <code>diff.external</code>.</td><td>A unit test whose attempt-2 driver plants <code>.git/</code> config or an escaping link must show no host git, no verifier, no autofix and no landing, and must record a tamper failure. The existing dispatcher tests still pass.</td></tr>
+<tr><td>M1.2</td><td>Autofix and pip-audit: never run venv binaries on the host. Use the trusted image ruff inside a <code>--network none</code> container with a read-write worktree, run pip-audit in the setup-egress container, and always pass an allowlisted <code>env=</code>.</td><td>A test with a planted <code>&lt;venv&gt;/bin/ruff</code> and <code>pip-audit</code> proves neither runs on the host. A guard test finds no <code>subprocess.run</code> in <code>verifiers.py</code> without <code>env=</code>.</td></tr>
+<tr><td>M1.3</td><td>Validate <code>driver_claude_sandbox</code> and <code>verifier_sandbox</code> (unknown value → startup error).</td><td>A settings test: <code>Task</code> raises; <code>task</code>, <code>docker</code> and <code>none</code> load.</td></tr>
+<tr><td>M1.4</td><td>Backups: find the drill's shared-memory failure (likely the container's <code>/dev/shm</code>; e.g. <code>shm_size</code> for the drill). <strong>Owner:</strong> bring the laptop rest-server back and approve the compose change. Add backup and drill age to the system panel, with an alert.</td><td>A <code>restore_drill</code> success row in prod with matching table and graph counts; an <code>backup_offsite</code> success after 11-19; the panel shows both ages; logged in <code>docs/operations-log/</code>.</td></tr>
+<tr><td>M1.5</td><td>Ingest merge guard: only merge when numbers, dates and the entity set match; otherwise store a new memory and send it down the contradiction path. Keep the old row's provenance.</td><td>New tests show "birthday 3 May" vs "4 May", and the same fact for two people, at cosine 0.97 are <em>not</em> merged, and a contradiction approval is queued. The existing plain near-duplicate merge test still passes.</td></tr>
+<tr><td>M1.6</td><td>Temporary voice turn: pass <code>temporary</code> through <code>_answer</code> (reuse <code>prepare_turn</code> or <code>_turn_input</code>).</td><td>A test shows <code>/jarvis/voice</code> in a temporary conversation spawns with <code>temporary=True</code>, local-pinned, with no memory tools.</td></tr>
+<tr><td>M1.7</td><td><strong>Owner decision:</strong> kill switch. Either (a) gate <code>ProcessManager.spawn</code> for non-interactive spawns, the scheduler, watchers, delegated children and dev-runner claims, and cancel in-flight work on pause; or (b) narrow <code>OPERATIONS.md</code> and the CHARTER to what it really does. Either way, pause and resume get audit rows.</td><td>(a) Tests show a paused tenant's scheduled job, watcher spawn, delegated child and new dev claim are refused, and running work is cancelled within 15 s. (b) The docs match the code. Pause and resume each write one <code>audit_log</code> row with the server-derived actor.</td></tr>
+<tr><td>M1.8</td><td>Docs truth pass (docs only): the work-order status, the AGENT_COMMUNICATION handoff, the probe report, back-references in the ops log, refreshing or removing the stale audit HTML, and roadmap §2 bullet 5.</td><td>No doc claims "not deployed" for the runtime; each superseded ops-log item links to where it was fixed.</td></tr>
+</table></div>
+<p>After M1:
+<ul>
+<li><strong>M2 (chat correctness):</strong> child first token, no hidden retries, chat-task recovery sweep, cancel cascade, save before done.</li>
+<li><strong>M3 (memory evaluation):</strong> run the lab through production <code>retrieve()</code>, remove the hard-coded abstention, and add contradiction P/R and false-merge sets.</li>
+<li>Then temporal writers (M1-P1 items), audit-row gaps, and tenant-bound keys.</li>
+</ul></p>
+
+<h2>11. Decisions needed from you</h2>
+<ol>
+<li><strong>Kill switch:</strong> widen the gate (M1.7 a) or narrow the docs (b).</li>
+<li>Backups: restart the laptop rest-server, and approve the drill container change. Should local dumps be encrypted? (pending since D17)</li>
+<li><code>LIFE_GRAPH_ENVIRONMENT=development</code> on prod: switch to <code>production</code>? That changes the missing-tenant-header behaviour to 400; check the clients first.</li>
+<li>Legacy <code>driver_claude_sandbox=docker</code> as the rollback: retire it, or fence it.</li>
+<li>Approval backlog (1273 pending memories, 319 approvals): a bulk triage pass, a different auto-approve rule, or leave it.</li>
+<li>Code-enforced local-only for personal memory (distill and /ask), even if someone later turns hybrid on.</li>
+<li>Earlier, still open: PR #186, the 21 unused schemas, personas to local models, micro-dedup on, the L2 window, the retry button, and pip-audit ignores expiring 2026-12-18.</li>
+</ol>
+
+<h2>Addendum: M1 progress (same day)</h2>
+<p>The owner said "you decide for me and continue". The decisions are recorded in the operations log as D25.</p>
+<div class="table-wrap"><table>
+<tr><th>Step</th><th>Finding</th><th>PR</th><th>Status</th></tr>
+<tr><td>M1.1</td><td>Bounce skipped the tamper check (1)</td><td>#336</td><td class="ok">Merged; mutation-checked</td></tr>
+<tr><td>M1.2</td><td>Venv binaries ran on the host (2)</td><td>#337</td><td class="ok">Merged; mutation-checked</td></tr>
+<tr><td>M1.3</td><td>Unknown sandbox value meant host</td><td>#338</td><td class="ok">Merged</td></tr>
+<tr><td>M1.4</td><td>Restore drill failed on <code>/dev/shm</code> (3)</td><td>#341</td><td class="ok">Merged. On prod the old script failed and the fixed one passed (18 s). Off-site copy: still owner-only.</td></tr>
+<tr><td>M1.5</td><td>Lossy near-duplicate merge (5)</td><td>#339</td><td class="ok">Merged; mutation-checked</td></tr>
+<tr><td>M1.6</td><td>Temporary voice turn not temporary (6)</td><td>#340</td><td class="ok">Merged</td></tr>
+<tr><td>M1.7</td><td>Kill switch narrower than documented (4)</td><td>#342</td><td>Merged when CI passes</td></tr>
+<tr><td>M1.8</td><td>Docs truth pass</td><td>this PR</td><td>—</td></tr>
+</table></div>
+<p>None of these is released yet; prod is at <code>prod-20261125-0126</code>.</p>
+
+<h2>12. What was run (exact)</h2>
+<ul>
+<li>Git: <code>git fetch origin</code>; master <code>262e6093</code> → <code>2550efea</code>; roadmap read from <code>origin/docs/life-graph-phase-2-engineering-plan</code> (<code>22b111d5</code>, merged as #335).</li>
+<li>Prod (read-only, secret values never printed):
+  <ul>
+  <li>prod <code>.env</code> runtime and safety keys, with key-like values redacted;</li>
+  <li><code>systemctl --user</code> units and timers;</li>
+  <li><code>docker images</code> and keep labels;</li>
+  <li><code>docker logs life_graph_backup</code>;</li>
+  <li><code>restic snapshots</code> (refused: connection refused);</li>
+  <li>SQL with <code>PGOPTIONS='-c default_transaction_read_only=on'</code> on <code>agent_tasks</code>, <code>memories</code>, <code>job_runs</code>, <code>approvals</code> and <code>pg_stat_user_tables</code>;</li>
+  <li><code>opencode --version</code> (1.19.0) and <code>opencode models</code>.</li>
+  </ul></li>
+<li>Code: five read-only audits at <code>262e6093</code>. My own re-checks: <code>grep is_autonomy_paused</code>, <code>core/memory_manager.py:381-430</code>, <code>services/dev/verifiers.py:262-300, 968-1015</code>, <code>drivers/dispatcher.py:1463-1600</code>, <code>grep superseded_at|valid_until</code>, <code>api/auth.py</code>, <code>api/middleware.py:148-160</code>, <code>core/startup_guards.py:105-120</code>.</li>
+<li>Tests: none run in Stage 0. The latest suite results are from today's PRs: unit 6756 passed and 27 skipped (#334), master CI #921 green.</li>
+</ul>
+</main>
+</body>
+</html>

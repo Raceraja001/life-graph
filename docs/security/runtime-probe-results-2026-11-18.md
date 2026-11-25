@@ -102,7 +102,7 @@ The verifier's check phase uses `--network none` and is not affected.
 - DNS tunnelling or data hidden inside traffic to an allowlisted host.
 - OpenCode inside the runtime. It is not moved there yet.
 - Long-running concurrent tasks under memory pressure on the shared WSL box.
-- Prod configuration. Prod's images are still not built, and prod has not been switched to `task`.
+- Prod configuration. Prod's images are still not built, and prod has not been switched to `task`. *(Superseded: prod switched on 2026-11-19, and the prod release images were probed (below). The concurrency item was covered by ops log D14 and #270.)*
 
 ## Stage 5 re-probe (`runtime-probe-20261118.json`)
 

@@ -18,9 +18,10 @@ At the start of every session, fetch the latest remote default branch and read:
 
 1. `CHARTER.md` — product intent and invariants.
 2. `docs/STATE.md` — generated current inventory; verify it is fresh.
-3. The active work order — currently `docs/work-orders/secure-execution-runtime.md` (P0).
-   `docs/AI_WORK_ORDER.md` is closed (all milestones complete); keep it as the history of
-   the security/authorization/browser work.
+3. The active plan — currently `docs/plans/2026-11-25-phase-2-engineering-review-and-evolution-plan.md`,
+   with its Stage 0 report `docs/audits/2026-11-25-stage0-current-truth.html`.
+   `docs/work-orders/secure-execution-runtime.md` is deployed (2026-11-19) and stays the record
+   of the runtime; `docs/AI_WORK_ORDER.md` is closed (history of the security/authorization/browser work).
 4. `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` — longer-term strategy.
 5. This file — collaboration and communication protocol.
 
@@ -84,7 +85,7 @@ Do not ask Raja to repeat information already present in repository documents. I
 
 ## 7. Current handoff
 
-**Active work order:** `docs/work-orders/secure-execution-runtime.md`  
+**Active plan:** `docs/plans/2026-11-25-phase-2-engineering-review-and-evolution-plan.md`  
 **Strategy:** `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md`
 
 At the beginning of each session, replace this handoff with verified current information:
@@ -98,17 +99,24 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-18)
+### Current (2026-11-25)
 
-- **Checked at / branch / base SHA:** 2026-11-18 on `feat/secure-task-runtime`, base `master` `0987505`.
-- **Current milestone:** Secure execution runtime: Stage 0 (report) done; Stage 1 (ADR, threat model) and Stage 2 (claude_code vertical slice) implemented on the branch.
+- **Checked at / branch / base SHA:** 2026-11-25, `master` after #342 (see `git log`). Prod runs `prod-20261125-0126`.
+- **Current milestone:** Phase 2, M1 (production safety), from the Stage 0 report.
 - **Verified status:**
-  - **Per-task runtime** (`services/dev/task_runtime.py`, `driver_claude_sandbox=task`): *Implemented, Unit-tested, Docker-tested locally, run end to end on one real task.* Not deployed.
-  - **Host hygiene:** allowlisted env and process-group kill for host-run CLIs. Bash is denied on the host by default. Agent code is not run on the host by verifiers. *Implemented, Unit-tested.*
-  - **Checkpoints:** the dispatch checkpoint trail is persisted to `agent_tasks.properties` (it was already on master; the 2026-11-17 note saying it was in memory only was stale). It now records the verifier verdict and the final outcome.
-- **Evidence:** `docs/security/runtime-probe-results-2026-11-18.md`; unit suite 5742 passed; `tests/unit/test_task_runtime_docker.py` (real docker) 3 passed.
+  - **Secure runtime:** Deployed and operationally verified. Prod `.env` was observed 2026-11-25: `DRIVER_CLAUDE_SANDBOX=task`, `VERIFIER_SANDBOX=docker`, worker runner. All images are present with `life-graph.keep`.
+  - **M1 fixes merged (not yet released):**
+    - #336: tamper check on the bounced attempt.
+    - #337: no venv binaries on the host.
+    - #338: strict sandbox setting values.
+    - #339: the memory merge keeps distinct values.
+    - #340: a temporary voice turn is temporary.
+    - #341: the restore drill builds indexes serially. It passed on prod with the fix and failed without it (2026-11-25).
+    - #342: the kill switch stops new autonomous work.
 - **Open risks/blockers:**
-  - Prod has `VERIFIER_SANDBOX=docker` and `DRIVER_CLAUDE_SANDBOX=docker` but none of those images are built, so every code task fails closed (12/12 in 14 days). The prod OpenCode config is invalid. Owner decision needed.
-  - Immediate starts bypass the runner lock; dev-task cancel does not stop the driver; land-only resume is not implemented (Stage 3).
-- **Next smallest action:** owner approves building the prod images and switching prod to `task`, then Stage 3 design.
-- **Latest commit:** see the PR for `feat/secure-task-runtime`.
+  - **Off-site backup:** failing since 2026-11-19; the laptop's rest-server refuses connections. Owner action.
+  - **Approval backlog:** 1273 pending memories (319 approvals pending). Owner's to decide.
+  - **Environment flag:** prod still runs `LIFE_GRAPH_ENVIRONMENT=development`.
+  - **Runtime P1s:** listed in the work order's status section.
+- **Next smallest action:** release M1 to prod and verify (kill switch, drill, a dev task).
+- **Latest commit:** see `git log origin/master`.
