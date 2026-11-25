@@ -4,11 +4,16 @@ Periodically searches external sources (HN, Reddit, GitHub) for evidence
 that supports or contradicts user preferences. Uses LLM stance detection
 to classify findings, stores evidence, and recalculates confidence scores.
 Fires PREFERENCE_CHALLENGED events when confidence drops significantly.
+
+The stance check sends the preference (topic, choice, reason) with each
+article, so it runs on a local model unless ``allow_cloud_preference_models``
+is on (D25). The search queries still go to HN, Reddit and GitHub.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
@@ -22,6 +27,8 @@ from life_graph.core.budget import BudgetCategory
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Evidence, Preference, ResearchRun
 from life_graph.services.governor import governor
+from life_graph.services.lead import local_model as default_local_model
+from life_graph.services.llm.resilient import local_only
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -45,6 +52,12 @@ SOURCE_CREDIBILITY: dict[str, float] = {
     "reddit": 0.8,
     "ai_opinion": 0.7,
 }
+
+# The stance model when allow_cloud_preference_models is on.
+CLOUD_STANCE_MODEL = "openrouter/openai/gpt-4o-mini"
+CLOUD_STANCE_TIMEOUT = 10  # seconds
+# A local model may have to be loaded onto the GPU first.
+LOCAL_STANCE_TIMEOUT = 60  # seconds
 
 
 class ResearchEngine:
@@ -396,7 +409,11 @@ class ResearchEngine:
         preference: Preference,
         article: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """Use LLM (gpt-4o-mini via litellm) to classify article stance.
+        """Use an LLM to classify article stance.
+
+        A local model (``services.lead.local_model``), pinned so it cannot
+        fail over to the cloud, unless ``allow_cloud_preference_models`` is on:
+        then gpt-4o-mini on OpenRouter, as before. No local model: skipped.
 
         Returns:
             Dict with 'stance' (supports/contradicts/neutral) and 'strength' (0-1),
@@ -422,24 +439,37 @@ class ResearchEngine:
 
         from life_graph.runtime import get_resilient_llm
 
-        try:
-            response = await asyncio.wait_for(
-                get_resilient_llm().acompletion(
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    model="openrouter/openai/gpt-4o-mini",
-                    api_key=self._advisor._api_key,
-                    api_base=self._advisor._api_base,
-                    response_format={"type": "json_object"},
-                    temperature=0.1,
-                ),
-                timeout=10,
-            )
-        except (TimeoutError, Exception) as exc:  # best-effort: stance is optional
-            logger.warning("Stance detection failed: %s", exc)
-            return None
+        llm = get_resilient_llm()
+        if self._settings.allow_cloud_preference_models:
+            route = contextlib.nullcontext(CLOUD_STANCE_MODEL)
+            extra = {"api_key": self._advisor._api_key, "api_base": self._advisor._api_base}
+            timeout = CLOUD_STANCE_TIMEOUT
+        else:
+            route = local_only(default_local_model())
+            extra = {}
+            timeout = LOCAL_STANCE_TIMEOUT
+
+        with route as model:
+            if model is None:
+                logger.warning("Stance detection skipped: cloud is off and no local model is set")
+                return None
+            try:
+                response = await asyncio.wait_for(
+                    llm.acompletion(
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        model=model,
+                        response_format={"type": "json_object"},
+                        temperature=0.1,
+                        **extra,
+                    ),
+                    timeout=timeout,
+                )
+            except (TimeoutError, Exception) as exc:  # best-effort: stance is optional
+                logger.warning("Stance detection failed: %s", exc)
+                return None
 
         content = response.choices[0].message.content or "{}"
         try:

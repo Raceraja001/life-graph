@@ -3,11 +3,18 @@
 Queries 2-3 models in parallel via OpenRouter / LiteLLM, parses structured
 JSON responses, calculates consensus scores, and persists advisor sessions
 for history and learning.
+
+Every prompt carries the owner's preferences, so by default (D25,
+``allow_cloud_preference_models`` false) only local models are asked: cloud
+models in the list are left out and reported as ``skipped``, and when no
+local model is in the list the lead's local model is asked instead
+(``services.lead.local_model``). The setting on restores the cloud comparison.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -21,7 +28,12 @@ from sqlalchemy import select
 
 from life_graph.config import settings
 from life_graph.models.db import AdvisorSession, Preference
-from life_graph.services.llm.resilient import ResilientLLMExhaustedError
+from life_graph.services.lead import local_model as default_local_model
+from life_graph.services.llm.resilient import (
+    LOCAL_PROVIDERS,
+    ResilientLLMExhaustedError,
+    local_only,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -37,6 +49,13 @@ MODEL_COSTS = {
 
 DEFAULT_MODELS = list(MODEL_COSTS.keys())
 MODEL_TIMEOUT = 10  # seconds
+# A local model may have to be loaded onto the GPU first, so it gets longer
+# than the cloud models' advisor_timeout_seconds.
+LOCAL_MODEL_TIMEOUT = 120  # seconds
+CLOUD_OFF_REASON = (
+    "Cloud comparison is off (allow_cloud_preference_models=false): "
+    "your preferences are only sent to local models."
+)
 
 
 @dataclass
@@ -52,7 +71,7 @@ class ModelResponse:
     tokens_used: int = 0
     latency_ms: int = 0
     cost_usd: float = 0.0
-    status: str = "completed"  # completed | timeout | error
+    status: str = "completed"  # completed | timeout | error | skipped
 
 
 @dataclass
@@ -106,7 +125,7 @@ class MultiModelAdvisor:
         5. Persist session
         6. Return AdvisorResult
         """
-        models = models or self._get_configured_models()
+        models, left_out = self._models_to_query(models or self._get_configured_models())
 
         # Fetch preferences for context
         context_prefs = await self._fetch_preferences(tenant_id)
@@ -137,6 +156,8 @@ class MultiModelAdvisor:
                 )
             else:
                 responses.append(result)
+        # Last, so a real answer's reasoning is the one saved on the session.
+        responses.extend(self._skipped(model) for model in left_out)
 
         # Calculate consensus
         completed = [r for r in responses if r.status == "completed"]
@@ -267,6 +288,33 @@ class MultiModelAdvisor:
 
     # ── Private Helpers ───────────────────────────────────────
 
+    @staticmethod
+    def _models_to_query(models: list[str]) -> tuple[list[str], list[str]]:
+        """Split *models* into (models to ask, cloud models left out).
+
+        With ``allow_cloud_preference_models`` on, every model is asked. Off,
+        only local ones are; if none is local, the lead's local model is asked
+        so the advisor still answers.
+        """
+        if settings.allow_cloud_preference_models:
+            return list(models), []
+        local = [m for m in models if m.strip().startswith(LOCAL_PROVIDERS)]
+        left_out = [m for m in models if m not in local]
+        return local or [default_local_model()], left_out
+
+    @staticmethod
+    def _skipped(model: str) -> ModelResponse:
+        """The response recorded for a model that was not asked (cloud is off)."""
+        return ModelResponse(
+            model=model,
+            recommendation="",
+            pros=[],
+            cons=[],
+            confidence=0.0,
+            reasoning=CLOUD_OFF_REASON,
+            status="skipped",
+        )
+
     def _get_configured_models(self) -> list[str]:
         """Parse configured advisor models from settings."""
         raw = settings.advisor_models
@@ -293,7 +341,11 @@ class MultiModelAdvisor:
         question: str,
         context_preferences: list[dict],
     ) -> ModelResponse:
-        """Query a single model via litellm with timeout."""
+        """Query a single model via litellm with timeout.
+
+        With cloud off, the call is pinned to *model* (``local_only``) so it
+        cannot fail over to a cloud model, and a non-local model is not asked.
+        """
         preferences_json = (
             json.dumps(context_preferences, indent=2) if context_preferences else "None yet."
         )
@@ -308,22 +360,33 @@ class MultiModelAdvisor:
 
         from life_graph.runtime import get_resilient_llm
 
+        if settings.allow_cloud_preference_models:
+            route = contextlib.nullcontext(model)
+            extra = {"api_key": self._api_key, "api_base": self._api_base}
+            timeout = self._timeout
+        else:
+            route = local_only(model)
+            extra = {}
+            timeout = max(self._timeout, LOCAL_MODEL_TIMEOUT)
+
         t0 = time.monotonic()
         try:
-            response = await asyncio.wait_for(
-                get_resilient_llm().acompletion(
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": question},
-                    ],
-                    model=model,
-                    api_key=self._api_key,
-                    api_base=self._api_base,
-                    response_format={"type": "json_object"},
-                    temperature=0.3,
-                ),
-                timeout=self._timeout,
-            )
+            with route as chosen:
+                if chosen is None:
+                    return self._skipped(model)
+                response = await asyncio.wait_for(
+                    get_resilient_llm().acompletion(
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": question},
+                        ],
+                        model=chosen,
+                        response_format={"type": "json_object"},
+                        temperature=0.3,
+                        **extra,
+                    ),
+                    timeout=timeout,
+                )
         except (TimeoutError, ResilientLLMExhaustedError):
             latency = int((time.monotonic() - t0) * 1000)
             logger.warning("Model %s timed out after %dms", model, latency)

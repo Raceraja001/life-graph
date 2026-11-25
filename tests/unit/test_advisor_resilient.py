@@ -7,8 +7,17 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from life_graph.config import settings
 from life_graph.services.llm.resilient import ResilientLLMExhaustedError
 from life_graph.services.multi_model_advisor import MultiModelAdvisor
+
+
+@pytest.fixture(autouse=True)
+def _cloud_on(monkeypatch):
+    # These tests pin the cloud path (OpenRouter models, per-instance
+    # credentials), which is opt-in since 2026-11-25. The default (local
+    # only) is covered in test_cloud_preference_models.py.
+    monkeypatch.setattr(settings, "allow_cloud_preference_models", True)
 
 
 def _make_advisor() -> MultiModelAdvisor:
@@ -33,9 +42,7 @@ async def test_query_model_uses_resilient_with_diversity(monkeypatch):
     )
     resilient = AsyncMock()
     resilient.acompletion = AsyncMock(return_value=resp)
-    monkeypatch.setattr(
-        "life_graph.api.dependencies.get_resilient_llm", lambda: resilient
-    )
+    monkeypatch.setattr("life_graph.api.dependencies.get_resilient_llm", lambda: resilient)
 
     advisor = _make_advisor()
     result = await advisor._query_model(
@@ -61,9 +68,7 @@ async def test_query_model_falls_back_when_resilient_exhausted(monkeypatch):
     to its normal fabricated fallback ModelResponse instead of raising."""
     resilient = AsyncMock()
     resilient.acompletion = AsyncMock(side_effect=ResilientLLMExhaustedError("all models down"))
-    monkeypatch.setattr(
-        "life_graph.api.dependencies.get_resilient_llm", lambda: resilient
-    )
+    monkeypatch.setattr("life_graph.api.dependencies.get_resilient_llm", lambda: resilient)
 
     advisor = _make_advisor()
     result = await advisor._query_model(

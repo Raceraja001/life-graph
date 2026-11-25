@@ -16,6 +16,15 @@ class ResearchSettings(BaseModel):
     advisor_models: str = "openrouter/openai/gpt-4o-mini,openrouter/deepseek/deepseek-chat,openrouter/meta-llama/llama-3.1-8b-instruct"
     advisor_timeout_seconds: int = 10
     advisor_max_cost_per_query: float = 0.01
+    # Personal data stays on this machine by default (D25; owner decision
+    # 2026-11-25). The advisor (services/multi_model_advisor.py) puts the
+    # owner's preferences (topic, choice, confidence) in every prompt, and the
+    # research engine's stance check (services/research_engine.py) sends a
+    # preference's topic, choice and reason with each article. Off: both use
+    # local models only; cloud models in advisor_models are left out and shown
+    # as "skipped". On: the cloud models in advisor_models, and
+    # openrouter/openai/gpt-4o-mini for stance, as before.
+    allow_cloud_preference_models: bool = False
 
     # ── Personal AI: Research ────────────────────────────
     research_stale_days: int = 30
