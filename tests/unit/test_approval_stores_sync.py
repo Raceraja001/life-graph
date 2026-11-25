@@ -320,7 +320,11 @@ async def test_pausing_autonomy_leaves_no_live_capability(monkeypatch):
     other_tenant = _issue(store, tenant_id="t2")
     session = _ConfigSession()
 
-    response = await router.pause_kill_switch(session=session, tenant_id="t1")
+    response = await router.pause_kill_switch(
+        request=SimpleNamespace(state=SimpleNamespace(), headers={}),
+        session=session,
+        tenant_id="t1",
+    )
 
     assert session.config.autonomy_paused is True
     assert response["data"]["capabilities_revoked"] == 2
@@ -339,7 +343,11 @@ async def test_a_pause_with_the_store_down_still_pauses_and_says_so(monkeypatch)
     session = _ConfigSession()
 
     with pytest.raises(HTTPException) as exc:
-        await router.pause_kill_switch(session=session, tenant_id="t1")
+        await router.pause_kill_switch(
+            request=SimpleNamespace(state=SimpleNamespace(), headers={}),
+            session=session,
+            tenant_id="t1",
+        )
 
     assert exc.value.status_code == 503
     assert "Autonomy is paused" in exc.value.detail

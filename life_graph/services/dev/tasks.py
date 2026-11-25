@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, func, or_, select, text
 
 from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
-from life_graph.autonomy.kill_switch import revoke_live_capabilities
+from life_graph.autonomy.kill_switch import autonomy_stopped, revoke_live_capabilities
 from life_graph.config import settings
 from life_graph.drivers.dispatch_stats import MAX_WIP_PER_PROJECT, MAX_WIP_PER_TENANT
 from life_graph.drivers.execution_guard import recover_interrupted_dispatch
@@ -1183,8 +1183,13 @@ async def claim_next_queued(
             "claimed_at": now.isoformat(),
             "heartbeat_at": now.isoformat(),
         }
+        # A paused tenant's tasks wait in the queue (start_now ones too): the
+        # kill switch stops new agent runs, and resuming lets them run.
+        paused = {t for t in {c.tenant_id for c in candidates} if await autonomy_stopped(t)}
         for task in candidates:
             props = task.properties or {}
+            if task.tenant_id in paused:
+                continue
             if (
                 tenant_wip.get(task.tenant_id, 0) >= MAX_WIP_PER_TENANT
                 or project_wip.get((task.tenant_id, task.project_id), 0) >= MAX_WIP_PER_PROJECT
@@ -1480,6 +1485,35 @@ async def run_queue(
 
 
 CANCELLABLE = ("queued", "running")
+
+
+async def cancel_running_for_tenant(
+    session_factory: async_sessionmaker[AsyncSession], tenant_id: str
+) -> int:
+    """Ask every running dev task of *tenant_id* to stop; how many were asked.
+
+    The kill switch's stop for work already under way (autonomy/safety/router.py):
+    each goes through :func:`request_cancel`, so its runner stops the agent's
+    process group or container and its capabilities are revoked. Queued tasks
+    are left queued; the paused tenant's claims are refused until resume.
+    """
+    async with session_factory() as session:
+        ids = (
+            (
+                await session.execute(
+                    select(AgentTask.id).where(
+                        _kind_filter(),
+                        AgentTask.tenant_id == tenant_id,
+                        AgentTask.status == "running",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    for task_id in ids:
+        await request_cancel(session_factory, tenant_id, str(task_id))
+    return len(ids)
 
 
 async def request_cancel(

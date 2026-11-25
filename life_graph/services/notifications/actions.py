@@ -28,6 +28,8 @@ import uuid
 from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 
+from life_graph.autonomy.kill_switch import PAUSED_REFUSAL, autonomy_stopped
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -175,6 +177,9 @@ async def perform(
         raise ActionRefusedError(ALREADY_DONE)
     at = None
     if kind == ERRAND_APPROVAL:
+        if action != "reject" and await autonomy_stopped(tenant_id):
+            # Pausing revoked every live mandate; a tap must not mint a new one.
+            raise ActionRefusedError(PAUSED_REFUSAL)
         meta = _errand(tenant_id, notification, meta, action, now)
     elif kind == "nudge":
         from life_graph.services import nudges

@@ -536,9 +536,21 @@ Use these if an agent, errand or browser session is doing something it should no
 
 ### 1. Pause autonomy (the built-in kill switch)
 
-This is one call, per tenant. It does two things:
-- It stops every autonomous action from running. `AutoFixService._run_action` checks it before anything executes.
-- It revokes the tenant's live capabilities: the owner's approved, unspent mandates for errand steps.
+This is one call, per tenant. It does these things:
+- **No new autonomous work starts.** Each of these checks the switch before it starts anything:
+  - auto-fix actions (`AutoFixService._run_action`)
+  - scheduled jobs
+  - watcher findings
+  - delegation to another persona
+  - the dev runner's claims (queued tasks wait)
+  - errand approval taps (no new capability is issued)
+- **Running dev tasks are cancelled.** Each goes through the normal cancel, so its container or process group stops and its capabilities are revoked.
+- **Live capabilities are revoked:** the owner's approved, unspent mandates for errand steps.
+- **Pause and resume are logged.** Each writes one `audit_log` row (`action_type = kill_switch`) naming who did it.
+
+What it does **not** stop (since 2026-11-25):
+- A chat turn you send yourself still runs; it cannot delegate while paused.
+- A persona or scheduled run that was already running when you paused finishes its current turn. Stop the API (step 4) if that is not acceptable.
 
 ```bash
 cd /mnt/h/DevTools/Projects/life-graph-prod
@@ -549,7 +561,7 @@ curl -s "${H[@]}" http://127.0.0.1:8080/api/v1/autonomy/safety/kill-switch     #
 unset K H
 ```
 
-- **200** means paused, with `capabilities_revoked: N`.
+- **200** means paused, with `capabilities_revoked: N` and `dev_tasks_cancelled: N` (`-1` if cancelling failed; the pause still stands).
 - **503** means autonomy *is* paused but the revocation failed. Call `pause` again; it is safe to repeat.
 - It fails closed. If the flag cannot be read, autonomy counts as paused. Other workers pick up a change within 15 s, because that is how long the pause state is cached.
 - **Resume** with `POST .../kill-switch/resume`. It needs an owner key or a paired phone; any key can pause.

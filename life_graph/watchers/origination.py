@@ -23,6 +23,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 
+from life_graph.autonomy.kill_switch import autonomy_stopped
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.models.db import AgentTask
 from life_graph.storage.database import async_session
@@ -180,6 +181,12 @@ class TaskOriginationService:
                 "fingerprint": fp,
             }
             from life_graph.kernel.ambient import AMBIENT_ACTION, AMBIENT_ACTION_READONLY_TOOLS
+
+            if await autonomy_stopped(tenant_id):
+                # Paused by the owner: findings start no work. The open-task
+                # fingerprint is not written, so they come back after resume.
+                logger.warning("Watcher %s: autonomy is paused, no task started", watcher_name)
+                break
 
             result = await self._pm.spawn(
                 tenant_id=tenant_id,
