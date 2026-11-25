@@ -6,6 +6,8 @@ One part of :class:`life_graph.config.Settings`; the fields are read as
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -134,7 +136,9 @@ class DriverSettings(BaseModel):
     # them on the host as this process's user; "docker" runs each check in a
     # locked-down container (life_graph/services/dev/sandbox.py). With "docker",
     # a missing daemon or image makes checks inconclusive, never passing.
-    verifier_sandbox: str = "none"
+    # Only these values: anything else (a typo such as "Docker") stops startup
+    # rather than quietly meaning "none" (Stage 0, 2026-11-25).
+    verifier_sandbox: Literal["none", "docker"] = "none"
     verifier_sandbox_image: str = "life-graph-verifier:py3.12"
     # Projects whose registry sets sandbox_toolchain=node are checked here
     # instead (docker build -t life-graph-verifier:node22 docker/verifier-node).
@@ -172,7 +176,10 @@ class DriverSettings(BaseModel):
     # "docker", a missing daemon or image fails the dispatch rather than
     # silently falling back to unsandboxed host execution. "task" is the
     # per-task runtime below (network allowlisted through a proxy); prefer it.
-    driver_claude_sandbox: str = "none"
+    # Only these values: before, an unknown one ("Task", "tasks") was not
+    # "docker" or "task", so it silently meant host execution (Stage 0,
+    # 2026-11-25). Now it stops startup.
+    driver_claude_sandbox: Literal["none", "docker", "task"] = "none"
     driver_claude_sandbox_image: str = "life-graph-claude-driver:latest"
     driver_claude_sandbox_memory: str = "4g"
     driver_claude_sandbox_cpus: str = "4"
