@@ -28,7 +28,7 @@ from life_graph.core.said_at import said_at
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryUpdate
-from life_graph.services.contradiction import differs_by_negation
+from life_graph.services.contradiction import differs_by_negation, differs_in_detail
 
 if TYPE_CHECKING:
     from life_graph.extraction.pipeline import ExtractionPipeline
@@ -382,12 +382,15 @@ class MemoryManager:
             # A negation barely moves the embedding, so "I don't use X" can
             # score as a near-duplicate of "I use X" and used to be merged
             # into it, losing the "not" (review 2026-10-22). Such a pair goes
-            # to the contradiction check below instead.
+            # to the contradiction check below instead. So does a pair that
+            # names different values ("3 May" / "4 May", "Priya" / "Maha"):
+            # merging kept one and dropped the other (Stage 0, 2026-11-25).
             similar = [
                 (m, s)
                 for m, s in candidates
                 if s >= settings.dedup_threshold
                 and not differs_by_negation(fact.content, m.content)
+                and not differs_in_detail(fact.content, m.content)
             ][:5]
             if similar:
                 existing_memory, score = similar[0]  # highest similarity
@@ -415,10 +418,25 @@ class MemoryManager:
                 new_props["extraction_confidence"] = fact.confidence
                 if fact.entities:
                     new_props["entities"] = fact.entities
-                merged_props = {
-                    **(existing_memory.properties or {}),
-                    **new_props,
-                }
+                # The existing memory's own provenance (its capture, source,
+                # entities) stays; the new observation only fills keys it does
+                # not have. Its words are kept too, so a merge loses no text.
+                existing_props = existing_memory.properties or {}
+                merged_props = {**new_props, **existing_props}
+                observed = list(existing_props.get("merged_observations") or [])
+                observed.append(
+                    {
+                        "content": fact.content,
+                        "at": datetime.now(UTC).isoformat(),
+                        "similarity": round(float(score), 4),
+                        **{
+                            k: context[k]
+                            for k in ("source", "capture_event_id", "session_id")
+                            if context and k in context
+                        },
+                    }
+                )
+                merged_props["merged_observations"] = observed[-20:]
 
                 update = MemoryUpdate(
                     importance=merged_importance,

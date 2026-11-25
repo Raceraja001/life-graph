@@ -348,6 +348,45 @@ def differs_by_negation(text_a: str, text_b: str) -> bool:
     return _check_negation_flip(text_a, text_b) is not None
 
 
+# Capitalised words that are grammar, not a detail ("My", "The", "I").
+_NOT_DETAILS = frozenset(
+    ["i", "i'm", "i've", "i'd", "i'll", "my", "me", "we", "our", "us", "you", "your", "he", "his", "him", "she", "her", "it", "its", "they", "their", "them", "this", "that", "these", "those", "the", "a", "an", "and", "or", "but", "so", "if", "when", "then"]
+)
+_CALENDAR = frozenset(
+    ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+)
+_NUMBER_RE = re.compile(r"\d+(?:[.,:/]\d+)*")
+_CAPITALISED_RE = re.compile(r"\b([A-Z][\w-]*)")
+_WORD_RE = re.compile(r"[a-z0-9]+(?:[.,:/][0-9]+)*")
+
+
+def _details(text: str) -> set[str]:
+    """The specific values a statement carries: numbers, dates, names."""
+    found = set(_NUMBER_RE.findall(text))
+    found |= {w.lower() for w in _CAPITALISED_RE.findall(text) if w.lower() not in _NOT_DETAILS}
+    found |= {w for w in _WORD_RE.findall(text.lower()) if w in _CALENDAR}
+    return found
+
+
+def differs_in_detail(text_a: str, text_b: str) -> bool:
+    """Whether one text names a value the other does not mention at all.
+
+    A number, a month or weekday, or a capitalised name in one text that does
+    not appear (in any case) anywhere in the other. "Priya's birthday is 3 May"
+    and "Priya's birthday is 4 May" embed almost the same, and so do "Priya's
+    birthday…" and "Maha's birthday…"; merging either pair keeps one value and
+    drops the other. MemoryManager asks this before its near-duplicate merge
+    (Stage 0 finding 5, 2026-11-25); a pair that differs is stored as its own
+    memory and goes to the contradiction check. Erring towards "differs" only
+    costs a duplicate, never a lost fact.
+    """
+    words_a = set(_WORD_RE.findall(text_a.lower()))
+    words_b = set(_WORD_RE.findall(text_b.lower()))
+    return any(d not in words_b for d in _details(text_a)) or any(
+        d not in words_a for d in _details(text_b)
+    )
+
+
 def _check_entity_swap(new_text: str, existing_text: str) -> str | None:
     """Check if one text exclusively prefers a different object than the other.
 
