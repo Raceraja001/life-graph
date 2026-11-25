@@ -130,9 +130,7 @@ async def test_no_secrets_in_diff_flags_a_private_key_in_a_new_file(tmp_path):
 @pytest.mark.asyncio
 async def test_no_secrets_in_diff_finding_never_echoes_the_secret_itself(tmp_path):
     _init_repo(tmp_path)
-    (tmp_path / "config.py").write_text(
-        'AWS_KEY = "AKIAABCDEFGHIJKLMNOP"\n', encoding="utf-8"
-    )
+    (tmp_path / "config.py").write_text('AWS_KEY = "AKIAABCDEFGHIJKLMNOP"\n', encoding="utf-8")
     subprocess.run(["git", "add", "config.py"], cwd=str(tmp_path), check=True, capture_output=True)
 
     results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
@@ -148,7 +146,9 @@ async def test_no_secrets_in_diff_ignores_pre_existing_secret_outside_the_diff(t
     _init_repo(tmp_path)
     leaky = tmp_path / "old_creds.py"
     leaky.write_text('KEY = "AKIAABCDEFGHIJKLMNOP"\n', encoding="utf-8")
-    subprocess.run(["git", "add", "old_creds.py"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "add", "old_creds.py"], cwd=str(tmp_path), check=True, capture_output=True
+    )
     subprocess.run(
         ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-m", "pre-existing"],
         cwd=str(tmp_path),
@@ -289,24 +289,30 @@ async def test_lint_clean_diff_still_fails_on_real_lint_errors(tmp_path):
 # ── no_vulnerable_deps_in_diff ────────────────────────────────
 
 
-def _fake_pip_audit(tmp_path, report: dict, returncode: int = 0):
-    """A stub pip-audit binary installed at workdir/.venv/bin/pip-audit —
-    the real, non-mocked lookup path (no_vulnerable_deps_in_diff never
-    trusts an ambient one found only via PATH; see the regression test
-    below for why)."""
-    import json
+def _fake_pip_audit(tmp_path, monkeypatch, report: dict, returncode: int = 0):
+    """The project's own venv at workdir/.venv (the host-mode lookup path) and
+    Life Graph's pip-audit faked at the subprocess boundary.
 
-    bindir = tmp_path / ".venv" / "bin"
-    bindir.mkdir(parents=True, exist_ok=True)
-    script = bindir / "pip-audit"
-    script.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys\n"
-        f"print({json.dumps(json.dumps(report))})\n"
-        f"sys.exit({returncode})\n"
-    )
-    script.chmod(0o755)
-    return str(script)
+    The verifier runs ``python -m pip_audit --path <site-packages>`` under this
+    interpreter, never a binary from the venv (Stage 0 finding 2): the venv is
+    the agent's. Returns what that call was given.
+    """
+    import json
+    import sys
+
+    site = tmp_path / ".venv" / "lib" / "python3.12" / "site-packages"
+    site.mkdir(parents=True, exist_ok=True)
+    seen: dict = {"site": site}
+    real_run = subprocess.run
+
+    def fake_run(argv, *a, **kw):
+        if list(argv[:3]) == [sys.executable, "-m", "pip_audit"]:
+            seen["argv"], seen["env"] = list(argv), kw.get("env")
+            return subprocess.CompletedProcess(argv, returncode, json.dumps(report), "")
+        return real_run(argv, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    return seen
 
 
 @pytest.mark.asyncio
@@ -363,13 +369,17 @@ async def test_no_vulnerable_deps_passes_when_pip_audit_finds_nothing(tmp_path, 
         ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
     )
 
-    _fake_pip_audit(tmp_path, {"dependencies": [{"name": "requests", "vulns": []}]})
+    seen = _fake_pip_audit(
+        tmp_path, monkeypatch, {"dependencies": [{"name": "requests", "vulns": []}]}
+    )
     monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
 
     results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
 
     assert results[0].passed is True
     assert results[0].evidence["vulnerabilities"] == []
+    argv = seen["argv"]
+    assert argv[argv.index("--path") + 1] == str(seen["site"])
 
 
 @pytest.mark.asyncio
@@ -389,7 +399,7 @@ async def test_no_vulnerable_deps_fails_when_pip_audit_finds_a_vuln(tmp_path, mo
             {"name": "requests", "version": "2.0.0", "vulns": [{"id": "PYSEC-2018-28"}]}
         ]
     }
-    _fake_pip_audit(tmp_path, report, returncode=1)
+    _fake_pip_audit(tmp_path, monkeypatch, report, returncode=1)
     monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
 
     results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
@@ -412,7 +422,7 @@ async def test_no_vulnerable_deps_inconclusive_when_pip_audit_itself_fails(tmp_p
         ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
     )
 
-    _fake_pip_audit(tmp_path, {}, returncode=2)
+    _fake_pip_audit(tmp_path, monkeypatch, {}, returncode=2)
     monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
 
     results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
@@ -452,7 +462,7 @@ async def test_no_vulnerable_deps_never_trusts_an_ambient_pip_audit(tmp_path, mo
     ambient.write_text(
         "#!/usr/bin/env python3\n"
         "import sys\n"
-        'print(\'{"dependencies": []}\')\n'  # a clean scan, if this ever ran
+        "print('{\"dependencies\": []}')\n"  # a clean scan, if this ever ran
         "sys.exit(0)\n"
     )
     ambient.chmod(0o755)

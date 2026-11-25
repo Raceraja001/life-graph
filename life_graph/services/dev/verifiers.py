@@ -7,14 +7,17 @@ One-bounce rule: failed → re-dispatch once → second failure → needs_human.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import logging
+import os
 import re
 import shlex
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 from life_graph.config import settings
@@ -239,17 +242,42 @@ def _project_python(workdir: Path) -> str | None:
     return shutil.which("python") or shutil.which("python3")
 
 
+def _minimal_env() -> dict[str, str]:
+    """The environment for a host-side tool: a PATH and a locale, nothing else.
+
+    Never this process's own environment: it holds the API's keys and
+    database URL, and nothing ruff or pip-audit needs is in it.
+    """
+    env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": "/tmp"}
+    for name in ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE"):
+        if os.environ.get(name):
+            env[name] = os.environ[name]
+    return env
+
+
+def _site_packages(venv: Path) -> list[Path]:
+    """The venv's site-packages directories (read as data, never imported)."""
+    return sorted(
+        p
+        for p in (*venv.glob("lib/python*/site-packages"), venv / "Lib" / "site-packages")
+        if p.is_dir()
+    )
+
+
 async def mechanical_autofix(workdir: Path, ctx: dict) -> dict:
     """Best-effort ``ruff --fix`` + ``ruff format`` on files changed since HEAD.
 
     Called by the dispatcher right before the one-bounce rule would spend a
     real driver call re-dispatching a failure — a lint/format issue a
-    formatter fixes for free shouldn't burn a frontier call. Runs directly
-    against *workdir* rather than through the check-phase sandbox
-    (:func:`sandbox.run`), which mounts it read-only and cannot write a fix
-    back; ruff is a trusted, well-known static tool operating only on the
-    diff, not the agent's own code, so this crosses the same trust boundary
-    the landing commit's git commands already do.
+    formatter fixes for free shouldn't burn a frontier call.
+
+    With the verifier sandbox on, the image's own ruff runs in the check-phase
+    container (no network, read-only root) with the worktree mounted
+    writable. Never the project venv's ``bin/ruff``: that venv is built from
+    manifests the agent edited, so its binaries are the agent's, and running
+    one on the host ran agent-chosen code with this process's environment
+    (Stage 0 finding 2, 2026-11-25). With the sandbox off, a trusted host
+    ruff runs (_project_tool), with a minimal environment.
 
     Best-effort throughout: any failure here (no ruff available, a syntax
     error ruff can't parse, a timeout, ...) is swallowed and reported in the
@@ -264,40 +292,43 @@ async def mechanical_autofix(workdir: Path, ctx: dict) -> dict:
     if not changed:
         return {"ran": False, "note": "no changed .py files"}
 
-    ruff: str | None = None
+    rel = [str(f.relative_to(workdir)) for f in changed]
+    ruff = "ruff (verifier image, sandboxed)"
     if sandbox.enabled():
         try:
-            venv = await sandbox.prepare_env(
-                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            await sandbox.run(
+                ["ruff", "check", "--no-cache", "--fix", "--fix-only", "--", *rel],
+                workdir,
+                timeout=60,
+                writable=True,
             )
-            candidate = venv / "bin" / "ruff"
-            ruff = str(candidate) if candidate.is_file() else None
-        except sandbox.SandboxUnavailableError:
-            ruff = None
+            await sandbox.run(
+                ["ruff", "format", "--no-cache", "--", *rel], workdir, timeout=60, writable=True
+            )
+        except sandbox.SandboxUnavailableError as exc:
+            return {"ran": False, "note": f"sandbox unavailable: {exc}"}
+        except Exception as exc:
+            return {"ran": True, "fixed": False, "error": str(exc)}
     else:
-        ruff = _project_tool(workdir, "ruff")
-
-    if ruff is None:
-        return {"ran": False, "note": "ruff not available for this project"}
-
-    rel = [str(f.relative_to(workdir)) for f in changed]
-    try:
-        subprocess.run(
-            [ruff, "check", "--fix", "--fix-only", "--", *rel],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            cwd=str(workdir),
-        )
-        subprocess.run(
-            [ruff, "format", "--", *rel],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            cwd=str(workdir),
-        )
-    except Exception as exc:
-        return {"ran": True, "fixed": False, "error": str(exc)}
+        host_ruff = _project_tool(workdir, "ruff")
+        if host_ruff is None:
+            return {"ran": False, "note": "ruff not available for this project"}
+        ruff = host_ruff
+        try:
+            for argv in (
+                [ruff, "check", "--fix", "--fix-only", "--", *rel],
+                [ruff, "format", "--", *rel],
+            ):
+                subprocess.run(
+                    argv,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    cwd=str(workdir),
+                    env=_minimal_env(),
+                )
+        except Exception as exc:
+            return {"ran": True, "fixed": False, "error": str(exc)}
     return {"ran": True, "fixed": True, "candidates": rel, "tool": ruff}
 
 
@@ -951,33 +982,29 @@ async def _verify_no_vulnerable_deps_in_diff(workdir: Path, ctx: dict) -> tuple[
     network round-trip that isn't worth paying otherwise.
 
     Runs on the host, never inside the check-phase sandbox: unlike every
-    other verifier here, this one genuinely needs outbound network access
-    (querying the OSV/PyPI vulnerability database), which the sandbox denies
-    by design (``services/dev/sandbox.py``'s ``--network none`` check phase).
-    That's safe specifically for this check: pip-audit only reads installed
-    package name/version metadata and queries a vulnerability database, it
-    never executes anything from the diff itself — unlike tests_pass or
-    lint_clean_diff, which run the agent's actual code and must stay
-    contained. Still uses the sandbox's own cached, dependency-resolved venv
-    (``prepare_env``, built during the network-on setup phase) rather than
-    assuming a stray ``workdir/.venv`` exists, which it usually won't for an
-    ephemeral worktree.
+    other verifier here, this one needs outbound network access (the PyPI
+    vulnerability service), which the sandbox denies by design. It is Life
+    Graph's own pip-audit (``python -m pip_audit`` under this interpreter)
+    pointed at the project venv's site-packages with ``--path``: it reads the
+    installed packages' metadata files and runs nothing from that venv. The
+    venv is built from manifests the agent edited, so its ``bin/pip-audit``
+    and its interpreter (with any ``.pth`` file a package ships) are the
+    agent's code, and running them on the host is what this must never do
+    (Stage 0 finding 2, 2026-11-25). The environment is minimal.
     """
     changed_names = {f.name for f in _changed_files(workdir)}
     touched = sorted(_DEPENDENCY_MANIFESTS & changed_names)
     if not touched:
         return True, {"note": "no dependency manifest changed", "touched": []}
 
-    pip_audit: str | None = None
+    venv: Path | None = None
     if sandbox.enabled():
         try:
             venv = await sandbox.prepare_env(
                 workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
             )
-            candidate = venv / "bin" / "pip-audit"
-            pip_audit = str(candidate) if candidate.is_file() else None
         except sandbox.SandboxUnavailableError:
-            pip_audit = None
+            venv = None
     else:
         # Deliberately NOT _project_tool's shutil.which(tool) last resort
         # here. ruff/pytest take an explicit target path, so even a
@@ -993,30 +1020,28 @@ async def _verify_no_vulnerable_deps_in_diff(workdir: Path, ctx: dict) -> tuple[
         # be trusted to be *this* project's environment -- and that venv is
         # inside the agent's worktree, so it runs only with host execution on.
         for venv_dir in _VENV_DIRS if host_execution_allowed() else ():
-            for bindir in _BIN_DIRS:
-                candidate = workdir / venv_dir / bindir / "pip-audit"
-                if candidate.is_file():
-                    pip_audit = str(candidate)
-                    break
-            if pip_audit:
+            if (workdir / venv_dir).is_dir():
+                venv = workdir / venv_dir
                 break
 
-    if pip_audit is None:
+    site_packages = _site_packages(venv) if venv is not None else []
+    if not site_packages or importlib.util.find_spec("pip_audit") is None:
         logger.warning("no_vulnerable_deps_in_diff: pip-audit not available — check not performed")
         return None, {"note": "pip-audit not available for this project", "touched": touched}
 
+    argv = [sys.executable, "-m", "pip_audit", "--format", "json", "--progress-spinner", "off"]
+    for path in site_packages:
+        argv += ["--path", str(path)]
     try:
         result = subprocess.run(
-            [pip_audit, "--format", "json", "--progress-spinner", "off"],
+            argv,
             capture_output=True,
             text=True,
             timeout=120,
+            env=_minimal_env(),
         )
     except FileNotFoundError:
-        return None, {
-            "note": f"pip-audit at {pip_audit!r} disappeared before it could run",
-            "touched": touched,
-        }
+        return None, {"note": "pip-audit disappeared before it could run", "touched": touched}
     except subprocess.TimeoutExpired:
         return None, {
             "note": "pip-audit timed out (needs network, not sandboxed)",
