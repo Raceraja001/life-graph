@@ -374,3 +374,28 @@ There were no new migrations; alembic stays at 062. CI was green at `b0a4c5e`, a
 1. Check out `541bad2` on `prod`.
 2. Restore the venv with `uv pip install -r ~/life-graph-backups/release-20261124-2/venv-freeze.before.txt`. Or sync from that commit's `uv.lock`.
 3. Run `./dev.sh restart`.
+
+### D24. Release of the remaining audit fixes and the alias deletion (2026-11-25)
+
+**Decision:** the owner said yes. Released tag `prod-20261125-0126`. Rollback is `5f99eded`.
+
+**Included:**
+- #326: L8 (dev task and its link saved in one commit) and M3 (a fixed "Dispatch failed." message instead of raw error text).
+- #327: L12 (advisory lock so the same dev task cannot be created twice).
+- #328: L15 (one shared Redis job pool) and L14 (numpy memory grouping, 1000 memories 13.6 s → 0.43 s).
+- #329: task briefs point at the moved files.
+- #330: the 57 old-name alias modules are deleted.
+
+There were no new migrations; alembic stays at 062. There were also no changes to `uv.lock`, `pyproject.toml` or the dashboard lock file, so the shared venv was not synced. CI was green at `58adf9d`, and only the bot's `[skip ci]` docs commit came after it.
+
+**Verified:**
+- Health 200, UI 200, and `/metrics` without a key 401.
+- API, UI and dev runner all active. Kill switch not paused.
+- Approving a fake approval id with the owner key gets 404.
+- Playwright Chromium launches.
+- 0 errors in the API and worker logs. Dev edition health 200.
+- `life_graph/services/money.py` is gone on prod.
+
+**Backups:** `.env` and `pip freeze` in `~/life-graph-backups/release-20261125/`.
+
+**Rollback:** check out `5f99eded` on `prod`, then run `./dev.sh restart`.
