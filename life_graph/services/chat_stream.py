@@ -133,10 +133,15 @@ def map_bus_event(raw: dict, seen_children: set[str]) -> dict | None:
     """Map one raw bus event to a chat-protocol event, or None to drop it.
 
     seen_children is caller-owned mutable state tracking which child task_ids
-    have already emitted their delegation_start. A child whose first streamed
-    event is `done` (no prior token) needs both delegation_start and child_done;
-    that case returns the compound marker ``delegation_start+done`` for the
-    caller (the SSE endpoint) to expand into two frames.
+    have already emitted their delegation_start. A child's first streamed event
+    must open it (delegation_start) AND carry its own meaning, so two cases
+    return a compound marker for the caller to turn into two frames with
+    ``expand_compound``:
+
+    - first event is a token: ``delegation_start+delta`` (delegation_start,
+      then child_delta with that token's text, so the first token is kept);
+    - first event is `done` (no prior token): ``delegation_start+done``
+      (delegation_start, then child_done).
     """
     depth = raw.get("depth", 0)
     persona = raw.get("agent_name", "")
@@ -187,7 +192,12 @@ def map_bus_event(raw: dict, seen_children: set[str]) -> dict | None:
     if etype == "token":
         if child_id not in seen_children:
             seen_children.add(child_id)
-            return {"type": "delegation_start", "child_id": child_id, "persona": persona}
+            return {
+                "type": "delegation_start+delta",
+                "child_id": child_id,
+                "persona": persona,
+                "text": event.get("content", ""),
+            }
         return {
             "type": "child_delta",
             "child_id": child_id,
@@ -200,3 +210,20 @@ def map_bus_event(raw: dict, seen_children: set[str]) -> dict | None:
             return {"type": "delegation_start+done", "child_id": child_id, "persona": persona}
         return {"type": "child_done", "child_id": child_id, "persona": persona}
     return None
+
+
+def expand_compound(mapped: dict) -> list[dict]:
+    """The frames to send for one ``map_bus_event`` result, in order.
+
+    A plain event is one frame. The compound markers become two: first the
+    child's delegation_start, then its child_delta (with the first token's
+    text) or child_done.
+    """
+    kind = mapped["type"]
+    if kind not in ("delegation_start+delta", "delegation_start+done"):
+        return [mapped]
+    ids = {"child_id": mapped["child_id"], "persona": mapped["persona"]}
+    start = {"type": "delegation_start", **ids}
+    if kind == "delegation_start+delta":
+        return [start, {"type": "child_delta", **ids, "text": mapped["text"]}]
+    return [start, {"type": "child_done", **ids}]

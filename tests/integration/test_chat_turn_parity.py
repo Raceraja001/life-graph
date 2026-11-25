@@ -147,9 +147,10 @@ KERNEL_FRAMES = [
     {"type": "tool_call", "name": "clock", "arguments": "{}"},
     {"type": "tool_result", "name": "clock", "result": "12:00"},
     {"type": "tool_call", "name": "delegate_to_persona", "arguments": "null"},
-    # A child's first token only opens it: its text is not sent (pinned as it
-    # is today; services/chat_stream.py map_bus_event).
+    # A child's first token opens it and its text is sent right after
+    # (services/chat_stream.py map_bus_event + expand_compound).
     {"type": "delegation_start", "child_id": "child-1", "persona": "scout"},
+    {"type": "child_delta", "child_id": "child-1", "persona": "scout", "text": "child says"},
     {"type": "child_done", "child_id": "child-1", "persona": "scout"},
     {"type": "delegation_start", "child_id": "child-2", "persona": "analyst"},
     {"type": "child_done", "child_id": "child-2", "persona": "analyst"},
