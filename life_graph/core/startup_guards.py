@@ -10,6 +10,10 @@ it); instead the API refuses to start in the one combination that exposes it.
 Meant to be called from ``lifespan`` in ``main.py`` before anything else
 starts (right after the "Running in DEVELOPMENT mode" warning), outside
 ``startup_step()`` (which swallows exceptions) because this one must be fatal.
+
+Also here: :func:`langfuse_tracing_allowed`, the check that keeps Langfuse
+tracing (every LLM prompt and reply) from going to a host off this machine,
+the LAN or the tailnet unless the owner opts in (decision 2026-11-25).
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ import logging
 import os
 import sys
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from life_graph.config import settings as app_settings
 
@@ -29,6 +34,14 @@ logger = logging.getLogger(__name__)
 
 # uvicorn's own default when no --host is given.
 UVICORN_DEFAULT_HOST = "127.0.0.1"
+
+# Tailscale gives tailnet devices addresses in the CGNAT range, which
+# ipaddress does not count as private. Its IPv6 range (fd7a:115c:a1e0::/48)
+# is inside fc00::/7, which it does.
+TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
+# Host-name endings that cannot be on the public internet: this machine
+# (RFC 6761), the tailnet (MagicDNS) and the LAN (mDNS).
+SELF_HOSTED_SUFFIXES = (".localhost", ".ts.net", ".local")
 
 
 class InsecureStartupError(RuntimeError):
@@ -79,6 +92,79 @@ def is_loopback_host(host: str) -> bool:
     except ValueError:
         # A hostname other than localhost: it may resolve anywhere. Not loopback.
         return False
+
+
+def is_self_hosted_url(url: str) -> bool:
+    """True when *url*'s host is on this machine, the LAN or the tailnet.
+
+    Accepted: ``localhost`` and ``*.localhost``; loopback and private IPs
+    (127.0.0.0/8, ::1, the RFC 1918 ranges, fc00::/7, link-local); the
+    Tailscale ranges (100.64.0.0/10) and ``*.ts.net``; ``*.local``; and a
+    one-word host name such as ``langfuse`` (a Docker service on this box).
+    Anything else, a URL with no host, or one that does not parse, is not.
+    Only the name is checked; it is not looked up.
+    """
+    try:
+        host = (urlsplit(url.strip()).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    if not host:
+        return False
+    if host in ("localhost", "localhost.localdomain") or host.endswith(SELF_HOSTED_SUFFIXES):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return "." not in host
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback or ip.is_private or ip in TAILNET_V4
+
+
+def langfuse_tracing_allowed(settings: Any = None) -> bool:
+    """Whether Langfuse tracing may start.
+
+    Tracing sends every LiteLLM prompt and reply to ``langfuse_host``, and
+    those carry the owner's personal data. So it starts only when a key is
+    set and the host is self-hosted (:func:`is_self_hosted_url`), or when
+    ``langfuse_allow_remote`` is true. A refused host is logged as a WARNING.
+    """
+    if settings is None:
+        settings = app_settings
+    if not settings.langfuse_public_key:
+        return False
+    if settings.langfuse_allow_remote or is_self_hosted_url(settings.langfuse_host):
+        return True
+    try:
+        shown = urlsplit(settings.langfuse_host.strip()).hostname or settings.langfuse_host
+    except ValueError:
+        shown = "(unparseable URL)"
+    logger.warning(
+        "Langfuse tracing NOT enabled: langfuse_host %r is not on this machine, the LAN or "
+        "the tailnet, and every LLM prompt and reply (personal data included) would be "
+        "sent there. Point LIFE_GRAPH_LANGFUSE_HOST at a self-hosted Langfuse, or set "
+        "LIFE_GRAPH_LANGFUSE_ALLOW_REMOTE=true to send them anyway.",
+        shown,
+    )
+    return False
+
+
+def langfuse_env(settings: Any = None) -> dict[str, str]:
+    """The environment LiteLLM's Langfuse callback reads its host and keys from.
+
+    LiteLLM never sees ``settings``: it reads ``LANGFUSE_HOST`` (else
+    ``LANGFUSE_BASE_URL``, else Langfuse's cloud) and the two keys from the
+    environment. Exporting the checked values makes the traces go to the
+    host :func:`langfuse_tracing_allowed` approved, not to a stray env var
+    or the cloud default.
+    """
+    if settings is None:
+        settings = app_settings
+    return {
+        "LANGFUSE_HOST": settings.langfuse_host.strip(),
+        "LANGFUSE_PUBLIC_KEY": settings.langfuse_public_key,
+        "LANGFUSE_SECRET_KEY": settings.langfuse_secret_key,
+    }
 
 
 def _has_api_keys(settings: Any) -> bool:

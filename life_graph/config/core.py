@@ -95,9 +95,14 @@ class CoreSettings(BaseModel):
     cors_origins: str = "http://localhost:3000,http://localhost:8000"
 
     # ── Langfuse (LLM tracing — auto-enabled by LiteLLM)
+    # Tracing sends every LiteLLM prompt and reply (personal data included) to
+    # langfuse_host. It only starts when that host is on this machine, the LAN
+    # or the tailnet (core/startup_guards.is_self_hosted_url), unless
+    # langfuse_allow_remote is true (owner decision 2026-11-25).
     langfuse_public_key: str = ""  # Set LIFE_GRAPH_LANGFUSE_PUBLIC_KEY
     langfuse_secret_key: str = ""  # Set LIFE_GRAPH_LANGFUSE_SECRET_KEY
     langfuse_host: str = "http://localhost:3001"
+    langfuse_allow_remote: bool = False
 
     # ── Observability ──────────────────────────────────
     metrics_enabled: bool = True
