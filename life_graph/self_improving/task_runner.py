@@ -42,7 +42,10 @@ def _extraction_llm_fn(tenant_id: str) -> LlmFn:
         client = get_lm_client()
 
         async def call(structured: bool) -> str:
-            return await client.chat(
+            # Local only (D25): eval inputs are the owner's words, like the
+            # production extraction this reproduces; chat() goes to the cloud
+            # chain when use_hybrid_llm is on.
+            return await client.chat_local_only(
                 messages=build_extraction_messages(
                     prompt.prompt_text, prompt.few_shot, input_text, structured=structured
                 ),

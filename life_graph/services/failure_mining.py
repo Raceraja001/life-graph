@@ -99,7 +99,9 @@ class FailurePatternMiner:
             "cite their exact ids. Invent nothing.\n\nFailed decisions:\n"
             f"{listing}"
         )
-        raw = await self._llm.chat(
+        # Local only (D25): the owner's own decisions. chat() goes to the
+        # cloud chain when use_hybrid_llm is on.
+        raw = await self._llm.chat_local_only(
             [{"role": "user", "content": prompt}],
             temperature=0.2,
             response_format={"type": "json_object"},

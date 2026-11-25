@@ -581,7 +581,13 @@ class LLMExtractor:
         return facts
 
     async def _extract_cloud(self, text: str) -> list[ExtractedFact]:
-        """Extract facts using cloud LLM via LiteLLM (original path)."""
+        """Extract facts via LiteLLM, used when there is no local LM client.
+
+        The text is the owner's own words, so this runs only when the model
+        (``llm_model_cheap``) is a local one, and cannot fail over to a cloud
+        model (``local_only``, owner decision D25). With a cloud model it
+        skips: no LLM facts, the rule and spaCy tiers still run.
+        """
         from life_graph.runtime import get_resilient_llm
 
         messages = [
@@ -597,17 +603,26 @@ class LLMExtractor:
             },
         ]
 
-        try:
-            response = await get_resilient_llm().acompletion(
-                messages=messages,
-                model=self._model,
-                max_tokens=self._max_tokens,
-                temperature=0.1,
-                response_format={"type": "json_object"},
-            )
-        except Exception:
-            logger.exception("LLM extraction call failed for model '%s'", self._model)
-            return []
+        llm = get_resilient_llm()
+        with llm.local_only(self._model) as model:
+            if model is None:
+                logger.info(
+                    "LLM extraction skipped: %s is not a local model, and the owner's "
+                    "words are never sent to a cloud model",
+                    self._model,
+                )
+                return []
+            try:
+                response = await llm.acompletion(
+                    messages=messages,
+                    model=model,
+                    max_tokens=self._max_tokens,
+                    temperature=0.1,
+                    response_format={"type": "json_object"},
+                )
+            except Exception:
+                logger.exception("LLM extraction call failed for model '%s'", self._model)
+                return []
 
         # Track costs
         self.call_count += 1

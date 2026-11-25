@@ -13,6 +13,7 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
+from life_graph.config import settings
 from life_graph.extraction.rules import ExtractedFact
 
 if TYPE_CHECKING:
@@ -100,25 +101,41 @@ def _parse_facts(raw: str) -> list[ExtractedFact]:
 
 
 async def extract_transcript_facts(turns: list[Turn], *, resilient_llm) -> list[ExtractedFact]:
-    """Extract categorized facts from a cleaned dialogue via the free-model LLM."""
+    """Extract categorized facts from a cleaned dialogue via the cheap-tier LLM.
+
+    The dialogue is the owner's own session, so it goes to ``llm_model_cheap``
+    only when that is a local model, and cannot fail over to a cloud one
+    (``local_only``, owner decision D25). Otherwise nothing is sent and no
+    facts come back.
+    """
+    if not any(t["role"] == "user" for t in turns):
+        return []  # context only: nothing to extract, no call either way
     facts: list[ExtractedFact] = []
-    for chunk in _chunk(turns):
-        if not any(t["role"] == "user" for t in chunk):
-            continue  # context-only window — nothing to extract, skip the call
-        messages = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": "\n".join(_line(t) for t in chunk)},
-        ]
-        try:
-            raw = await resilient_llm.chat(
-                messages,
-                tier="cheap",
-                temperature=0.1,
-                max_tokens=1024,
-                response_format={"type": "json_object"},
+    with resilient_llm.local_only(settings.llm_model_cheap) as model:
+        if model is None:
+            logger.info(
+                "Transcript extraction skipped: %s is not a local model, and the "
+                "owner's sessions are never sent to a cloud model",
+                settings.llm_model_cheap,
             )
-        except Exception:  # noqa: BLE001 - a failed chunk must not sink the session
-            logger.warning("Transcript extraction chunk failed", exc_info=True)
-            continue
-        facts.extend(_parse_facts(raw))
+            return []
+        for chunk in _chunk(turns):
+            if not any(t["role"] == "user" for t in chunk):
+                continue  # context-only window — nothing to extract, skip the call
+            messages = [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": "\n".join(_line(t) for t in chunk)},
+            ]
+            try:
+                raw = await resilient_llm.chat(
+                    messages,
+                    model=model,
+                    temperature=0.1,
+                    max_tokens=1024,
+                    response_format={"type": "json_object"},
+                )
+            except Exception:  # noqa: BLE001 - a failed chunk must not sink the session
+                logger.warning("Transcript extraction chunk failed", exc_info=True)
+                continue
+            facts.extend(_parse_facts(raw))
     return facts

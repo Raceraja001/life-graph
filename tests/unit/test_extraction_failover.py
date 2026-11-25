@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 import life_graph.extraction.llm as ex
+from life_graph.services.llm.resilient import local_only
 
 
 @pytest.mark.asyncio
@@ -21,14 +22,14 @@ async def test_extract_cloud_uses_resilient(monkeypatch):
     )
     resilient = AsyncMock()
     resilient.acompletion = AsyncMock(return_value=resp)
+    resilient.local_only = local_only  # the real gate (D25)
 
-    monkeypatch.setattr(
-        "life_graph.api.dependencies.get_resilient_llm", lambda: resilient
-    )
+    monkeypatch.setattr("life_graph.api.dependencies.get_resilient_llm", lambda: resilient)
 
-    extractor = ex.LLMExtractor(model="gemini/gemini-2.0-flash")
+    # A local model: since D25 a cloud model here is skipped, never called.
+    extractor = ex.LLMExtractor(model="ollama_chat/qwen3:14b")
     facts = await extractor._extract_cloud("some text")
 
     resilient.acompletion.assert_awaited()
-    assert resilient.acompletion.call_args.kwargs["model"] == "gemini/gemini-2.0-flash"
+    assert resilient.acompletion.call_args.kwargs["model"] == "ollama_chat/qwen3:14b"
     assert facts == []

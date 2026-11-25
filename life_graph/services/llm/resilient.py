@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 import litellm
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Iterator
 
 from life_graph.config import settings
 from life_graph.services.llm.health import LLMHealth
@@ -141,6 +141,32 @@ def only_models(models: list[str]):
 # model that must not be handed an Ollama-only option.
 LOCAL_PROVIDERS = ("ollama/", "ollama_chat/", "lm_studio/")
 
+
+@contextmanager
+def local_only(model: str | None) -> Iterator[str | None]:
+    """For a call that carries the owner's personal data (owner decision D25).
+
+    Yields *model* when it runs on this machine (a ``LOCAL_PROVIDERS``
+    prefix), with the chain limited to that one model (``only_models``), so
+    a failure cannot fail over to a cloud model. Yields None when *model* is
+    not local: the caller then skips the call (fail closed), never sends it.
+
+        with local_only(settings.llm_model_cheap) as model:
+            if model is None:
+                return []  # and log why
+            await llm.chat(messages, model=model)
+
+    Also reachable as ``ResilientLLM.local_only``, for callers that hold the
+    wrapper and import this module lazily (it loads litellm).
+    """
+    name = (model or "").strip()
+    if not name.startswith(LOCAL_PROVIDERS):
+        yield None
+        return
+    with only_models([name]):
+        yield name
+
+
 # How long Ollama holds a model after a request, and with what context size:
 # services/llm/local_runtime.py (waking hours: until they end; night: a few minutes).
 
@@ -228,6 +254,9 @@ def _retry_after(exc: Exception) -> float | None:
 
 class ResilientLLM:
     """Ordered failover wrapper around `litellm.acompletion` with health-aware skipping."""
+
+    # See the module-level local_only(): personal data runs on local models only.
+    local_only = staticmethod(local_only)
 
     def __init__(self, health: LLMHealth | None = None) -> None:
         _bridge_provider_credentials()
