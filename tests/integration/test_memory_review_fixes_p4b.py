@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -238,17 +238,11 @@ async def test_distilled_principle_is_pending_and_not_redistilled(monkeypatch):
     sources = [await _seed(f"P4b related fact {i} {uuid.uuid4()}") for i in range(3)]
     text = f"P4b principle {uuid.uuid4()}"
 
-    response = MagicMock()
-    response.choices = [MagicMock()]
-    response.choices[0].message.content = text
-    response._hidden_params = {"response_cost": 0.0}
-
-    async def _acompletion(**_kw):
-        return response
-
+    # Distill is local-only (D25): it asks the local client, never the cloud chain.
     llm = MagicMock()
-    llm.acompletion = _acompletion
-    monkeypatch.setattr("life_graph.api.dependencies.get_resilient_llm", lambda: llm)
+    llm.chat_local_only = AsyncMock(return_value=text)
+    monkeypatch.setattr("life_graph.runtime.get_lm_client", lambda: llm)
+    monkeypatch.setattr("life_graph.config.settings.use_local_llm", True)
 
     pipeline = _pipeline()
     (principle,) = await pipeline._distill([sources])
