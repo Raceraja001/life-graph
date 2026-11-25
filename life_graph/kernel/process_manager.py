@@ -91,6 +91,7 @@ class ProcessManager:
         session_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
         tool_override: list[str] | None = None,
+        retry_count: int = 0,
     ) -> dict[str, Any]:
         """Spawn a new agent task (like fork + exec).
 
@@ -126,6 +127,9 @@ class ProcessManager:
                 fall back to the persona's own `allowed_tools`.
                 Safety-load-bearing: this is how scheduled
                 action-role runs are forced read-only.
+            retry_count: Which retry this run is (0 = the first try). Set
+                by `_retry_task` only; `_fail_task` stops retrying once a
+                failed row's count reaches its max_retries.
 
         Returns:
             Dict with the created task's id and status.
@@ -161,6 +165,7 @@ class ProcessManager:
                 input=input_data,
                 timeout_seconds=timeout,
                 max_retries=retries,
+                retry_count=retry_count,
                 parent_task_id=parent_task_id,
                 root_task_id=root_task_id,
                 depth=depth,
@@ -409,10 +414,22 @@ class ProcessManager:
         and at once regenerates or resends must find the row completed, not
         get 409 "still being written".
         """
-        async with self._semaphore:
-            from life_graph.core.task_context import set_task_context
-            from life_graph.services.chat_stream import get_chat_stream_bus
+        from life_graph.core.task_context import set_task_context
+        from life_graph.services.chat_stream import get_chat_stream_bus
 
+        try:
+            await self._semaphore.acquire()
+        except asyncio.CancelledError:
+            # Stopped while it waited for a slot (stop_local on a queued
+            # task of a cancelled tree): end a stream that may be waiting on
+            # it, as the cancel of a running task does below.
+            stream_key = str(root_task_id or task_id)
+            self._publish_terminal_bus_event(
+                stream_key, task_id, agent_name, depth, "Task cancelled"
+            )
+            get_chat_stream_bus().discard(stream_key)
+            raise
+        try:
             set_task_context(
                 task_id=task_id,
                 tenant_id=tenant_id,
@@ -427,7 +444,17 @@ class ProcessManager:
             # back by _run_agent until the result is saved.
             terminal: list[dict[str, Any]] = []
 
-            if not await self._mark_running(task_id):
+            try:
+                running = await self._mark_running(task_id)
+            except asyncio.CancelledError:
+                # Stopped during this write: end the stream like any cancel.
+                # (Any other error here still propagates, as it always has.)
+                self._publish_terminal_bus_event(
+                    stream_key, task_id, agent_name, depth, "Task cancelled"
+                )
+                bus.discard(stream_key)
+                raise
+            if not running:
                 # Cancelled while it waited for a slot (a cancelled tree's
                 # queued child, or a cancel from another process): don't
                 # run it, and end a stream that may be waiting on it.
@@ -502,6 +529,8 @@ class ProcessManager:
                 # watchers) -- a no-op if an SSE subscriber is attached, since
                 # that path's own close()/cleanup already handles it.
                 bus.discard(stream_key)
+        finally:
+            self._semaphore.release()
 
     def _publish_terminal_bus_event(
         self,
@@ -945,6 +974,8 @@ class ProcessManager:
         retry_count = 0
         max_retries = 0
         input_data: dict[str, Any] = {}
+        root_task_id: uuid.UUID | None = None
+        depth = 0
 
         async with self._session_factory() as session:
             stmt = select(AgentTask).where(AgentTask.id == task_id)
@@ -957,6 +988,8 @@ class ProcessManager:
                 retry_count = task.retry_count
                 max_retries = task.max_retries
                 input_data = task.input or {}
+                root_task_id = task.root_task_id
+                depth = task.depth
 
         # Update status. The WHERE also covers a cancel that lands between
         # the read above and this write.
@@ -994,6 +1027,9 @@ class ProcessManager:
                 input_data,
                 retry_count,
                 tool_override=tool_override,
+                max_retries=max_retries,
+                root_task_id=root_task_id,
+                depth=depth,
             )
 
     async def _retry_task(
@@ -1004,17 +1040,32 @@ class ProcessManager:
         input_data: dict[str, Any],
         retry_count: int,
         tool_override: list[str] | None = None,
+        *,
+        max_retries: int = 0,
+        root_task_id: uuid.UUID | None = None,
+        depth: int = 0,
     ) -> None:
         """Schedule a retry with exponential backoff.
 
         Creates a new task linked to the original via
         parent_task_id. Backoff delay = 2^retry_count seconds.
 
+        The retry keeps its place in the chain: it is spawned with
+        ``retry_count + 1`` and the original's ``max_retries``, so a task that
+        always raises stops after max_retries retries. Before, each retry was
+        a fresh row with retry_count 0 and the default max_retries, and the
+        chain never ended. It also keeps the original's ``root_task_id`` and
+        ``depth``, so a retried delegated child stays in its tree (and in its
+        root's stream) instead of becoming a new depth-0 task.
+
         Args:
             tool_override: Re-applied to the re-spawned task so a
                 retried read-only scheduled run stays read-only
                 instead of falling back to the persona's own
                 `allowed_tools`.
+            max_retries: The original's max_retries, carried to the retry.
+            root_task_id: The original's root (None for a root task).
+            depth: The original's delegation depth.
         """
         delay = 2**retry_count
         new_retry = retry_count + 1
@@ -1054,6 +1105,10 @@ class ProcessManager:
             input_data,
             task_name=f"retry-{new_retry}-of-{original_task_id!s:.8}",
             parent_task_id=original_task_id,
+            root_task_id=root_task_id,
+            depth=depth,
+            max_retries=max_retries,
+            retry_count=new_retry,
             tool_override=tool_override,
         )
 
