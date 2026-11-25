@@ -32,6 +32,17 @@ one call (services/jarvis/today.py), each part failing on its own; ``POST
 /jarvis/bills/{item_id}/paid`` is its "Mark paid". ``GET /jarvis/app/latest``
 and ``.../app/download/{file}`` offer the newest APK from ``app_release_dir``.
 
+Helpers (opt-in): a chat request sent with the header
+``X-Jarvis-Events: helpers`` also gets what the dashboard shows of the work
+behind a reply. Each persona Jarvis asks (a delegated child) is
+``{type: helper, state, id, persona}``, with ``state`` one of ``start``,
+``text`` (adds ``text``, the helper's next words), ``done`` or ``error``
+(adds ``message``). Each tool Jarvis calls is ``{type: tool, name}`` (no
+arguments: they can be long or personal). A helper always starts before its
+text, done or error; Jarvis's own reply goes on after a helper fails. Without
+the header the stream is exactly as before: an app that does not ask gets
+none of these, so older apps see no change.
+
 v4 S2: ``GET /jarvis/plan`` (services/jarvis/plan.py); ``GET
 /jarvis/memory/overview``, ``.../memory/search`` and ``/jarvis/entities/{id}``
 (services/jarvis/memory.py); ``GET /jarvis/contacts`` and ``.../mail/waiting``
@@ -63,9 +74,19 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -99,6 +120,12 @@ CLIENT_ID_WINDOW = timedelta(hours=24)
 #: Between looks at a turn being waited for.
 _POLL_SECONDS = 1.0
 _SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
+#: The ``X-Jarvis-Events`` value an app sends to get helper and tool events.
+HELPER_EVENTS = "helpers"
+#: The longest helper error message sent to the phone.
+_HELPER_ERROR_CHARS = 300
+#: Shown through its helper events instead, so not sent as a tool event.
+_DELEGATE_TOOL = "delegate_to_persona"
 
 
 class ChatRequest(BaseModel):
@@ -129,8 +156,52 @@ async def _own_conversation(tenant_id: str, conversation_id: uuid.UUID | None) -
         raise HTTPException(status.HTTP_404_NOT_FOUND, "conversation not found")
 
 
+def wants_helpers(header: str | None) -> bool:
+    """True when the app's ``X-Jarvis-Events`` header lists ``helpers``."""
+    return HELPER_EVENTS in {part.strip().lower() for part in (header or "").split(",")}
+
+
+def _helper_event(event: dict) -> dict | None:
+    """A delegated child's or a tool call's dashboard event in the app's shape.
+
+    delegation_start / child_delta / child_done / child_error become
+    ``{type: helper, state: start|text|done|error, id, persona}`` (``text``
+    or ``message`` added); tool_call becomes ``{type: tool, name}``. The
+    dashboard stream already opens each child with delegation_start before
+    its first text or done (services/chat_stream.py expand_compound), so the
+    order holds here too. None for anything else.
+    """
+    kind = event.get("type")
+    states = {
+        "delegation_start": "start",
+        "child_delta": "text",
+        "child_done": "done",
+        "child_error": "error",
+    }
+    if kind in states:
+        out = {
+            "type": "helper",
+            "state": states[kind],
+            "id": str(event.get("child_id") or ""),
+            "persona": str(event.get("persona") or ""),
+        }
+        if kind == "child_delta":
+            out["text"] = str(event.get("text") or "")
+        if kind == "child_error":
+            message = str(event.get("message") or "").strip() or "The helper could not finish."
+            out["message"] = message[:_HELPER_ERROR_CHARS]
+        return out
+    if kind == "tool_call" and event.get("name") and event.get("name") != _DELEGATE_TOOL:
+        return {"type": "tool", "name": str(event["name"])}
+    return None
+
+
 def _app_event(event: dict, state: dict) -> dict | None:
-    """One dashboard chat event in the app's shape, or None to drop it."""
+    """One dashboard chat event in the app's shape, or None to drop it.
+
+    Helper and tool events are sent only when ``state["helpers"]`` is set
+    (the app asked for them with ``X-Jarvis-Events: helpers``).
+    """
     kind = event.get("type")
     if kind == "start":
         state["conversation_id"] = event.get("session_id")
@@ -160,7 +231,9 @@ def _app_event(event: dict, state: dict) -> dict | None:
     if kind == "tool_result" and event.get("name") == "reminder_set":
         # The reminder just set, so the app can show it with a Cancel.
         return _reminded_event(event.get("result"))
-    return None  # other tool calls, delegations: not shown on the phone
+    if state.get("helpers"):
+        return _helper_event(event)
+    return None  # other tool calls, delegations: only for an app that asks
 
 
 def _reminded_event(result: object) -> dict | None:
@@ -245,14 +318,19 @@ async def _capture(
 
 
 @router.post("/chat", summary="Talk to Jarvis; the reply streams back (SSE)")
-async def chat(body: ChatRequest):
+async def chat(
+    body: ChatRequest,
+    # The app's opt-in to extra event types (wants_helpers); absent for older apps.
+    x_jarvis_events: Annotated[str | None, Header()] = None,
+):
+    helpers = wants_helpers(x_jarvis_events)
     tenant_id = get_current_tenant_id()
     await _own_conversation(tenant_id, body.conversation_id)
     prior = await _turn_for(tenant_id, body.client_id) if body.client_id else None
     if prior is not None and prior.status not in _RETRY:
         # A resend of a message already received: replay it, never ask twice.
         return StreamingResponse(
-            _replay_chat(tenant_id, prior, body),
+            _replay_chat(tenant_id, prior, body, helpers=helpers),
             media_type="text/event-stream",
             headers=_SSE_HEADERS,
         )
@@ -270,7 +348,9 @@ async def chat(body: ChatRequest):
         conversation_id = prior.session_id
     frames = await _start_chat(body, conversation_id)
     return StreamingResponse(
-        _app_frames(frames, tenant_id), media_type="text/event-stream", headers=SSE_HEADERS
+        _app_frames(frames, tenant_id, helpers=helpers),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
     )
 
 
@@ -315,10 +395,13 @@ async def _turn_frames(request: ChatStreamRequest) -> AsyncIterator[str]:
     return stream_turn(tenant_id, request, get_process_manager())
 
 
-async def _app_frames(frames: AsyncIterator[str], tenant_id: str | None = None):
+async def _app_frames(
+    frames: AsyncIterator[str], tenant_id: str | None = None, *, helpers: bool = False
+):
     """The dashboard stream's frames, in the app's event shapes, each tool
-    result's answer cards after its own event (services/jarvis/cards.py)."""
-    state: dict = {}
+    result's answer cards after its own event (services/jarvis/cards.py).
+    *helpers*: also send helper and tool events (the app asked for them)."""
+    state: dict = {"helpers": helpers}
     async for chunk in frames:
         text = chunk.decode() if isinstance(chunk, bytes) else chunk
         for frame in text.split("\n\n"):
@@ -414,11 +497,13 @@ async def _settled(tenant_id: str, task_id: object):
     return task
 
 
-async def _replay_chat(tenant_id: str, prior, body: ChatRequest):
+async def _replay_chat(tenant_id: str, prior, body: ChatRequest, *, helpers: bool = False):
     """A resent message's turn as the app's events, from what it stored.
 
     Still running: waited for, with heartbeats so the stream stays open.
-    Failed meanwhile: run again, which is what the phone's resend wants.
+    Failed meanwhile: run again, which is what the phone's resend wants
+    (with helper events if the app asked). A finished turn's replay has no
+    helper events: they are not stored.
     """
     from life_graph.services.chat_turn import CHAT_STREAM_HEARTBEAT_SECONDS
 
@@ -435,7 +520,7 @@ async def _replay_chat(tenant_id: str, prior, body: ChatRequest):
         return
     if task is not None and task.status in _RETRY:
         inner = await _start_chat(body, body.conversation_id or task.session_id)
-        async for frame in _app_frames(inner, tenant_id):
+        async for frame in _app_frames(inner, tenant_id, helpers=helpers):
             yield frame
         return
     state = task.status if task is not None else "lost"
@@ -624,7 +709,11 @@ class RegenerateRequest(BaseModel):
     "/turns/{task_id}/regenerate",
     summary="Ask the latest message again, keeping both replies (SSE)",
 )
-async def regenerate(task_id: uuid.UUID, body: RegenerateRequest | None = None):
+async def regenerate(
+    task_id: uuid.UUID,
+    body: RegenerateRequest | None = None,
+    x_jarvis_events: Annotated[str | None, Header()] = None,
+):
     """Re-run a conversation's latest turn, with Jarvis or ``persona``, and on
     the local model or in the cloud when ``model`` says (AC-W6.3). The stream is ``/jarvis/chat``'s. The new turn's input names the
     one it replaces (``regenerates``); both stay, and the messages list marks
@@ -632,6 +721,7 @@ async def regenerate(task_id: uuid.UUID, body: RegenerateRequest | None = None):
     captured when first sent. A temporary chat stays temporary, and with Jarvis
     only. 404: not this tenant's Jarvis turn; 409: not the latest, or still
     being answered (services/chat_turn.py ``regeneration``)."""
+    helpers = wants_helpers(x_jarvis_events)  # as /jarvis/chat
     tenant_id = get_current_tenant_id()
     turn = await _own_turn(tenant_id, task_id)
     if turn.session_id is None:
@@ -646,7 +736,9 @@ async def regenerate(task_id: uuid.UUID, body: RegenerateRequest | None = None):
         )
     )
     return StreamingResponse(
-        _app_frames(frames, tenant_id), media_type="text/event-stream", headers=SSE_HEADERS
+        _app_frames(frames, tenant_id, helpers=helpers),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
     )
 
 
