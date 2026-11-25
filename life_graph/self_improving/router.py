@@ -4,6 +4,17 @@
 optimization, and dashboard analytics.
 
 Prefix: /self-improving
+
+Choosing which prompt a task runs on is the owner's alone
+(api/approval_identity.py ``owner_only``): activating a version, rolling back
+to one, and approving or rejecting an optimization run. A service key could
+otherwise create a prompt and make it live. Each of those writes one
+audit_log row (``prompt_change``) naming who did it, best effort as for the
+kill switch: a failed audit write is logged and the change stands.
+
+``/prompt-versions/deactivate`` stays open to any caller: it can only put a
+task back on its built-in prompt (the undo named in the optimizer's deploy
+notice), never make a stored prompt live.
 """
 
 from __future__ import annotations
@@ -13,13 +24,15 @@ import uuid
 from datetime import UTC
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import inspect as sa_inspect
 
+from life_graph.api.approval_identity import owner_only, resolver
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.runtime import (
+    get_audit_service,
     get_dashboard_service,
     get_eval_service,
     get_optimizer_service,
@@ -300,9 +313,14 @@ async def list_prompt_versions(
 )
 async def activate_prompt_version(
     version_id: uuid.UUID,
+    request: Request,
     prompt_service=Depends(get_prompt_version_service),
 ):
-    """Activate a specific prompt version (deactivates others for same task_type)."""
+    """Activate a specific prompt version (deactivates others for same task_type).
+
+    Owner only.
+    """
+    owner_only(request, "Activating a prompt version")
     tenant_id = get_current_tenant_id()
     try:
         version = await prompt_service.activate(tenant_id, version_id)
@@ -311,6 +329,7 @@ async def activate_prompt_version(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"PromptVersion {version_id} not found",
         ) from exc
+    await _audit_prompt_change(tenant_id, request, "activate", _version_details(version))
     return success_response(data=_serialize(version))
 
 
@@ -320,9 +339,14 @@ async def activate_prompt_version(
 )
 async def rollback_prompt_version(
     version_id: uuid.UUID,
+    request: Request,
     prompt_service=Depends(get_prompt_version_service),
 ):
-    """Rollback to a specific previous prompt version."""
+    """Rollback to a specific previous prompt version (owner only).
+
+    Rolling back makes any stored version live, so it is gated like activate.
+    """
+    owner_only(request, "Rolling back a prompt version")
     tenant_id = get_current_tenant_id()
     try:
         version = await prompt_service.rollback(tenant_id, version_id)
@@ -331,7 +355,37 @@ async def rollback_prompt_version(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"PromptVersion {version_id} not found",
         ) from exc
+    await _audit_prompt_change(tenant_id, request, "rollback", _version_details(version))
     return success_response(data=_serialize(version))
+
+
+def _version_details(version: Any) -> dict:
+    """The audit row's details for a prompt version made live."""
+    return {
+        "version_id": str(getattr(version, "id", "")) or None,
+        "task_type": getattr(version, "task_type", None),
+    }
+
+
+async def _audit_prompt_change(tenant_id: str, request: Request, what: str, details: dict) -> None:
+    """One audit_log row per prompt change, with who did it (the resolver).
+
+    Called after the change is saved. Best effort, like the kill switch: a
+    failed audit write is logged and the change stands.
+    """
+    try:
+        await get_audit_service()._append(
+            tenant_id=tenant_id,
+            action_type="prompt_change",
+            action_name=f"prompt_{what}",
+            actor_type="operator",
+            actor_id=resolver(request),
+            result="success",
+            details={"what": what, **details},
+        )
+    except Exception:
+        logger.error("Prompt %s for %s not written to the audit log", what, tenant_id,
+                     exc_info=True)  # fmt: skip
 
 
 # ── Optimization ─────────────────────────────────────────────
@@ -463,9 +517,15 @@ async def get_optimization_run(
 async def review_optimization(
     run_id: uuid.UUID,
     body: ReviewDecisionRequest,
+    request: Request,
     prompt_service=Depends(get_prompt_version_service),
 ):
-    """Approve or reject a needs_review optimization run."""
+    """Approve or reject a needs_review optimization run (owner only).
+
+    Approving makes the run's candidate prompt live. ``reviewed_by`` is who
+    the server saw calling.
+    """
+    owner_only(request, "Reviewing an optimization run")
     from datetime import datetime
 
     from life_graph.self_improving.models import OptimizationRun
@@ -502,10 +562,20 @@ async def review_optimization(
 
         opt_run.review_decision = body.decision
         opt_run.review_reason = body.reviewer_notes
-        opt_run.reviewed_by = "user"
+        opt_run.reviewed_by = resolver(request)
         opt_run.reviewed_at = datetime.now(UTC)
         await session.commit()
 
+        await _audit_prompt_change(
+            tenant_id,
+            request,
+            f"review_{body.decision}",
+            {
+                "optimization_run_id": str(run_id),
+                "decision": body.decision,
+                "version_id": opt_run.candidate_version_id,
+            },
+        )
         return success_response(data=_serialize(opt_run))
 
 
