@@ -1154,6 +1154,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
 
         if bounce_result is not None:
             run.result = bounce_result
+            if bounce_result.metadata.get("worktree_tampered"):
+                # Already vetoed and queued for a human by the tamper check.
+                return
             # The bounce re-ran the driver in this same worktree, so Step 4c's
             # file list describes the attempt before it (_bounce_task already
             # replaced run.verifier_results with its own re-verification).
@@ -1476,7 +1479,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         """Re-dispatch once with failure context appended to instruction.
 
         Returns:
-            DriverResult if bounce succeeded verification, None if it also failed.
+            DriverResult if bounce succeeded verification, None if it also failed;
+            the tamper veto's failed DriverResult (``worktree_tampered``) if the
+            second attempt tampered with the worktree.
         """
         failures = [failure_text(r) for r in failure_report if not r.passed]
         # The failures first, and the work so far stated as done: with the task
@@ -1531,6 +1536,16 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
 
         if not bounce_result.success:
             return None
+
+        if run is not None:
+            # The second attempt gets the first one's tamper check (Step 4b)
+            # before any host-side git, verifier or autofix reads the worktree:
+            # a retry that planted a .git dir or an escaping link would
+            # otherwise reach them unchecked (Stage 0 finding 1, 2026-11-25).
+            run.result = bounce_result
+            await self._check_worktree_link(run)
+            if run.result.metadata.get("worktree_tampered"):
+                return run.result
 
         # Re-verify -- against the same acceptance tests as the first attempt,
         # or a bounce would quietly drop the check it was bounced for.

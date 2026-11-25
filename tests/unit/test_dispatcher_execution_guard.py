@@ -685,3 +685,86 @@ async def test_a_symlink_out_of_the_worktree_is_tampering(wired, monkeypatch):
     tamper = next(c for c in run.tracker.checkpoints if c.stage == "worktree_verified")
     assert tamper.ok is False and "notes.txt" in tamper.metadata["why"]
     assert "landed" not in _stages(run)
+
+
+# ── the bounce gets the same tamper check (Stage 0 finding 1) ──────────────
+
+
+def _bounce_spies(monkeypatch, driver_calls: list):
+    """A chain that fails attempt 1 and would pass attempt 2, and an autofix
+    spy recording which attempt each call came after."""
+    chain = _SequencedChain(
+        [
+            [VerifierResult("lint_clean_diff", False, {"error": "E401"})],
+            [VerifierResult("lint_clean_diff", True, {})],
+        ]
+    )
+    autofix_after: list[int] = []
+
+    async def _autofix(*_a, **_k):
+        autofix_after.append(len(driver_calls))
+        return {}
+
+    async def _diff(_workdir):
+        return "diff --git a/a.py b/a.py\n"
+
+    monkeypatch.setattr(disp_mod, "verifier_chain", chain)
+    monkeypatch.setattr(disp_mod, "mechanical_autofix", _autofix)
+    monkeypatch.setattr(disp_mod, "diff_against_head", _diff)
+    monkeypatch.setattr(disp_mod, "preserve_verified_work", _never_lands())
+    return chain, autofix_after
+
+
+class _CountingDriver(_Driver):
+    def __init__(self, calls: list):
+        super().__init__()
+        self.calls = calls
+
+    async def dispatch(self, packet, workdir, timeout=300) -> DriverResult:
+        self.calls.append(packet.instruction)
+        return self._result
+
+
+@pytest.mark.asyncio
+async def test_a_bounce_that_plants_an_escaping_link_is_vetoed_before_any_host_check(
+    wired, monkeypatch
+):
+    build, captured = wired
+    calls: list = []
+    chain, autofix_after = _bounce_spies(monkeypatch, calls)
+    disp = build(_CountingDriver(calls), worktree=_Worktree(), real_bounce=True)
+    # Clean after attempt 1; attempt 2 leaves a link to a host file.
+    monkeypatch.setattr(
+        disp_mod, "escaping_symlinks", lambda _wt, **_k: [] if len(calls) < 2 else ["evil.txt"]
+    )
+
+    result = await _dispatch(disp, task_type="code", verify_chain=["lint_clean_diff"])
+
+    assert len(calls) == 2  # the bounce happened
+    assert result.success is False
+    assert "symlinks leaving the worktree: evil.txt" in result.error
+    assert result.metadata["worktree_tampered"] is True
+    assert chain.calls == 1  # attempt 2 was never verified on the host
+    assert all(n == 1 for n in autofix_after)  # no autofix after the bounce
+    run = captured["run"]
+    assert any(c.stage == "worktree_verified" and c.ok is False for c in run.tracker.checkpoints)
+    assert "landed" not in _stages(run)
+
+
+@pytest.mark.asyncio
+async def test_a_bounce_that_swaps_the_git_link_is_vetoed_before_any_host_check(wired, monkeypatch):
+    build, captured = wired
+    calls: list = []
+    chain, autofix_after = _bounce_spies(monkeypatch, calls)
+    disp = build(_CountingDriver(calls), worktree=_Worktree(), real_bounce=True)
+    monkeypatch.setattr(disp_mod, "escaping_symlinks", lambda _wt, **_k: [])
+    monkeypatch.setattr(disp_mod, "worktree_intact", lambda *_a, **_k: len(calls) < 2)
+
+    result = await _dispatch(disp, task_type="code", verify_chain=["lint_clean_diff"])
+
+    assert len(calls) == 2
+    assert result.success is False
+    assert "worktree .git no longer links to the origin repository" in result.error
+    assert chain.calls == 1
+    assert all(n == 1 for n in autofix_after)
+    assert "landed" not in _stages(captured["run"])
