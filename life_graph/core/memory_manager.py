@@ -23,6 +23,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import func, literal
+from sqlalchemy.dialects.postgresql import JSONB
+
 from life_graph.core.evidence import UNKNOWN_SOURCE
 from life_graph.core.said_at import said_at
 from life_graph.core.tenant import get_current_tenant_id
@@ -227,7 +230,10 @@ class MemoryManager:
         """Mark an old memory as superseded by a new one.
 
         Creates a bidirectional supersession chain:
-            - Old memory: status='superseded', superseded_by=new_id
+            - Old memory: status='superseded', superseded_by=new_id, and
+              ``properties.superseded_at`` = now (UTC ISO): when we stopped
+              believing it, which retrieval's transaction-time check reads
+              (services/memory/retrieval.py is_known_at)
             - New memory: supersedes=old_id
 
         Both memories are preserved in history for audit trail.
@@ -255,12 +261,22 @@ class MemoryManager:
         from life_graph.storage.database import async_session
 
         async with async_session() as session:
-            # Set superseded_by on old memory
+            # Set superseded_by on old memory, and when it was replaced: without
+            # superseded_at a query "as of now" still read it as current belief.
+            # literal(dict, JSONB), never cast(str, JSONB): the JSONB type
+            # encodes its bind value, so a JSON string became a JSON *string*
+            # and `object || string` an array.
+            stamp = {"superseded_at": datetime.now(UTC).isoformat()}
             await session.execute(
                 update(Memory)
                 .where(Memory.id == old_uuid)
                 .where(Memory.tenant_id == get_current_tenant_id())
-                .values(superseded_by=new_uuid)
+                .values(
+                    superseded_by=new_uuid,
+                    properties=func.coalesce(Memory.properties, literal({}, JSONB)).op("||")(
+                        literal(stamp, JSONB)
+                    ),
+                )
             )
             # Set supersedes on new memory
             await session.execute(
@@ -305,7 +321,15 @@ class MemoryManager:
 
         values: dict[str, Any] = {"created_at": said, "updated_at": said, "last_accessed": said}
         if history_of:
-            values |= {"status": "superseded", "superseded_by": uuid.UUID(history_of)}
+            values |= {
+                "status": "superseded",
+                "superseded_by": uuid.UUID(history_of),
+                # Replaced as of now, like every supersede (retrieval.is_known_at).
+                "properties": {
+                    **(stored.properties or {}),
+                    "superseded_at": datetime.now(UTC).isoformat(),
+                },
+            }
         async with async_session() as session:
             await session.execute(
                 update(Memory)
