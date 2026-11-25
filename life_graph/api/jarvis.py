@@ -796,15 +796,27 @@ async def _answer(
 ) -> dict:
     """One Jarvis turn, waited for: {reply, conversation_id, route, saved, reminded}."""
     from life_graph.api.dependencies import get_process_manager
-    from life_graph.services.chat_turn import load_chat_history, start_chat_session
+    from life_graph.services.chat_turn import (
+        load_chat_history,
+        session_is_temporary,
+        start_chat_session,
+    )
 
     pm = get_process_manager()
+    temporary = False
     if conversation_id is None:
         conversation_id = await start_chat_session(tenant_id, LEAD, question)
         history: list[dict[str, str]] = []
     else:
         history = await load_chat_history(tenant_id, conversation_id)
+        # Once temporary, always, as for a typed turn (services/chat_turn.py
+        # _turn_input): local model only and no memory tools. Without it a
+        # spoken turn in a temporary chat could reach the cloud and save
+        # memories (Stage 0 finding 6, 2026-11-25).
+        temporary = await session_is_temporary(tenant_id, conversation_id)
     input_data: dict = {"message": question, "history": history}
+    if temporary:
+        input_data["temporary"] = True
     if client_id:
         input_data["client_id"] = client_id
     spawn = await pm.spawn(
