@@ -115,6 +115,8 @@ async def test_fail_task_forwards_tool_override_into_retry(monkeypatch):
 
     class _FakeTask:
         status = "running"  # not cancelled: _fail_task skips a cancelled row
+        root_task_id = None  # carried to the retry with depth
+        depth = 0
         retry_count = 0
         max_retries = 3
         input = {"message": "go"}
