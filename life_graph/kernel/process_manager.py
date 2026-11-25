@@ -420,18 +420,23 @@ class ProcessManager:
                 depth=depth,
             )
 
-            await self._update_task_status(
-                task_id,
-                "running",
-                started_at=datetime.now(UTC),
-            )
-
             stream_key = str(root_task_id or task_id)
             bus = get_chat_stream_bus()
             # The run's closing events ("done", and the "partial_error" the
             # orchestrator sends just before a failed run's "done"), kept
             # back by _run_agent until the result is saved.
             terminal: list[dict[str, Any]] = []
+
+            if not await self._mark_running(task_id):
+                # Cancelled while it waited for a slot (a cancelled tree's
+                # queued child, or a cancel from another process): don't
+                # run it, and end a stream that may be waiting on it.
+                logger.info("Task %s was cancelled before it started", task_id)
+                self._publish_terminal_bus_event(
+                    stream_key, task_id, agent_name, depth, "Task cancelled"
+                )
+                bus.discard(stream_key)
+                return
 
             try:
                 async with asyncio.timeout(timeout):
@@ -868,7 +873,13 @@ class ProcessManager:
         agent_name: str,
         result: dict[str, Any],
     ) -> None:
-        """Mark a task as completed and emit event."""
+        """Mark a task as completed and emit event.
+
+        A row already ``cancelled`` stays cancelled: a run that finishes
+        after its cancel (it was in another process, such as the ARQ worker,
+        or the cancel landed while this one was saving) does not turn it back
+        into ``completed``, and no TASK_COMPLETED is emitted for it.
+        """
         now = datetime.now(UTC)
         token_usage = {
             "total_tokens": result.get("token_count", 0),
@@ -877,7 +888,7 @@ class ProcessManager:
         async with self._session_factory() as session:
             stmt = (
                 update(AgentTask)
-                .where(AgentTask.id == task_id)
+                .where(AgentTask.id == task_id, AgentTask.status != "cancelled")
                 .values(
                     status="completed",
                     result=result,
@@ -886,8 +897,11 @@ class ProcessManager:
                     updated_at=now,
                 )
             )
-            await session.execute(stmt)
+            saved = (await session.execute(stmt)).rowcount
             await session.commit()
+        if not saved:
+            logger.info("Task %s finished after it was cancelled; left cancelled", task_id)
+            return
 
         await event_bus.emit(
             EventType.TASK_COMPLETED,
@@ -913,6 +927,9 @@ class ProcessManager:
     ) -> None:
         """Mark a task as failed, attempt retry if eligible.
 
+        A row already ``cancelled`` stays cancelled, with no event and no
+        retry: a run that dies after its cancel is not a failure to retry.
+
         Args:
             tool_override: Carried through from the original run so a
                 retry (see `_retry_task`) re-spawns under the SAME tool
@@ -934,15 +951,19 @@ class ProcessManager:
             result = await session.execute(stmt)
             task = result.scalar_one_or_none()
             if task is not None:
+                if task.status == "cancelled":
+                    logger.info("Task %s failed after it was cancelled; left cancelled", task_id)
+                    return
                 retry_count = task.retry_count
                 max_retries = task.max_retries
                 input_data = task.input or {}
 
-        # Update status
+        # Update status. The WHERE also covers a cancel that lands between
+        # the read above and this write.
         async with self._session_factory() as session:
             stmt = (
                 update(AgentTask)
-                .where(AgentTask.id == task_id)
+                .where(AgentTask.id == task_id, AgentTask.status != "cancelled")
                 .values(
                     status=status,
                     error=error,
@@ -1007,6 +1028,12 @@ class ProcessManager:
 
         await asyncio.sleep(delay)
 
+        if await self._cancelled_in_tree(original_task_id, tenant_id):
+            # Cancelled during the backoff, the task itself or a task above
+            # it (a cancel cascades down from the tree it belongs to).
+            logger.info("Not retrying task %s: it or its tree was cancelled", original_task_id)
+            return
+
         # Update retry count on original
         async with self._session_factory() as session:
             stmt = (
@@ -1031,6 +1058,61 @@ class ProcessManager:
         )
 
     # ── Helpers ───────────────────────────────────────────
+
+    async def _mark_running(self, task_id: uuid.UUID) -> bool:
+        """Set the task running, unless it was cancelled first.
+
+        Returns False only when the row is ``cancelled``: then it must not
+        run. Any other reason the update matched nothing (no row, another
+        tenant's context) keeps the old behaviour and runs it.
+        """
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            stmt = (
+                update(AgentTask)
+                .where(
+                    AgentTask.id == task_id,
+                    AgentTask.tenant_id == get_current_tenant_id(),
+                    AgentTask.status != "cancelled",
+                )
+                .values(status="running", started_at=now, updated_at=now)
+            )
+            updated = (await session.execute(stmt)).rowcount
+            await session.commit()
+            if updated:
+                return True
+            current = (
+                await session.execute(
+                    select(AgentTask.status).where(
+                        AgentTask.id == task_id,
+                        AgentTask.tenant_id == get_current_tenant_id(),
+                    )
+                )
+            ).scalar_one_or_none()
+        return current != "cancelled"
+
+    async def _cancelled_in_tree(self, task_id: uuid.UUID, tenant_id: str) -> bool:
+        """True if this task or any task above it (parent chain) is cancelled."""
+        seen: set[uuid.UUID] = set()
+        current: uuid.UUID | None = task_id
+        async with self._session_factory() as session:
+            # Bounded: delegation depth plus a chain of retries is short, and
+            # `seen` stops a malformed cycle.
+            while current is not None and current not in seen and len(seen) < 50:
+                seen.add(current)
+                row = (
+                    await session.execute(
+                        select(AgentTask.status, AgentTask.parent_task_id).where(
+                            AgentTask.id == current, AgentTask.tenant_id == tenant_id
+                        )
+                    )
+                ).first()
+                if row is None:
+                    return False
+                if row.status == "cancelled":
+                    return True
+                current = row.parent_task_id
+        return False
 
     async def _update_task_status(
         self,

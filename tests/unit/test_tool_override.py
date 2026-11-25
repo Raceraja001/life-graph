@@ -69,9 +69,16 @@ async def test_retry_preserves_tool_override(monkeypatch):
             return False
 
         async def execute(self, *args, **kwargs):
-            return None
+            # The cancel re-check after the backoff reads the task: no row.
+            return _NoRow()
 
         async def commit(self):
+            return None
+
+    class _NoRow:
+        rowcount = 0
+
+        def first(self):
             return None
 
     pm._session_factory = lambda: _FakeSession()
@@ -107,6 +114,7 @@ async def test_fail_task_forwards_tool_override_into_retry(monkeypatch):
     pm = pm_mod.ProcessManager.__new__(pm_mod.ProcessManager)
 
     class _FakeTask:
+        status = "running"  # not cancelled: _fail_task skips a cancelled row
         retry_count = 0
         max_retries = 3
         input = {"message": "go"}
