@@ -288,7 +288,7 @@ async def test_pin_refuses_other_tenants_other_personas_and_temporary_chats(clie
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_regenerate_asks_the_latest_message_again_and_keeps_both(pm, client):
-    from life_graph.api.kernel import _load_chat_history
+    from life_graph.services.chat_turn import load_chat_history
     from life_graph.storage.database import async_session
 
     conv, (t1, t2) = await _conversation(
@@ -330,7 +330,7 @@ async def test_regenerate_asks_the_latest_message_again_and_keeps_both(pm, clien
         await s.commit()
 
     # The next turn sees only the chosen version.
-    assert await _load_chat_history(TENANT, conv) == [
+    assert await load_chat_history(TENANT, conv) == [
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "hi there"},
         {"role": "user", "content": "pick a film for tonight"},

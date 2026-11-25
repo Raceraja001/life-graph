@@ -53,7 +53,7 @@ def wired(monkeypatch):
             yield 'data: {"type": "assistant_delta", "text": "fresh"}\n\n'
             yield 'data: {"type": "done"}\n\n'
 
-        return SimpleNamespace(body_iterator=gen(), headers={})
+        return gen()
 
     async def get_task(tenant_id, task_id):
         return calls.polled.pop(0) if len(calls.polled) > 1 else calls.polled[0]
@@ -169,9 +169,9 @@ async def test_a_resent_finished_message_is_replayed_not_asked_again(wired):
 
 @pytest.mark.asyncio
 async def test_a_resent_running_message_is_waited_for_then_replayed(wired, monkeypatch):
-    from life_graph.api import kernel
+    from life_graph.services import chat_turn
 
-    monkeypatch.setattr(kernel, "CHAT_STREAM_HEARTBEAT_SECONDS", 0)
+    monkeypatch.setattr(chat_turn, "CHAT_STREAM_HEARTBEAT_SECONDS", 0)
     wired.prior = _task("running", response=None)
     wired.polled = [_task("running", response=None), _task("completed")]
     out = await _chat(client_id=CID)
@@ -226,7 +226,9 @@ async def test_the_kernel_stores_the_client_id_in_the_task_input(monkeypatch):
 
     pm = SimpleNamespace(spawn=AsyncMock(return_value={"task_id": "t-1"}))
     personas = SimpleNamespace(get_by_name=AsyncMock(return_value={"name": "jarvis"}))
-    monkeypatch.setattr(kernel, "_load_chat_history", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        "life_graph.services.chat_turn.load_chat_history", AsyncMock(return_value=[])
+    )
     with tenant_scope("t_idem"):
         resp = await kernel.chat_stream(
             kernel.ChatStreamRequest(message="hi", session_id=CONV, client_id=CID),
@@ -336,7 +338,7 @@ async def test_a_new_voice_message_is_transcribed_captured_and_run_with_its_id(v
 
 @pytest.mark.asyncio
 async def test_answer_stores_the_client_id_in_the_task_input(monkeypatch):
-    from life_graph.api import dependencies, jarvis, kernel
+    from life_graph.api import dependencies, jarvis
 
     done = _task("completed")
     pm = SimpleNamespace(
@@ -344,7 +346,9 @@ async def test_answer_stores_the_client_id_in_the_task_input(monkeypatch):
         get_task=AsyncMock(return_value=done),
     )
     monkeypatch.setattr(dependencies, "get_process_manager", lambda: pm)
-    monkeypatch.setattr(kernel, "_load_chat_history", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        "life_graph.services.chat_turn.load_chat_history", AsyncMock(return_value=[])
+    )
     monkeypatch.setattr(jarvis, "_saved_in", AsyncMock(return_value=[]))
     monkeypatch.setattr(jarvis, "_reminded_in", AsyncMock(return_value=[]))
     turn = await jarvis._answer("t_idem", "how hot is it?", CONV, client_id=CID)

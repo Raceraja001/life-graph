@@ -439,9 +439,9 @@ async def test_chat_stream_survives_idle_gap_and_emits_heartbeat(client, monkeyp
     end the stream after only the pre-gap "before" delta -- so this test fails
     before / passes after the fix.
     """
-    import life_graph.api.kernel as kernel_mod
+    import life_graph.services.chat_turn as chat_turn
 
-    monkeypatch.setattr(kernel_mod, "CHAT_STREAM_HEARTBEAT_SECONDS", 0.05)
+    monkeypatch.setattr(chat_turn, "CHAT_STREAM_HEARTBEAT_SECONDS", 0.05)
 
     task_id = f"stub-{uuid.uuid4()}"
     app.dependency_overrides[get_persona_service] = lambda: _StubPersonaService()

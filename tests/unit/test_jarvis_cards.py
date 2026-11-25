@@ -329,7 +329,7 @@ async def test_chat_stream_gains_card_events_after_the_existing_ones(monkeypatch
             {"type": "done"},
         ]
     )
-    frames = [f async for f in jarvis._app_frames(inner, "t-own")]
+    frames = [f async for f in jarvis._app_frames(inner.body_iterator, "t-own")]
     events = [json.loads(f[6:]) for f in frames]
     assert [e["type"] for e in events] == ["reminded", "card", "card", "card", "token", "done"]
     assert events[0] == {
@@ -356,7 +356,7 @@ async def test_chat_stream_without_a_tenant_masks_bills(monkeypatch):
             }
         ]
     )
-    events = [json.loads(f[6:]) async for f in jarvis._app_frames(inner)]
+    events = [json.loads(f[6:]) async for f in jarvis._app_frames(inner.body_iterator)]
     assert events[0]["card"]["title"] == "A bill"
 
 
@@ -440,7 +440,7 @@ async def test_voice_reply_cards_from_the_runs_own_tool_results(monkeypatch):
         return set()
 
     monkeypatch.setattr(dependencies, "get_process_manager", lambda: PM())
-    monkeypatch.setattr("life_graph.api.kernel._start_chat_session", start)
+    monkeypatch.setattr("life_graph.services.chat_turn.start_chat_session", start)
     monkeypatch.setattr(jarvis, "_settled", settled)
     monkeypatch.setattr(jarvis, "_saved_in", nothing)
     monkeypatch.setattr(jarvis, "_reminded_in", nothing)
@@ -457,8 +457,19 @@ def test_approval_cards_say_what_deciding_does():
         {
             "total": 3,
             "items": [
-                {"id": "a1", "kind": "driver_pr", "title": "Open PR: Tests for day_row", "verified": True, "files": 1},
-                {"id": "a2", "kind": "model_adoption", "title": "Adopt MiniMax M3.1 Flash", "summary": "6/6 evals"},
+                {
+                    "id": "a1",
+                    "kind": "driver_pr",
+                    "title": "Open PR: Tests for day_row",
+                    "verified": True,
+                    "files": 1,
+                },
+                {
+                    "id": "a2",
+                    "kind": "model_adoption",
+                    "title": "Adopt MiniMax M3.1 Flash",
+                    "summary": "6/6 evals",
+                },
                 {"id": "a3", "kind": "something_new", "title": "Review this"},
             ],
         }
