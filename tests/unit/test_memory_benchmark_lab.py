@@ -33,10 +33,12 @@ from life_graph.evals.memory_benchmark import (
     abstention_probe,
     abstention_signal,
     build_corpus,
+    classify_question,
     compare_adaptive_early_exit,
     evaluate_lifecycle_invariants,
     retrieve_for_method,
     run_memory_benchmark,
+    score_question,
     sweep_confidence_floors,
 )
 from life_graph.services.memory.retrieval import EARLY_EXIT_CONFIDENCE, EARLY_EXIT_ENTAILMENT
@@ -69,21 +71,24 @@ def test_tuning_and_heldout_datasets_are_distinct_and_hashed(benchmark_report):
 #: Per-split margins, measured 2026-11-25 once the lab's lists stopped naming
 #: held-out strings. The lists come from the tuning split, so its margins are
 #: the larger ones; the held-out margins sit below what was measured there.
+#: Re-measured once stages 5-6 stopped reading the gold `kind` label and the
+#: scorer stopped using the lab's slot rules (supersession now counts only the
+#: `current` questions with gold traps: 5 tuning, 20 held-out).
 LADDER_MARGINS = {
     "tuning_dev": {
         "s4_recall_at_5": 0.08,  # measured +0.136
-        "s5_temporal": 0.10,  # measured +0.120
-        "s5_supersession": 0.20,  # measured +0.333
-        "s5_recall_at_1_slack": 0.0,  # measured +0.024
+        "s5_temporal": 0.03,  # measured +0.040 (1 of 25 questions)
+        "s5_supersession": 0.19,  # measured +0.200 (1 of 5 questions)
+        "s5_recall_at_1_slack": 0.0,  # measured +0.000
     },
     "held_out": {
         "s4_recall_at_5": STAGE4_MIN_RECALL_GAIN,  # measured +0.041
-        "s5_temporal": STAGE5_MIN_TEMPORAL_GAIN,  # measured +0.058
-        # Measured +0.000: on held-out data the reranker no longer improves
+        "s5_temporal": STAGE5_MIN_TEMPORAL_GAIN,  # measured +0.019 (1 of 52)
+        # Measured +0.000: on held-out data the reranker does not improve
         # correction supersession over stage 4; it only must not hurt it.
         "s5_supersession": 0.0,
-        # Measured -0.006 (one question): the reranker costs held-out R@1.
-        "s5_recall_at_1_slack": 0.01,
+        # Measured -0.012 (two questions): the reranker costs held-out R@1.
+        "s5_recall_at_1_slack": 0.02,
     },
 }
 
@@ -119,10 +124,9 @@ def test_single_variable_ablation_ladder_improves_target_metrics(benchmark_repor
     )
     assert s5["full_support_at_5"] > s4["full_support_at_5"]
 
-    # The multi-step bridge no longer helps on either split once the lists are
-    # honest (2026-11-25: -0.007 support tuning; -0.012 R@5, -0.005 support
-    # held-out). The test only caps what it may cost. It never abstains:
-    # abstention is measured by the probe below.
+    # The multi-step bridge does not reliably help (2026-11-25: -0.007 support
+    # tuning; +0.005 support, R@5 unchanged held-out). The test only caps what
+    # it may cost. It never abstains: abstention is measured by the probe below.
     assert s6["full_support_at_5"] >= s5["full_support_at_5"] - BRIDGE_MAX_COST
     assert s6["recall_at_5"] >= s5["recall_at_5"] - BRIDGE_MAX_COST
     assert s6["abstention_precision"] == 0.0
@@ -204,14 +208,13 @@ def test_lab_rule_lists_name_nothing_only_the_held_out_split_has(split_texts):
 
 
 def test_corpus_and_rule_code_add_no_held_out_only_strings(split_texts):
-    """No inline string in the corpus-building and rule functions is held-out-only.
-
-    `retrieve_for_method` is not scanned: it reads the datasets' gold `kind`
-    labels ("old_fact", "connected" exist only in the held-out split), which is
-    a separate known issue.
-    """
+    """No inline string in the corpus-building, rule and retrieval functions is
+    held-out-only. `retrieve_for_method` used to name the gold kinds "old_fact"
+    and "connected", which exist only in the held-out split."""
     tuning, held_out = split_texts
     functions = (
+        memory_benchmark.retrieve_for_method,
+        memory_benchmark.classify_question,
         memory_benchmark.build_corpus,
         memory_benchmark._build_facets,
         memory_benchmark._detect_slots,
@@ -239,6 +242,60 @@ def test_rendered_memory_is_its_date_and_its_own_words(dataset):
     for mem in corpus:
         assert mem.rendered_text.startswith(f"[{mem.msg_date.isoformat()} ("), mem.id
         assert mem.rendered_text.split("] ", 1)[1] == mem.raw_text, mem.id
+
+
+# --- Retrieval reads the question text only (2026-11) ---------------------
+
+
+@pytest.mark.parametrize("dataset", [TUNING_DATASET, memory_benchmark.HELDOUT_DATASET])
+def test_retrieval_reads_only_the_question_text(dataset):
+    """Every method returns the same memories when the gold fields are gone.
+
+    Until 2026-11 stages 5-6 read the gold `kind` label (an oracle for the
+    question type), so removing it changed what they retrieved.
+    """
+    data = json.loads(dataset.read_bytes().decode("utf-8"))
+    corpus = build_corpus(data)
+    for q in data["questions"]:
+        bare = {"id": q["id"], "q": q["q"]}
+        for method in BENCHMARK_METHODS:
+            with_gold, _ = retrieve_for_method(q, corpus, method)
+            without, _ = retrieve_for_method(bare, corpus, method)
+            assert [m.id for m in with_gold] == [m.id for m in without], (q["id"], method)
+
+
+def test_classify_question_reads_tense_and_shape_from_words():
+    assert classify_question("Where did I live before Chennai?") == ("past", None)
+    assert classify_question("Which phone do I use?") == ("current", None)
+    assert classify_question("Tell me about Ledgerly.") == (None, "about")
+    assert classify_question("When is my wife's birthday?") == ("current", "multi_hop")
+    assert classify_question("Who is Naveen?") == (None, None)
+
+
+def test_current_rerank_choice_is_the_best_on_the_tuning_split(monkeypatch):
+    """`CURRENT_RERANK` is reproducible from the tuning split alone."""
+    method = "5_rerank_temporal_provenance"
+    support = {}
+    for option in memory_benchmark.CURRENT_RERANK_OPTIONS:
+        monkeypatch.setattr(memory_benchmark, "CURRENT_RERANK", option)
+        rep = memory_benchmark.evaluate_split("tuning_dev", TUNING_DATASET, methods=(method,))
+        support[option] = rep["methods"][method]["overall"]["full_support_at_5"]
+    assert support[memory_benchmark.CURRENT_RERANK] == max(support.values()), support
+
+
+def test_scorer_judges_supersession_by_gold_traps_only():
+    """A top hit the lab's slot rules call superseded is not a scoring failure
+    unless it holds one of the question's gold `must_not` traps."""
+    data = json.loads(TUNING_DATASET.read_bytes().decode("utf-8"))
+    corpus = build_corpus(data)
+    stale = next(m for m in corpus if m.superseded_slots)
+    q = {"id": "t", "kind": "current", "q": "x", "must": [[stale.raw_text[:12]]]}
+    row = score_question(q, [stale], False)
+    assert row["supersession_clean"] is True
+    assert row["full_support_at_5"] == 1.0
+    assert row["has_traps"] is False
+    trapped = dict(q, must_not=[stale.raw_text[:12].lower()])
+    assert score_question(trapped, [stale], False)["supersession_clean"] is False
 
 
 def test_lifecycle_invariants_bitemporal_forgetting_and_provenance():
@@ -349,8 +406,10 @@ def test_early_exit_reports_both_arms_with_quality_and_latency(early_exit_report
 @pytest.mark.parametrize("split_name", ["tuning_dev", "held_out"])
 def test_early_exit_does_not_regress_recall_or_abstention(early_exit_report, split_name):
     split = early_exit_report["splits"][split_name]
-    for metric in ("recall_at_1", "recall_at_5", "mrr", "full_support_at_5"):
+    for metric in ("recall_at_1", "recall_at_5", "full_support_at_5"):
         assert split["delta"]["quality"][metric]["delta"] >= 0.0, metric
+    # MRR may move by one rank step on one question (see METRIC_TOLERANCES).
+    assert split["delta"]["quality"]["mrr"]["delta"] >= -memory_benchmark.METRIC_TOLERANCES["mrr"]
     for metric in ("abstention_precision", "abstention_recall"):
         assert split["delta"]["quality"][metric]["delta"] >= 0.0, metric
     assert split["gates"]["passed"]
@@ -379,7 +438,7 @@ def test_compare_early_exit_cli_writes_report_and_leaves_verify_green(tmp_path):
         text=True,
         check=True,
     )
-    assert "OK: adaptive early exit costs no retrieval quality." in res.stdout
+    assert "OK: adaptive early exit stays within its retrieval-quality tolerances." in res.stdout
     assert "Baseline" in res.stdout and "Adaptive" in res.stdout
     payload = json.loads(out_file.read_text(encoding="utf-8"))
     assert payload["benchmark"] == "life_graph_adaptive_early_exit_comparison_v1"
