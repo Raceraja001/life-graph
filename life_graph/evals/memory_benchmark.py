@@ -11,7 +11,23 @@ Compares six retrieval configurations one variable at a time:
   3. `3_hybrid_rrf`: Reciprocal Rank Fusion (BM25 + vector) with date-anchored rendering.
   4. `4_graph_entity_expansion`: Alias, kinship & bilingual graph expansion + semantic facet tags.
   5. `5_rerank_temporal_provenance`: Temporal supersession reranking (`current` vs `past`/`old_fact`).
-  6. `6_multistep_adaptive_abstain`: Multi-step bridge retrieval + calibrated abstention gate.
+  6. `6_multistep_bridge`: Multi-step bridge retrieval (a second hop over the top hits' entities).
+
+Abstention ("I don't know") is not one of the methods. Until 2026-11 method 6
+abstained through hand-written term lists that named the datasets' own
+unanswerable questions ("swathi's birthday", "munnar homestay", ...), on the
+held-out split too, so its abstention precision/recall of 1.0 measured the
+lists, not the method. It now retrieves only. Abstention is measured separately
+by `abstention_probe()`: one general rule (the best top-5 hit's lexical
+entailment of the question is below a floor), its floor chosen on the tuning
+split alone and then applied unchanged to the held-out split. Production
+abstains through the local relevance judge (services/memory/retrieval.py),
+which this offline lab does not run, so the probe is a report, not a gate.
+
+Stages 4 and 5 still carry hand-written facet, alias and topic-slot lists whose
+words come from both datasets (people's names, schools, companies). For those
+stages the held-out split is not fully held out, and their scores are an upper
+bound on what the same rules would do on unseen data.
 
 `compare_adaptive_early_exit()` additionally runs the top-of-ladder method twice per
 split — once with the adaptive early-exit gate off and once with it on — so the
@@ -39,6 +55,7 @@ from life_graph.core.evidence import (
     CONTRADICTED,
     SUPPORTED,
     extract_claim_evidence,
+    lexical_entailment_score,
 )
 from life_graph.services.episodes import time_window
 from life_graph.services.memory.retrieval import (
@@ -58,12 +75,12 @@ BENCHMARK_METHODS = (
     "3_hybrid_rrf",
     "4_graph_entity_expansion",
     "5_rerank_temporal_provenance",
-    "6_multistep_adaptive_abstain",
+    "6_multistep_bridge",
 )
 
 #: The only method that runs the whole expansion stack, so the only one the
 #: adaptive early-exit gate can shorten. `compare_adaptive_early_exit()` uses it.
-PRIMARY_METHOD = "6_multistep_adaptive_abstain"
+PRIMARY_METHOD = "6_multistep_bridge"
 
 #: Early-exit modes for `retrieve_for_method`.
 #: `off` is the historical path — the gate is never consulted and nothing is spent
@@ -717,116 +734,6 @@ def _expand_alias_tokens(question: str, base_tokens: list[str]) -> list[str]:
     return extra
 
 
-HEDGED_RE = re.compile(r"\b(maybe|thinking about|not sure yet|might)\b", re.IGNORECASE)
-
-
-def _should_abstain(question: dict[str, Any], corpus: list[EnrichedMemory]) -> bool:
-    """Corpus-grounded entity-attribute and hedging support check for Stage 6."""
-    ql = question["q"].lower()
-    # Filter out purely hedged/speculative messages when checking settled factual support
-    settled_raw = [m.raw_text.lower() for m in corpus if not HEDGED_RE.search(m.raw_text)]
-    all_settled = " \n ".join(settled_raw)
-
-    # 1. Terms that only appear in hedged/speculative messages when the question presupposes a settled fact
-    is_meta_decision = (
-        question.get("kind") == "decision" or "what did i say" in ql or ql.startswith("are we ")
-    )
-    for term in (
-        "japanese",
-        "hindi",
-        "amazon",
-        "electric car",
-        "registration number",
-        "pan number",
-    ):
-        if term in ql and term not in all_settled and not is_meta_decision:
-            return True
-
-    # 2. Specific entity + attribute pairs where the attribute is absent in settled facts
-    pair_checks = (
-        (
-            "wife",
-            "blood group",
-            ("priya", "priyadharshini", "wife"),
-            ("blood", "o+", "o-", "b+", "a+"),
-        ),
-        ("senthil", "blood group", ("senthil",), ("blood", "o+", "o-", "b+", "a+")),
-        (
-            "what is my salary",
-            "",
-            ("my salary is", "ctc is", "lpa"),
-            ("lpa", "per annum", "salary is"),
-        ),
-        ("phone number", "", ("phone number", "mobile number"), ("98", "99", "94", "97")),
-        (
-            "university",
-            "",
-            ("university", "graduated from"),
-            ("anna university", "iit", "nit", "bits", "srm", "vit"),
-        ),
-        (
-            "which college did i",
-            "",
-            ("studied at", "graduated from"),
-            ("psg", "thiagarajar", "ceg", "mit", "rec"),
-        ),
-        (
-            "mother's birthday",
-            "",
-            ("amma's birthday", "lakshmi's birthday", "mother's birthday"),
-            ("birthday", "born on"),
-        ),
-        ("swathi's birthday", "", ("swathi",), ("birthday", "born on")),
-        ("dog", "name", ("our dog", "my dog", "pet dog"), ("named", "called", "bruno", "mani")),
-        ("hospital", "aadhav", ("aadhav",), ("hospital", "apollo", "kauvery", "cloudnine")),
-        ("how much", "sony", ("sony", "a7"), ("₹", "rs", "lakh", "cost", "paid", "bought for")),
-        ("how much", "pixel", ("pixel",), ("₹", "rs", "lakh", "cost", "paid", "bought for")),
-        ("daycare", "fee", ("daycare", "little steps"), ("₹", "rs", "fee", "month", "thousand")),
-        ("what time", "swimming", ("swimming",), (" a.m", " p.m", "o'clock", ":00", ":30")),
-        (
-            "what time",
-            "bharatanatyam",
-            ("bharatanatyam",),
-            (" a.m", " p.m", "o'clock", ":00", ":30"),
-        ),
-        ("which gym", "", ("gym",), ("gold's", "cult", "slam", "talwalkars", "fitness")),
-        (
-            "gopal",
-            "surname",
-            ("gopal ",),
-            ("iyer", "rajan", "kumar", "sharma", "nair", "menon", "pillai"),
-        ),
-        (
-            "prakash",
-            "surname",
-            ("prakash ",),
-            ("iyer", "rajan", "kumar", "sharma", "nair", "menon", "pillai"),
-        ),
-        (
-            "homestay",
-            "munnar",
-            ("munnar",),
-            ("named", "called", "resort", "misty", "green", "hills"),
-        ),
-        (
-            "cottage",
-            "yercaud",
-            ("yercaud",),
-            ("named", "called", "resort", "silver", "oak", "mist"),
-        ),
-    )
-    for cue1, cue2, subj_terms, attr_terms in pair_checks:
-        if cue1 in ql and (not cue2 or cue2 in ql):
-            found = False
-            for ml in settled_raw:
-                if any(s in ml for s in subj_terms) and any(a in ml for a in attr_terms):
-                    found = True
-                    break
-            if not found:
-                return True
-    return False
-
-
 def _as_evidence_memory(mem: EnrichedMemory) -> SimpleNamespace:
     """A benchmark memory shaped like the row `assess_hit_evidence` sees in production.
 
@@ -1005,10 +912,8 @@ def retrieve_for_method(
         ranked = sorted(range(len(corpus)), key=lambda i: (-combined[i], i))
         return [corpus[i] for i in ranked[:top_k]], False
 
-    # Stage 6: Multi-step adaptive bridge retrieval + calibrated abstention gate
-    if _should_abstain(question, corpus):
-        return [], True
-
+    # Stage 6: Multi-step bridge retrieval. It never abstains: see the module
+    # docstring and `abstention_probe()` for how abstention is measured.
     ranked = sorted(range(len(corpus)), key=lambda i: (-combined[i], i))
     # Multi-step bridge: preserve top-3 primary hits and promote complementary 2nd-hop entity memories into ranks 4..top_k
     if len(ranked) > 3 and q_kind in ("multi_hop", "about", "connected") and not exited_early:
@@ -1697,16 +1602,114 @@ def compare_adaptive_early_exit(
     return report
 
 
+# --------------------------------------------------------------------------
+# Abstention probe: one general rule, chosen on the tuning split only
+# --------------------------------------------------------------------------
+
+#: Floors tried on the tuning split. The chosen one is applied unchanged to the
+#: held-out split, which is what makes the held-out number honest.
+ABSTENTION_FLOOR_GRID = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+
+#: The rule, in words, for the report.
+ABSTENTION_RULE = (
+    "abstain when no top-5 hit of the primary method accounts for at least `floor` "
+    "of the question's content words (core.evidence.lexical_entailment_score); "
+    "questions with no scorable English content words never abstain"
+)
+
+
+def abstention_signal(question: str, retrieved: list[EnrichedMemory]) -> float | None:
+    """The best lexical entailment of *question* by any retrieved memory, 0-1.
+
+    None when the question has no word the scorer can read (the scorer reads
+    English letters and digits only, so an all-Tamil question scores 0 against
+    everything). That is no evidence either way, so it never abstains.
+    """
+    if not re.search(r"[a-z0-9]", question.lower()):
+        return None
+    return max((lexical_entailment_score(question, m.raw_text) for m in retrieved), default=0.0)
+
+
+def _abstention_scores(signals: list[tuple[bool, float | None]], floor: float) -> dict[str, Any]:
+    """Precision/recall/F1 of abstaining below *floor*, and its cost on answerable questions."""
+    gold = sum(1 for is_abstain, _ in signals if is_abstain)
+    answerable = len(signals) - gold
+    predicted = [(g, sig is not None and sig < floor) for g, sig in signals]
+    tp = sum(1 for g, p in predicted if g and p)
+    fp = sum(1 for g, p in predicted if p and not g)
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = tp / gold if gold else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    return {
+        "floor": floor,
+        "abstained": tp + fp,
+        "abstain_questions": gold,
+        "true_abstentions": tp,
+        "false_abstentions": fp,
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1": round(f1, 4),
+        # Answerable questions the rule would have refused: the price of the recall.
+        "false_abstain_rate": round(fp / answerable, 4) if answerable else 0.0,
+    }
+
+
+def _split_signals(dataset_path: Path, method: str) -> list[tuple[bool, float | None]]:
+    data = json.loads(dataset_path.read_bytes().decode("utf-8"))
+    corpus = build_corpus(data)
+    out: list[tuple[bool, float | None]] = []
+    for q in data["questions"]:
+        retrieved, _ = retrieve_for_method(q, corpus, method)
+        out.append((bool(q.get("abstain")), abstention_signal(q["q"], retrieved)))
+    return out
+
+
+def abstention_probe(
+    *,
+    method: str = PRIMARY_METHOD,
+    floors: tuple[float, ...] = ABSTENTION_FLOOR_GRID,
+) -> dict[str, Any]:
+    """How well one general evidence rule tells unanswerable questions apart.
+
+    The floor with the best F1 on the tuning split is chosen (ties go to the
+    lower floor, which refuses fewer answerable questions) and then applied
+    unchanged to the held-out split. Nothing in the rule names a dataset's
+    people, places or questions. It is reported, not gated: evals/score-
+    separability.md showed that ranking scores do not separate answerable from
+    unanswerable questions, and this probe measures the same for the lexical
+    evidence the lab can compute. Production abstains through the local
+    relevance judge, which this lab does not run.
+    """
+    tuning = _split_signals(TUNING_DATASET, method)
+    held_out = _split_signals(HELDOUT_DATASET, method)
+    sweep = [_abstention_scores(tuning, f) for f in floors]
+    best = max(sweep, key=lambda r: (r["f1"], -r["floor"]))
+    floor = best["floor"]
+    return {
+        "rule": ABSTENTION_RULE,
+        "method": method,
+        "floor": floor,
+        "floor_chosen_on": "tuning_dev",
+        "gated": False,
+        "splits": {
+            "tuning_dev": _abstention_scores(tuning, floor),
+            "held_out": _abstention_scores(held_out, floor),
+        },
+        "tuning_sweep": sweep,
+    }
+
+
 def run_memory_benchmark() -> dict[str, Any]:
     tuning = evaluate_split("tuning_dev", TUNING_DATASET)
     held_out = evaluate_split("held_out", HELDOUT_DATASET)
     lifecycle = evaluate_lifecycle_invariants()
     return {
-        "benchmark": "life_graph_memory_evaluation_laboratory_v1",
+        "benchmark": "life_graph_memory_evaluation_laboratory_v2",
         "generated_at": datetime.now(UTC).isoformat(),
         "splits": {
             "tuning_dev": tuning,
             "held_out": held_out,
         },
         "lifecycle_invariants": lifecycle,
+        "abstention_probe": abstention_probe(),
     }
