@@ -408,5 +408,6 @@ async def test_the_default_retrieval_uses_the_judged_search_with_follow_ups(monk
             "tags": [],
             "importance": 0.7,
             "created_at": "2026-10-03T00:00:00+00:00",
+            "trust_tier": None,  # the row has none; synthesis fences only a given tier
         }
     ]

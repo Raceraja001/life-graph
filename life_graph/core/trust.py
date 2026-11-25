@@ -293,6 +293,20 @@ _FENCED_BLOCK = re.compile(
 )
 
 
+#: An opening or closing fence tag of either name, however it is dressed up.
+_ANY_FENCE_TAG = re.compile(rf"[<＜﹤]{_GAP}[/／]?{_GAP}{_FENCE_NAME}{_TAG_TAIL}", re.IGNORECASE)
+
+
+def fence_untrusted_text(content: str) -> str:
+    """:func:`fence_untrusted`, with any fence tags taken out of *content* first.
+
+    For outside text placed in a prompt next to the owner's own (a memory
+    with an ``external`` or ``hostile_possible`` tier): the text cannot close
+    the fence early and go on as if it were trusted.
+    """
+    return fence_untrusted(_ANY_FENCE_TAG.sub("[fence]", content))
+
+
 def strip_fenced(text: str | None) -> tuple[str, bool]:
     """``(the owner's own words, outside text was removed)``.
 

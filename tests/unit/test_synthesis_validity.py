@@ -14,7 +14,7 @@ class _Capture:
     def __init__(self):
         self.messages = []
 
-    async def chat(self, **kwargs):
+    async def chat_local_only(self, **kwargs):  # synthesis is local-only (D25)
         self.messages = kwargs["messages"]
         return "Chennai [Memory 1]."
 
