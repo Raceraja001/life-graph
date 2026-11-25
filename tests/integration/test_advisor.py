@@ -22,6 +22,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
+from life_graph.services.llm.resilient import LOCAL_PROVIDERS
 from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
@@ -97,7 +98,15 @@ class TestAskAdvisor:
         # The answers came from the fake, not a real provider.
         assert mock_acompletion.await_count >= 1
         assert data["responses"]
-        assert all(r["recommendation"] == "Use FastAPI" for r in data["responses"])
+        # Cloud comparison is off by default (allow_cloud_preference_models):
+        # only local models get the owner's preferences; the default cloud
+        # models are listed as skipped.
+        asked = [r for r in data["responses"] if r["status"] != "skipped"]
+        assert asked
+        assert all(r["recommendation"] == "Use FastAPI" for r in asked)
+        called = [c.kwargs["model"] for c in mock_acompletion.await_args_list]
+        assert called
+        assert all(m.startswith(LOCAL_PROVIDERS) for m in called)
 
     @pytest.mark.asyncio
     @skip_on_db_error
