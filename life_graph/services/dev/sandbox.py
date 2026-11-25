@@ -822,8 +822,13 @@ async def run(
     timeout: int = 120,
     extra_ro: dict[Path, str] | None = None,
     tmp_size: str | None = None,
+    writable: bool = False,
 ) -> SandboxResult:
     """Run *argv* in the check-phase sandbox with *workdir* mounted at ``/work``.
+
+    *writable* mounts the worktree read-write, for a fix written back by a
+    trusted tool from the image (mechanical_autofix's ruff); everything else
+    about the container (no network, read-only root, no capabilities) stays.
 
     *extra_ro* mounts more host directories read-only (host path -> container
     path), e.g. the generated mutants of the mutation check; *tmp_size* raises
@@ -842,7 +847,7 @@ async def run(
     """
     path = "/usr/local/bin:/usr/bin:/bin"
     image = settings.verifier_sandbox_image
-    mounts = ["-v", f"{workdir}:{WORK}:ro"]
+    mounts = ["-v", f"{workdir}:{WORK}" + ("" if writable else ":ro")]
     if venv is not None:
         mounts += ["-v", f"{venv}:{VENV}:ro"]
         path = f"{VENV}/bin:{path}"
