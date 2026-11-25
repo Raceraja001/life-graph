@@ -639,6 +639,16 @@ Where coding drivers run, and how to run them safely. Design and threat model:
 | `local` | in the API process | `run_command`: `TOOL_SHELL_MODE=allowlist` (read-only programs) | `shell_allowlist.child_env()` |
 | verifiers | `VERIFIER_SANDBOX=docker`: checks in a `--network none` container; dependency setup on an internal network, egress only via the proxy to package registries (see "Verifier setup egress"). `=none`: code-executing checks are **inconclusive** unless `VERIFIER_ALLOW_HOST_EXECUTION=true` | — | — |
 
+**`claude_code` on the host (`=none`), file and web tools.** `WebFetch` and `WebSearch` are
+always denied there: a prompt-injected agent could otherwise read `~/.ssh` or a `.env` and
+send it out. While the shell is denied, the CLI also runs with `--restricted`: Read, Glob,
+Grep, Write and Edit stay inside the worktree (a symlink that points out is refused too), and
+user, project and local settings files are ignored. Checked by hand with CLI 2.1.328 on
+2026-11-25. A persona that only has web tools is refused (`refused_host_web`). With
+`DRIVER_ALLOW_HOST_SHELL=true`, `--restricted` is left off, because it would remove Bash and
+the shell can read anything the user can anyway. The run's metadata records `host_files`
+(`workdir_only` or `unconfined`). Use `task` for anything that needs the network.
+
 ### Enable the task runtime
 
 ```bash

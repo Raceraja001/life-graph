@@ -94,6 +94,24 @@ async def test_task_mode_runs_in_the_runtime_and_records_it(task_mode, tmp_path,
     assert not req.credentials.exists()  # staged token removed afterwards
 
 
+async def test_task_mode_keeps_web_tools_and_is_not_restricted(task_mode, tmp_path, monkeypatch):
+    got = {}
+
+    async def fake_run(req):
+        got["cmd"] = list(req.command)
+        return task_runtime.RuntimeOutcome(0, '{"result": "ok"}', "", {"runtime": "task"})
+
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
+    result = await ClaudeCodeDriver(binary="claude").dispatch(
+        _packet(allowed_tools=["file_read", "browse_web", "web_search"]), tmp_path
+    )
+    cmd = got["cmd"]
+    assert cmd[cmd.index("--allowedTools") + 1] == "Glob,Grep,Read,WebFetch,WebSearch"
+    assert cmd[cmd.index("--disallowedTools") + 1] == "Bash,Edit,NotebookEdit,Write"
+    assert "--restricted" not in cmd
+    assert "host_files" not in result.metadata
+
+
 async def test_task_mode_unavailable_never_falls_back_to_the_host(task_mode, tmp_path, monkeypatch):
     async def unavailable(req):
         err = sandbox.SandboxUnavailableError("runtime image missing")
@@ -138,7 +156,58 @@ async def test_host_bash_is_removed_from_a_scoped_persona(host_capture, tmp_path
 async def test_host_bash_is_denied_on_an_unscoped_dispatch(host_capture, tmp_path):
     await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path)
     args = host_capture["args"]
-    assert args[args.index("--disallowedTools") + 1] == "Bash"
+    assert args[args.index("--disallowedTools") + 1] == "Bash,WebFetch,WebSearch"
+    assert "--restricted" in args
+
+
+# ── host mode: no web tools, file tools kept to the worktree ──
+
+
+async def test_host_scoped_run_denies_web_and_confines_file_tools(host_capture, tmp_path):
+    result = await ClaudeCodeDriver(binary="claude").dispatch(
+        _packet(allowed_tools=["file_read", "web_search", "browse_web"]), tmp_path
+    )
+    args = list(host_capture["args"])
+    allowed = args[args.index("--allowedTools") + 1].split(",")
+    denied = args[args.index("--disallowedTools") + 1].split(",")
+    assert allowed == ["Glob", "Grep", "Read"]  # web tools dropped from the allowlist...
+    assert {"WebFetch", "WebSearch", "Bash"} <= set(denied)  # ...and denied outright
+    assert "--restricted" in args  # Read/Glob/Grep stay inside the working directory
+    assert args[args.index("--permission-mode") + 1] == "manual"
+    assert result.metadata["host_files"] == "workdir_only"
+
+
+async def test_host_unscoped_run_is_restricted_too(host_capture, tmp_path):
+    result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path)
+    args = list(host_capture["args"])
+    assert "--allowedTools" not in args
+    assert "--restricted" in args
+    assert {"WebFetch", "WebSearch"} <= set(args[args.index("--disallowedTools") + 1].split(","))
+    assert result.metadata["host_files"] == "workdir_only"
+
+
+async def test_a_web_only_persona_is_refused_on_the_host(host_capture, tmp_path):
+    result = await ClaudeCodeDriver(binary="claude").dispatch(
+        _packet(allowed_tools=["web_search", "browse_web"]), tmp_path
+    )
+    assert result.success is False
+    assert result.metadata["exit_status"] == "refused_host_web"
+    assert "driver_claude_sandbox=task" in result.error
+    assert "args" not in host_capture  # nothing ran
+
+
+async def test_host_shell_opt_in_still_denies_web(host_capture, tmp_path, monkeypatch):
+    # --restricted would remove Bash, so the opt-in runs without it; the web
+    # tools stay denied.
+    monkeypatch.setattr(settings, "driver_allow_host_shell", True)
+    result = await ClaudeCodeDriver(binary="claude").dispatch(
+        _packet(allowed_tools=["run_command", "browse_web"]), tmp_path
+    )
+    args = list(host_capture["args"])
+    assert args[args.index("--allowedTools") + 1] == "Bash"
+    assert "--restricted" not in args
+    assert {"WebFetch", "WebSearch"} <= set(args[args.index("--disallowedTools") + 1].split(","))
+    assert result.metadata["host_files"] == "unconfined"
 
 
 async def test_a_shell_only_persona_is_refused_on_the_host(host_capture, tmp_path):
