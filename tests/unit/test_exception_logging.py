@@ -18,6 +18,30 @@ def _records(caplog, level: int) -> list[logging.LogRecord]:
     return [r for r in caplog.records if r.levelno == level]
 
 
+async def test_unit_tests_never_write_dev_task_events(caplog, monkeypatch):
+    """The unit conftest keeps dev-task events off the database.
+
+    A real write from a unit test fails (no database) and logs a warning
+    later, inside another test; that made the caplog tests below flaky
+    (2026-11-25). This pins the guard: emit + flush must not reach the
+    session factory.
+    """
+    from life_graph.services.dev import task_events
+
+    opened: list[bool] = []
+
+    def no_database():
+        opened.append(True)
+        raise _BoomError("unit tests have no database")
+
+    monkeypatch.setattr(task_events, "_sf", no_database)
+    with caplog.at_level(logging.WARNING, logger="life_graph.services.dev.task_events"):
+        task_events.emit("tenant-1", "00000000-0000-0000-0000-000000000001", "status", "x")
+        await task_events.flush(timeout=2)
+    assert opened == []
+    assert not [r for r in caplog.records if r.name == task_events.__name__]
+
+
 class _BoomError(Exception):
     pass
 
