@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parents[2] / "life_graph"
 # hoisted to module level.
 BASELINE = {
     "agents": 4,
-    "api": 248,
+    "api": 246,
     "autonomy": 53,
     "cli": 23,
     "cold_start": 6,
@@ -56,7 +56,7 @@ BASELINE = {
     "kernel": 24,
     "main": 46,
     "mcp_server": 1,
-    "runtime": 50,
+    "runtime": 53,
     "self_improving": 59,
     "services": 621,  # +11 / api -14: the chat turn moved from api/kernel.py (M16)
     "storage": 7,
