@@ -321,3 +321,31 @@ async def test_deny_stamps_the_old_row_not_its_replacement():
     assert replacement is not None
     assert "superseded_at" not in (replacement.properties or {})
     assert replacement.properties.get("slot") == "city"
+
+
+@skip_on_db_error
+async def test_undo_on_jarvis_leaves_a_merged_duplicate_folded_away(client):
+    """A near-duplicate merged into the saved memory is not an earlier value:
+    undoing the save must not bring it back as a second active copy."""
+    from sqlalchemy import update
+
+    from life_graph.models.db import Memory
+    from life_graph.storage.database import async_session
+
+    word, dup_id, saved_id = await _pair()
+    async with async_session() as s:
+        await s.execute(
+            update(Memory)
+            .where(Memory.id == uuid.UUID(dup_id))
+            .values(
+                status="superseded",
+                superseded_by=uuid.UUID(saved_id),
+                properties={"merged_into": saved_id},
+            )
+        )
+        await s.commit()
+
+    resp = await client.post(f"/api/v1/jarvis/memories/{saved_id}/undo")
+    assert resp.status_code == 200, resp.text
+    dup = await _memory(dup_id)
+    assert dup.status == "superseded" and str(dup.superseded_by) == saved_id
