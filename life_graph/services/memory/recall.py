@@ -542,7 +542,9 @@ class RecallEngine:
         # On this instance no memory carried a project property at all, so any
         # session that reported one (which is every session, since the hook
         # derives it from cwd) recalled precisely nothing.
-        filters: dict[str, Any] = {"status": "active"}
+        # valid_at: a fact whose end date has passed ("in Chennai until
+        # Friday") is no longer true, and recall is about the present.
+        filters: dict[str, Any] = {"status": "active", "valid_at": datetime.now(UTC)}
 
         # Ranked in SQL by the signals that do not need the fingerprint, not
         # by created_at. list_memories() orders newest-first, which made the
@@ -629,7 +631,9 @@ class RecallEngine:
         try:
             return list(
                 await self._store.search_similar(
-                    embedding=query, limit=TOPICAL_POOL, filters={"status": "active"}
+                    embedding=query,
+                    limit=TOPICAL_POOL,
+                    filters={"status": "active", "valid_at": datetime.now(UTC)},
                 )
             )
         except Exception:

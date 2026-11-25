@@ -59,8 +59,14 @@ async def search(embedding: list[float], question: str, limit: int = COLD_CANDID
     """Cold memories of the current tenant nearest to *question*, best first."""
     from life_graph.runtime import get_store
 
+    # include_expired: the cold tier is how things were; retrieve() checks
+    # each row's validity at the question's own instant.
     hits = await get_store().hybrid_search(
-        embedding=embedding, query_text=question, limit=limit, filters=filters()
+        embedding=embedding,
+        query_text=question,
+        limit=limit,
+        filters=filters(),
+        include_expired=True,
     )
     found = [m for m, _ in hits]
     await _mark_replacements(found)

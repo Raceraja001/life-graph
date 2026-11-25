@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -328,6 +328,12 @@ async def semantic_search(
         # Keep the vector-mode fallback (below) and any other _apply_filters
         # consumer in sync with the same status set used by hybrid/tri_hybrid.
         filters["statuses"] = list(statuses)
+        # Current facts only, in every mode: one whose end date has passed
+        # ("in Chennai until Friday") is no longer true. hybrid_search applies
+        # the same by default; this carries it to the vector path too. An
+        # explicit status browse (above) shows that status whole.
+        filters["valid_at"] = datetime.now(UTC)
+    current_only = body.status == "active"
 
     search_mode = body.search_mode
     # (row-or-dict, relevance score). Conversion to MemoryResponse is deferred
@@ -371,6 +377,7 @@ async def semantic_search(
                 limit=max(body.limit, CANDIDATES),
                 filters=filters or None,
                 statuses=statuses,
+                include_expired=not current_only,
             )
             picked = await judge(body.query, [m.content for m, _ in candidates])
             if picked is None:
@@ -395,6 +402,7 @@ async def semantic_search(
                 limit=body.limit,
                 filters=filters or None,
                 statuses=statuses,
+                include_expired=not current_only,
             )
             hits = [(mem, float(score or 0.0)) for mem, score in hybrid_results]
         except Exception:
@@ -842,13 +850,16 @@ async def ask_brain(
             "importance": m.importance,
             "confidence": m.confidence,
             "source_type": m.source_type,
-            # MemoryResponse carries no validity window today, so these are
-            # None; kept so the payload shape does not change if it gains one.
-            "valid_from": str(vf) if (vf := getattr(m, "valid_from", None)) else None,
-            "valid_until": str(vu) if (vu := getattr(m, "valid_until", None)) else None,
+            # From the retrieved row, not the MemoryResponse (which carries no
+            # validity window, so these were always None): an as_of question
+            # can bring back a replaced or since-ended fact, and the model must
+            # be told which it is (services/synthesis.py renders them).
+            "status": getattr(row, "status", None),
+            "valid_from": str(vf) if (vf := getattr(row, "valid_from", None)) else None,
+            "valid_until": str(vu) if (vu := getattr(row, "valid_until", None)) else None,
             "created_at": str(m.created_at) if m.created_at else "unknown",
         }
-        for m in memories
+        for row, m in zip(rows, memories, strict=True)
     ]
 
     result = await synthesis.synthesize(body.question, memory_dicts)

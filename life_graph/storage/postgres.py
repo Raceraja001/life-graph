@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, func, select, tuple_, update
+from sqlalchemy import delete, func, or_, select, tuple_, update
 from sqlalchemy.orm import defer
 
 from life_graph.core.embedding_model import current_embedding_model
@@ -163,6 +163,11 @@ def _raw_filter_sql(filters: dict | None) -> tuple[str, dict]:
     if "source_type" in filters:
         clauses.append("source_type = :f_source_type")
         params["f_source_type"] = filters["source_type"]
+    if filters.get("valid_at") is not None:
+        # Still true at that instant: no end date, or one after it. The
+        # half-open window of services/memory/retrieval.py is_valid_at.
+        clauses.append("(valid_until IS NULL OR valid_until > :f_valid_at)")
+        params["f_valid_at"] = filters["valid_at"]
     if filters.get("cold_tier"):
         # services/memory/tiers.py: not what the owner took back (forgot,
         # undid) and not what a bulk clean-up moved out on purpose.
@@ -468,6 +473,8 @@ class PostgresMemoryStore:
         vector_weight: float = 1.0,
         bm25_weight: float = 0.5,
         statuses: tuple[str, ...] = ("active",),
+        valid_at: datetime | None = None,
+        include_expired: bool = False,
     ) -> list[tuple[Memory, float]]:
         """Hybrid search combining vector similarity with BM25 keyword matching.
 
@@ -490,6 +497,13 @@ class PostgresMemoryStore:
             statuses: Memory statuses to include. Defaults to active-only for
                 automation callers; the dashboard search route widens this to
                 include ``"pending"`` so the user can see and approve new memories.
+            valid_at: Only facts still true at this instant (``valid_until`` NULL
+                or after it). ``None`` means now: every search answers about the
+                present unless it says otherwise, so "in Chennai until Friday"
+                stops coming back after Friday. Retrieval's ``as_of`` passes
+                its own instant; a ``valid_at`` in *filters* wins.
+            include_expired: No valid-time condition at all: the cold tier,
+                which holds how things were, and an explicit status browse.
 
         Returns:
             List of (Memory, hybrid_score) tuples, sorted by hybrid_score desc.
@@ -497,6 +511,8 @@ class PostgresMemoryStore:
         from sqlalchemy import text
 
         tenant_id = get_current_tenant_id()
+        if not include_expired:
+            filters = {"valid_at": valid_at or datetime.now(UTC), **(filters or {})}
         if filters and "status" in filters:
             statuses = (filters["status"],)
         if filters and "statuses" in filters:
@@ -769,6 +785,8 @@ class PostgresMemoryStore:
         - ``created_before`` (datetime)
         - ``min_importance`` (float)
         - ``source_type`` (str)       – exact match on source_type column
+        - ``valid_at`` (datetime)     – still true then: ``valid_until`` NULL
+          or after it (an expired "until Friday" fact is left out)
 
         Note: ``status`` and ``statuses`` are independent clauses — if both
         keys are present they are ANDed together, not merged.
@@ -801,6 +819,11 @@ class PostgresMemoryStore:
 
         if "source_type" in filters:
             stmt = stmt.where(model.source_type == filters["source_type"])
+
+        if filters.get("valid_at") is not None:
+            stmt = stmt.where(
+                or_(model.valid_until.is_(None), model.valid_until > filters["valid_at"])
+            )
 
         return stmt
 
