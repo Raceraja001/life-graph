@@ -32,6 +32,14 @@ by pgvector's HNSW index (iterative scan, relaxed order), which is
 approximate: which near neighbours it returns can differ between builds.
 Compare runs by their range, not by the last digit.
 
+A second embedder can be swapped in for a check against real vectors
+(``ollama_embedder``: bge-m3, production's model, served by a local Ollama;
+scripts/eval_production_retrieval.py --ollama-model bge-m3). It needs the
+model running, so it is a manual check, never CI. Keyword-only changes can
+look flat under the hashing embedder because its vectors are word-based too:
+on 2026-11-25 the IDF keyword ranking moved tuning R@1 by -0.008 with hashing
+vectors and by +0.032 with bge-m3 vectors (means of four runs).
+
 Needs Postgres (run it through scripts/eval_production_retrieval.py, which
 points at the integration test database). It is not part of the unit gate.
 """
@@ -44,6 +52,7 @@ import json
 import math
 import re
 import time
+import urllib.request
 import uuid
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
@@ -61,7 +70,7 @@ from life_graph.services.memory import retrieval
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
 ARMS = ("storage_hybrid_search", "retrieve_judge_disabled")
@@ -94,6 +103,45 @@ def fake_embedding(text_: str, dim: int | None = None) -> list[float]:
         vec[idx] += weight if h[4] & 1 else -weight
     norm = math.sqrt(sum(v * v for v in vec))
     return [v / norm for v in vec] if norm else vec
+
+
+#: The embedder every seed and question goes through; fake_embedding unless a
+#: run swaps it (ollama_embedder).
+_embed: Callable[[str], list[float]] = fake_embedding
+EMBEDDER_LABEL = "hashing"
+
+
+def ollama_embedder(texts: list[str], *, model: str, base_url: str) -> Callable[[str], list[float]]:
+    """A lookup over *texts* embedded once by a local Ollama *model*.
+
+    Every text the run will embed (messages and questions of both splits) is
+    sent up front in batches, so the run itself makes no calls. A text that
+    was not prepared raises KeyError: the run must not quietly mix embedders.
+    """
+    vectors: dict[str, list[float]] = {}
+    todo = list(dict.fromkeys(texts))
+    for i in range(0, len(todo), 32):
+        batch = todo[i : i + 32]
+        req = urllib.request.Request(
+            f"{base_url.rstrip('/')}/api/embed",
+            data=json.dumps({"model": model, "input": batch}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310 — a local URL the operator passes
+            vectors.update(zip(batch, json.load(resp)["embeddings"], strict=True))
+    return vectors.__getitem__
+
+
+@contextlib.contextmanager
+def using_embedder(embed: Callable[[str], list[float]], label: str) -> Iterator[None]:
+    """Run the arm with *embed* instead of fake_embedding for the block."""
+    global _embed, EMBEDDER_LABEL
+    saved = (_embed, EMBEDDER_LABEL)
+    _embed, EMBEDDER_LABEL = embed, label
+    try:
+        yield
+    finally:
+        _embed, EMBEDDER_LABEL = saved
 
 
 def new_tenant() -> str:
@@ -131,7 +179,7 @@ async def seed_corpus(tenant_id: str, data: dict[str, Any]) -> int:
                     created_at=when,
                     updated_at=when,
                     valid_from=when,
-                    embedding=fake_embedding(m["text"]),
+                    embedding=_embed(m["text"]),
                 )
             )
         await s.commit()
@@ -183,7 +231,7 @@ async def cleanup_tenant(tenant_id: str) -> int:
 
 
 async def _fake_generate_embedding(text_: str) -> list[float]:
-    return fake_embedding(text_)
+    return _embed(text_)
 
 
 async def _judge_unavailable(question: str, contents: list[str]) -> None:
@@ -206,7 +254,7 @@ async def _ask(arm: str, question: str) -> tuple[list[Any], bool]:
     """(memories best first, retrieve's abstention indicator) for one question."""
     if arm == "storage_hybrid_search":
         hits = await runtime.get_store().hybrid_search(
-            embedding=fake_embedding(question), query_text=question, limit=RESULT_LIMIT
+            embedding=_embed(question), query_text=question, limit=RESULT_LIMIT
         )
         return [m for m, _ in hits], False
     result = await retrieval.retrieve(question, limit=RESULT_LIMIT)
@@ -341,6 +389,8 @@ async def run_production_arm(*, max_questions: int | None = None) -> dict[str, A
         "embedder": (
             f"fake_embedding: hashed words + character trigrams, dim "
             f"{settings.embedding_dimension}, deterministic, no network"
+            if EMBEDDER_LABEL == "hashing"
+            else EMBEDDER_LABEL
         ),
         "judge": "disabled: retrieve's judge-unavailable fallback (search order)",
         "entity_index": "empty (fresh tenant); memory links: none",

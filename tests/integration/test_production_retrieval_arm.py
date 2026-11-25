@@ -3,7 +3,10 @@
 Runs a slice of the tuning split through hybrid_search and retrieve() with the
 fake embedder and the judge disabled, and checks that the throwaway tenant
 leaves nothing behind. The full baseline comes from
-scripts/eval_production_retrieval.py; this only keeps the harness working.
+scripts/eval_production_retrieval.py. The floor below runs the whole tuning
+split (about 3 s) so a change that drops production retrieval well below its
+measured level fails CI; it reads only the tuning split, so the held-out split
+stays a report and never becomes a target.
 """
 
 from __future__ import annotations
@@ -51,3 +54,22 @@ async def test_production_arm_scores_a_slice_and_cleans_up():
                 text(f"SELECT count(*) FROM \"{table}\" WHERE tenant_id LIKE 'm3eval\\_%'")
             )
             assert left == 0, table
+
+
+#: Floors for the whole tuning split with the hashing embedder. Measured
+#: 2026-11-25, four runs: R@1 0.528-0.552, R@5 0.744, MRR 0.624-0.637 (HNSW
+#: order varies a little between runs). Each floor is about five questions
+#: (0.04) under the lowest run, so run-to-run noise never trips it.
+TUNING_FLOORS = {"recall_at_1": 0.48, "recall_at_5": 0.70, "mrr": 0.58}
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_production_retrieval_stays_above_its_tuning_floor():
+    split = await evaluate_split_production("tuning_dev", lab.TUNING_DATASET)
+
+    assert split["memories_left_after_cleanup"] == 0
+    for arm in ARMS:
+        ov = split["arms"][arm]["overall"]
+        for key, floor in TUNING_FLOORS.items():
+            assert ov[key] >= floor, (arm, key, ov[key])

@@ -14,16 +14,24 @@ integration suite uses: the configured database name with `_test` appended
     set -a; . <(grep -E '^LIFE_GRAPH_(DATABASE_URL|DATABASE_URL_SYNC|REDIS_URL)=' .env); set +a
     python scripts/eval_production_retrieval.py
 
-It is a report, not a CI gate: CI's unit job has no database.
+A second, manual run checks real vectors: ``--ollama-model bge-m3`` embeds
+every message and question once with a local Ollama (production's model) and
+writes evals/production_retrieval_report_bge_m3.json. The hashing run is the
+yardstick; the bge-m3 run shows what a change does next to semantic vectors.
+
+The integration suite keeps a floor on the hashing run's tuning split
+(tests/integration/test_production_retrieval_arm.py).
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -32,6 +40,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 DEFAULT_OUTPUT = ROOT / "evals" / "production_retrieval_report.json"
+OLLAMA_OUTPUT = ROOT / "evals" / "production_retrieval_report_{model}.json"
 
 
 def _with_suffix(url: str, suffix: str) -> str:
@@ -83,7 +92,13 @@ def _print(report: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument(
+        "--ollama-model",
+        default="",
+        help="Embed with this local Ollama model (e.g. bge-m3) instead of the hashing stand-in",
+    )
+    parser.add_argument("--ollama-url", default="", help="Default: settings.ollama_api_base")
     parser.add_argument(
         "--db-suffix",
         default=os.environ.get("LIFE_GRAPH_TEST_DATABASE_SUFFIX", "_test"),
@@ -95,11 +110,27 @@ def main() -> int:
     _point_at_test_database(args.db_suffix)
     # The disabled judge is the point of the run, not news: one warning per question.
     logging.getLogger("life_graph.services.memory.retrieval").setLevel(logging.ERROR)
-    from life_graph.evals.production_retrieval_arm import run_production_arm
+    from life_graph.evals import production_retrieval_arm as arm
 
-    report = asyncio.run(run_production_arm(max_questions=args.max_questions))
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    output = args.output or DEFAULT_OUTPUT
+    ctx: contextlib.AbstractContextManager = contextlib.nullcontext()
+    if args.ollama_model:
+        from life_graph.config import settings
+        from life_graph.evals import memory_benchmark as lab
+
+        texts: list[str] = []
+        for path in (lab.TUNING_DATASET, lab.HELDOUT_DATASET):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            texts += [m["text"] for m in data["messages"]] + [q["q"] for q in data["questions"]]
+        url = args.ollama_url or settings.ollama_api_base
+        embed = arm.ollama_embedder(texts, model=args.ollama_model, base_url=url)
+        ctx = arm.using_embedder(embed, f"ollama {args.ollama_model} (local model, manual run)")
+        slug = re.sub(r"[^a-z0-9]+", "_", args.ollama_model.lower()).strip("_")
+        output = args.output or OLLAMA_OUTPUT.with_name(OLLAMA_OUTPUT.name.format(model=slug))
+    with ctx:
+        report = asyncio.run(arm.run_production_arm(max_questions=args.max_questions))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     _print(report)
     left = sum(s["memories_left_after_cleanup"] for s in report["splits"].values())
     if left:
