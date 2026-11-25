@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -28,6 +29,9 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+# The label `_retry_task` gives a retry of a task that had no name of its own.
+_RETRY_LABEL = re.compile(r"retry-\d+-of-[0-9a-f]{8}")
 
 
 class ProcessManager:
@@ -49,6 +53,11 @@ class ProcessManager:
     # concurrency limit must exceed this depth or a single delegation
     # chain can deadlock waiting on its own last permit.
     MAX_DELEGATION_DEPTH = 5
+
+    # How often a running task re-reads its own row's status, so a cancel
+    # made by another process (the API, while the ARQ worker runs the task)
+    # stops it. One primary-key read per running task per interval.
+    CANCEL_POLL_SECONDS = 3.0
 
     def __init__(
         self,
@@ -466,15 +475,21 @@ class ProcessManager:
                 return
 
             try:
-                async with asyncio.timeout(timeout):
-                    result = await self._run_agent(
-                        tenant_id,
-                        agent_name,
-                        input_data,
-                        persona,
-                        tool_override=tool_override,
-                        terminal_sink=terminal,
-                    )
+                # Stops this run if its row is cancelled from another process
+                # (stop_local only reaches runs in the process that holds them).
+                watch = self._start_cancel_watch(task_id, tenant_id)
+                try:
+                    async with asyncio.timeout(timeout):
+                        result = await self._run_agent(
+                            tenant_id,
+                            agent_name,
+                            input_data,
+                            persona,
+                            tool_override=tool_override,
+                            terminal_sink=terminal,
+                        )
+                finally:
+                    watch.cancel()
                 await self._complete_task(
                     task_id,
                     tenant_id,
@@ -501,7 +516,8 @@ class ProcessManager:
 
             except asyncio.CancelledError:
                 logger.info("Task %s was cancelled", task_id)
-                # Status already set by cancel()
+                # Status already set by the cancel (here, or in another
+                # process and seen by the cancel watch).
                 self._publish_terminal_bus_event(
                     stream_key, task_id, agent_name, depth, "Task cancelled"
                 )
@@ -531,6 +547,48 @@ class ProcessManager:
                 bus.discard(stream_key)
         finally:
             self._semaphore.release()
+
+    def _start_cancel_watch(self, task_id: uuid.UUID, tenant_id: str) -> asyncio.Task[None]:
+        """Start the watch that stops the current run once its row is cancelled.
+
+        The kernel cancel route marks rows cancelled and calls stop_local, but
+        stop_local only reaches a run held by the same process. A run in the
+        ARQ worker (Telegram turns, scheduled jobs) used to go on to the end.
+        This background task reads the row's status every
+        CANCEL_POLL_SECONDS and, when it is 'cancelled', cancels the run's
+        asyncio task, which then ends as a local cancel does. The caller
+        cancels the watch as soon as the run ends.
+        """
+        run = asyncio.current_task()
+        assert run is not None  # called from inside the run's own task
+        return asyncio.create_task(
+            self._watch_for_cancel(task_id, tenant_id, run),
+            name=f"cancel-watch-{task_id!s:.8}",
+        )
+
+    async def _watch_for_cancel(
+        self, task_id: uuid.UUID, tenant_id: str, run: asyncio.Task[Any]
+    ) -> None:
+        """Poll the row's status; cancel `run` once it reads 'cancelled'."""
+        while not run.done():
+            await asyncio.sleep(self.CANCEL_POLL_SECONDS)
+            try:
+                async with self._session_factory() as session:
+                    status = (
+                        await session.execute(
+                            select(AgentTask.status).where(
+                                AgentTask.id == task_id, AgentTask.tenant_id == tenant_id
+                            )
+                        )
+                    ).scalar_one_or_none()
+            except Exception:
+                # A failed read must not stop the run; try again next time.
+                logger.debug("Cancel watch read failed for task %s", task_id, exc_info=True)
+                continue
+            if status == "cancelled":
+                logger.info("Task %s was cancelled elsewhere; stopping its run", task_id)
+                run.cancel()
+                return
 
     def _publish_terminal_bus_event(
         self,
@@ -976,6 +1034,8 @@ class ProcessManager:
         input_data: dict[str, Any] = {}
         root_task_id: uuid.UUID | None = None
         depth = 0
+        # The rest of the failed run's settings, given to its retry as they are.
+        carry: dict[str, Any] = {}
 
         async with self._session_factory() as session:
             stmt = select(AgentTask).where(AgentTask.id == task_id)
@@ -990,6 +1050,13 @@ class ProcessManager:
                 input_data = task.input or {}
                 root_task_id = task.root_task_id
                 depth = task.depth
+                carry = {
+                    "task_name": task.task_name,
+                    "priority": task.priority,
+                    "timeout_seconds": task.timeout_seconds,
+                    "session_id": task.session_id,
+                    "project_id": task.project_id,
+                }
 
         # Update status. The WHERE also covers a cancel that lands between
         # the read above and this write.
@@ -1030,6 +1097,7 @@ class ProcessManager:
                 max_retries=max_retries,
                 root_task_id=root_task_id,
                 depth=depth,
+                **carry,
             )
 
     async def _retry_task(
@@ -1044,6 +1112,11 @@ class ProcessManager:
         max_retries: int = 0,
         root_task_id: uuid.UUID | None = None,
         depth: int = 0,
+        task_name: str | None = None,
+        priority: str = "normal",
+        timeout_seconds: int | None = None,
+        session_id: uuid.UUID | None = None,
+        project_id: uuid.UUID | None = None,
     ) -> None:
         """Schedule a retry with exponential backoff.
 
@@ -1058,6 +1131,13 @@ class ProcessManager:
         ``depth``, so a retried delegated child stays in its tree (and in its
         root's stream) instead of becoming a new depth-0 task.
 
+        It runs with the original's settings too: the same name, priority,
+        timeout, session and project. Before, a retry got the default timeout
+        and priority, no session or project, and the name
+        ``retry-N-of-<id>``, which (for one) hid a retried scheduled run from
+        the action-proposal bridge, which looks for the ``schedule:`` name.
+        A task with no name still gets that ``retry-N-of-<id>`` label.
+
         Args:
             tool_override: Re-applied to the re-spawned task so a
                 retried read-only scheduled run stays read-only
@@ -1066,6 +1146,11 @@ class ProcessManager:
             max_retries: The original's max_retries, carried to the retry.
             root_task_id: The original's root (None for a root task).
             depth: The original's delegation depth.
+            task_name: The original's name (None: label it as a retry).
+            priority: The original's priority.
+            timeout_seconds: The original's timeout (None: the default).
+            session_id: The original's agent session.
+            project_id: The original's project.
         """
         delay = 2**retry_count
         new_retry = retry_count + 1
@@ -1098,12 +1183,19 @@ class ProcessManager:
             await session.execute(stmt)
             await session.commit()
 
-        # Spawn a new task as a child
+        # Spawn a new task as a child. A name that is only an earlier retry's
+        # label is relabelled, so an unnamed task's retries count up.
+        if not task_name or _RETRY_LABEL.fullmatch(task_name):
+            task_name = f"retry-{new_retry}-of-{original_task_id!s:.8}"
         await self.spawn(
             tenant_id,
             agent_name,
             input_data,
-            task_name=f"retry-{new_retry}-of-{original_task_id!s:.8}",
+            task_name=task_name,
+            priority=priority,
+            timeout_seconds=timeout_seconds,
+            session_id=session_id,
+            project_id=project_id,
             parent_task_id=original_task_id,
             root_task_id=root_task_id,
             depth=depth,
