@@ -402,9 +402,16 @@ class ProcessManager:
         depth: int = 0,
         tool_override: list[str] | None = None,
     ) -> None:
-        """Run the agent under semaphore + timeout control."""
+        """Run the agent under semaphore + timeout control.
+
+        On success the result is saved first and only then is the run's
+        top-level "done" sent to the chat stream: a client that sees "done"
+        and at once regenerates or resends must find the row completed, not
+        get 409 "still being written".
+        """
         async with self._semaphore:
             from life_graph.core.task_context import set_task_context
+            from life_graph.services.chat_stream import get_chat_stream_bus
 
             set_task_context(
                 task_id=task_id,
@@ -420,6 +427,11 @@ class ProcessManager:
             )
 
             stream_key = str(root_task_id or task_id)
+            bus = get_chat_stream_bus()
+            # The run's closing events ("done", and the "partial_error" the
+            # orchestrator sends just before a failed run's "done"), kept
+            # back by _run_agent until the result is saved.
+            terminal: list[dict[str, Any]] = []
 
             try:
                 async with asyncio.timeout(timeout):
@@ -429,6 +441,7 @@ class ProcessManager:
                         input_data,
                         persona,
                         tool_override=tool_override,
+                        terminal_sink=terminal,
                     )
                 await self._complete_task(
                     task_id,
@@ -436,8 +449,10 @@ class ProcessManager:
                     agent_name,
                     result,
                 )
-                # Success: the orchestrator's own "done" event was already
-                # published to the bus by _run_agent -- nothing more to do.
+                # Saved, so now the stream may end. If saving raised, the
+                # except below fails the task and sends its error instead.
+                for payload in terminal:
+                    bus.publish(stream_key, payload)
 
             except TimeoutError:
                 error_msg = f"Task {task_id} timed out after {timeout}s"
@@ -481,9 +496,7 @@ class ProcessManager:
                 # Reclaim bus state for tasks nobody streamed (route/cron/
                 # watchers) -- a no-op if an SSE subscriber is attached, since
                 # that path's own close()/cleanup already handles it.
-                from life_graph.services.chat_stream import get_chat_stream_bus
-
-                get_chat_stream_bus().discard(stream_key)
+                bus.discard(stream_key)
 
     def _publish_terminal_bus_event(
         self,
@@ -528,6 +541,7 @@ class ProcessManager:
         input_data: dict[str, Any],
         persona: dict[str, Any],
         tool_override: list[str] | None = None,
+        terminal_sink: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Execute the agent via the orchestrator.
 
@@ -543,6 +557,13 @@ class ProcessManager:
                 run (rather than merging with it). Used to force
                 scheduled action-role runs onto a read-only tool
                 set — safety-load-bearing, do not remove.
+            terminal_sink: When given (``_execute_task`` does), the run's
+                closing events -- "done" and "partial_error" -- are not
+                published here but appended to this list as bus payloads,
+                in order, for the caller to publish once the result is
+                saved. Without it they are published as they come, except
+                that a sources-checked run's "done" still waits for its
+                source note (below).
 
         Returns:
             Dict with 'response' text and 'token_count'.
@@ -738,7 +759,16 @@ class ProcessManager:
         check_sources = sources.required_for(agent_name)
         response_parts: list[str] = []
         tool_results: list[str] = []
-        held_done: dict | None = None
+        # Events kept back from the stream until the end of the run: the
+        # closing events when the caller asked for them (terminal_sink), and
+        # a sources-checked run's "done", so its note can go first.
+        held: list[dict[str, Any]] = []
+        if terminal_sink is not None:
+            hold_types = {"done", "partial_error"}
+        elif check_sources:
+            hold_types = {"done"}
+        else:
+            hold_types = set()
         token_count = 0
 
         from life_graph.services.llm.resilient import only_models
@@ -765,10 +795,8 @@ class ProcessManager:
                     data = _json.loads(event_str.removeprefix("data: ").strip())
                 except (ValueError, KeyError):
                     continue
-                if check_sources and data.get("type") == "done":
-                    # Held back so a source note can still reach a streaming chat
-                    # client before the stream ends.
-                    held_done = data
+                if data.get("type") in hold_types:
+                    held.append(data)
                     continue
                 if stream_key is not None:
                     bus.publish(stream_key, {**meta, "event": data})
@@ -820,11 +848,15 @@ class ProcessManager:
             # the result, so nothing more is streamed for it.
             checked = out["response"]
             note = checked[len(response) :] if checked.startswith(response) else ""
-            if stream_key is not None:
-                if note:
-                    bus.publish(stream_key, {**meta, "event": {"type": "token", "content": note}})
-                if held_done is not None:
-                    bus.publish(stream_key, {**meta, "event": held_done})
+            if stream_key is not None and note:
+                bus.publish(stream_key, {**meta, "event": {"type": "token", "content": note}})
+        if stream_key is not None:
+            for event in held:
+                payload = {**meta, "event": event}
+                if terminal_sink is not None:
+                    terminal_sink.append(payload)
+                else:
+                    bus.publish(stream_key, payload)
         return out
 
     # ── State Transitions ─────────────────────────────────
