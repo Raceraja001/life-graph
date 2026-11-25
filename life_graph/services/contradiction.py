@@ -350,10 +350,17 @@ def differs_by_negation(text_a: str, text_b: str) -> bool:
 
 # Capitalised words that are grammar, not a detail ("My", "The", "I").
 _NOT_DETAILS = frozenset(
-    ["i", "i'm", "i've", "i'd", "i'll", "my", "me", "we", "our", "us", "you", "your", "he", "his", "him", "she", "her", "it", "its", "they", "their", "them", "this", "that", "these", "those", "the", "a", "an", "and", "or", "but", "so", "if", "when", "then"]
+    (  # noqa: SIM905 - a word list reads better as one string
+        "i i'm i've i'd i'll my me we our us you your he his him she her it its they "
+        "their them this that these those the a an and or but so if when then"
+    ).split()
 )
 _CALENDAR = frozenset(
-    ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    (  # noqa: SIM905 - a word list reads better as one string
+        "january february march april may june july august september october november "
+        "december jan feb mar apr jun jul aug sep sept oct nov dec monday tuesday "
+        "wednesday thursday friday saturday sunday"
+    ).split()
 )
 _NUMBER_RE = re.compile(r"\d+(?:[.,:/]\d+)*")
 _CAPITALISED_RE = re.compile(r"\b([A-Z][\w-]*)")
