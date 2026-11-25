@@ -17,6 +17,7 @@ import json
 import logging
 import uuid
 
+from life_graph.autonomy.kill_switch import PAUSED_REFUSAL, autonomy_stopped
 from life_graph.core.run_taint import TAINT_INPUT_KEY, TAINTED_REFUSAL, outside_content_seen
 from life_graph.tools.registry import tool
 
@@ -116,6 +117,10 @@ async def delegate_to_persona(
                 ),
             }
         )
+
+    if await autonomy_stopped(ctx.tenant_id):
+        # Paused by the owner: a persona may still answer, but hands no work on.
+        return json.dumps({"error": PAUSED_REFUSAL})
 
     tainted = outside_content_seen()
     if tainted and await _holds_host_tools(ctx.tenant_id, persona):

@@ -557,7 +557,11 @@ async def test_any_caller_may_still_pull_the_kill_switch():
 
     config = SimpleNamespace(autonomy_paused=False, autonomy_paused_at=None)
     session = FakeSession(objects={(TenantConfig, "t1"): config})
-    await safety.pause_kill_switch(session=session, tenant_id="t1")
+    await safety.pause_kill_switch(
+        request=SimpleNamespace(state=SimpleNamespace(), headers={}),
+        session=session,
+        tenant_id="t1",
+    )
     assert config.autonomy_paused is True
     assert isinstance(config.autonomy_paused_at, datetime)
     assert config.autonomy_paused_at.tzinfo is UTC

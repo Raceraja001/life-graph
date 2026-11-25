@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
+from life_graph.autonomy.kill_switch import autonomy_stopped
 from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import ScheduledJob
@@ -457,6 +458,11 @@ class SchedulerService:
         """
         job = await self.get_by_id(tenant_id, job_id)
         if job is None or not job["is_active"]:
+            return None
+        if await autonomy_stopped(tenant_id):
+            # Paused by the owner: the job does not fire (it is not failed or
+            # disabled either; it fires again on its next tick after resume).
+            logger.warning("Schedule %s not fired: autonomy is paused", job_id)
             return None
 
         await event_bus.emit(

@@ -18,6 +18,10 @@ from life_graph.autonomy import kill_switch
 from life_graph.autonomy.pipeline.executor import ExecutionResult
 from life_graph.autonomy.pipeline.service import AutoFixService
 
+# This module tests the real reader (tests/unit/conftest.py).
+REAL_KILL_SWITCH = True
+
+
 # ── is_autonomy_paused() ────────────────────────────────────────
 
 
@@ -187,9 +191,7 @@ async def test_run_action_blocked_when_paused():
     action = _fake_pending_action()
     svc = _make_service(action)
 
-    with patch(
-        "life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=True)
-    ):
+    with patch("life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=True)):
         status, exit_code = await svc._run_action("t1", action)
 
     svc._executor.execute.assert_not_awaited()
@@ -206,9 +208,7 @@ async def test_run_action_proceeds_when_not_paused():
     action = _fake_pending_action()
     svc = _make_service(action)
 
-    with patch(
-        "life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=False)
-    ):
+    with patch("life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=False)):
         status, exit_code = await svc._run_action("t1", action)
 
     svc._executor.execute.assert_awaited_once()
@@ -226,9 +226,7 @@ async def test_execute_pending_blocked_when_paused():
 
     with (
         patch("life_graph.autonomy.pipeline.service.event_bus") as bus,
-        patch(
-            "life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=True)
-        ),
+        patch("life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=True)),
     ):
         bus.emit = AsyncMock()
         resp = await svc.execute_pending("t1", "a1")

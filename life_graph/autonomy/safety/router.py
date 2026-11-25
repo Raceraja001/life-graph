@@ -32,7 +32,9 @@ from life_graph.autonomy.safety.schemas import (
 )
 from life_graph.autonomy.safety.service import SafetyRuleService
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.storage.database import get_session
+from life_graph.runtime import get_audit_service
+from life_graph.services.dev import tasks as dev_tasks
+from life_graph.storage.database import async_session, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +221,7 @@ async def get_kill_switch(
 
 @router.post("/kill-switch/pause")
 async def pause_kill_switch(
+    request: Request,
     session: AsyncSession = Depends(get_session),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
@@ -244,6 +247,8 @@ async def pause_kill_switch(
     config.autonomy_paused_at = datetime.now(UTC)
     await session.commit()
     invalidate_autonomy_pause_cache(tenant_id)
+    cancelled = await _cancel_running_dev_tasks(tenant_id)
+    await _audit_kill_switch(tenant_id, "pause", request, {"dev_tasks_cancelled": cancelled})
     try:
         revoked = await revoke_live_capabilities(tenant_id)
     except StoreUnavailableError as exc:
@@ -259,7 +264,44 @@ async def pause_kill_switch(
                 f" ({exc}). Pause again to retry the revocation."
             ),
         ) from exc
-    return success_response({**_kill_switch_response(config), "capabilities_revoked": revoked})
+    return success_response(
+        {
+            **_kill_switch_response(config),
+            "capabilities_revoked": revoked,
+            "dev_tasks_cancelled": cancelled,
+        }
+    )
+
+
+async def _cancel_running_dev_tasks(tenant_id: str) -> int:
+    """Stop the dev tasks already running; -1 when that could not be done.
+
+    After the pause is committed, so it stands whatever happens here.
+    """
+    try:
+        return await dev_tasks.cancel_running_for_tenant(async_session, tenant_id)
+    except Exception:
+        logger.error("Autonomy paused for %s, but cancelling its dev tasks failed", tenant_id,
+                     exc_info=True)  # fmt: skip
+        return -1
+
+
+async def _audit_kill_switch(tenant_id: str, what: str, request: Request, details: dict) -> None:
+    """One audit_log row per pause or resume, with who did it (the resolver)."""
+    try:
+        await get_audit_service()._append(
+            tenant_id=tenant_id,
+            action_type="kill_switch",
+            action_name=f"autonomy_{what}",
+            actor_type="operator",
+            actor_id=resolver(request),
+            result="success",
+            details={"what": what, **details},
+        )
+    except Exception:
+        # The audit row must not undo or block the stop itself.
+        logger.error("Kill switch %s for %s not written to the audit log", what, tenant_id,
+                     exc_info=True)  # fmt: skip
 
 
 @router.post("/kill-switch/resume")
@@ -280,4 +322,5 @@ async def resume_kill_switch(
     config.autonomy_paused_at = None
     await session.commit()
     invalidate_autonomy_pause_cache(tenant_id)
+    await _audit_kill_switch(tenant_id, "resume", request, {})
     return success_response(_kill_switch_response(config))
