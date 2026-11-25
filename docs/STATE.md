@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-25 10:12 UTC` from `master` @ `ba5ef24`
+Generated `2026-11-25 10:34 UTC` from `master` @ `07e35b9`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-25 10:12 UTC` from `master` @ `ba5ef24`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **35** |
-| Config settings | **329** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5797** in 620 files |
+| Config settings | **330** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5815** in 622 files |
 | Dashboard pages | **23** |
-| Python | 524 files, 148,963 lines |
+| Python | 524 files, 149,063 lines |
 
 ---
 
@@ -1033,16 +1033,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 474 | 4811 |
-| `tests/integration/` | 145 | 974 |
+| `tests/unit/` | 475 | 4818 |
+| `tests/integration/` | 146 | 985 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **620** | **5797** |
+| **total** | **622** | **5815** |
 
 ---
 
 ## Configuration
 
-329 settings, all overridable by environment variable.
+330 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1068,6 +1068,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_LANGFUSE_PUBLIC_KEY` | `''` |
 | `LIFE_GRAPH_LANGFUSE_SECRET_KEY` | `''` |
 | `LIFE_GRAPH_LANGFUSE_HOST` | `'http://localhost:3001'` |
+| `LIFE_GRAPH_LANGFUSE_ALLOW_REMOTE` | `False` |
 | `LIFE_GRAPH_METRICS_ENABLED` | `True` |
 | `LIFE_GRAPH_METRICS_REQUIRE_KEY` | `False` |
 | `LIFE_GRAPH_SEED_TENANTS` | `'default'` |
