@@ -458,3 +458,48 @@ There were no migrations (alembic stays at 062) and no package changes. CI was g
 **Still open (owner):**
 - The off-site restic copy: the laptop rest-server is refusing connections.
 - The approval backlog.
+
+### D27. Release of M2 (chat), M3 (memory evals) and memory fixes (2026-11-25)
+
+**Decision:** the owner said "do these in parallel". Five agents worked in separate worktrees; the lead reviewed each diff and merged it on green CI. Released tag `prod-20261125-0653`. Rollback is `ea8c54a8`.
+
+**Included:**
+- **Chat (M2):**
+  - #345: a delegated child's first token is kept.
+  - #348: kernel cancel cascades to delegated children.
+  - #346: no hidden retries for streamed turns.
+  - #351: "done" is published only after the result is saved.
+  - #352: a startup sweep fails kernel tasks a dead process left behind.
+  - #355: a cancelled task stays cancelled.
+  - #359: retries are bounded (before, an always-raising task was retried forever, about one new row a second).
+- **Memory evals (M3):**
+  - #347: honest abstention. The old 1.0 came from hard-coded dataset terms.
+  - #353: an arm that runs production `hybrid_search` and `retrieve()`. Held-out R@5 is 0.775, against the lab's 0.90.
+  - #349: contradiction and false-merge eval with a regression gate.
+- **Memory:**
+  - #350: every supersede records `superseded_at`, and every undo clears it.
+  - #354: `/search` and recall leave out expired facts, and `/ask` sees each fact's real validity.
+  - #356: the near-duplicate merge keeps negations, number and colour words, and scope. The false-merge rate went from 0.324 to 0.081.
+  - #357: undoing a save leaves merged duplicates folded away.
+
+There were no migrations (alembic stays at 062) and no package changes. CI was green at `3a09008`.
+
+**Verified on prod:**
+- Health 200, UI 200, `/metrics` without a key 401. All three services active. The owner approve path gives 404 on a fake id. Playwright launches. 0 errors in the logs. Dev edition health 200.
+- The restore drill passed.
+- The startup sweep marked the 4 kernel tasks stuck since 11-03/11-13 as failed ("interrupted"). 0 queued or running kernel tasks are left.
+
+**Backups:** `.env` and `pip freeze` in `~/life-graph-backups/release-20261125-3/`.
+
+**Rollback:** check out `ea8c54a8` on `prod`, then run `./dev.sh restart`.
+
+**Found, not yet done:**
+- **Lab knowledge:** the lab's facet, alias and slot lists still know the datasets, so its stage 4-5 numbers are an upper bound.
+- **Contradictions:** a value change is not detected as a contradiction (recall 0).
+- **Merges:** some compatible additions still merge (add02, add05, add06).
+- **Phone stream:** it still drops delegation events.
+- **Cross-process runs:**
+  - Children running in another process are marked cancelled, but their runs are not stopped.
+  - A retry does not carry its timeout, priority or session.
+- **Old arrays:** properties that micro-dedup turned into arrays before #350 are not repaired.
+- **`dev` tenant client:** a client writes to tenant `dev` without `X-Tenant-ID` (1254 of the pending memories). Owner decision before `LIFE_GRAPH_ENVIRONMENT=production`.
