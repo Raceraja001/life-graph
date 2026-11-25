@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-25 08:38 UTC` from `master` @ `65cd1eb`
+Generated `2026-11-25 10:12 UTC` from `master` @ `ba5ef24`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-25 08:38 UTC` from `master` @ `65cd1eb`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **35** |
-| Config settings | **328** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5785** in 619 files |
+| Config settings | **329** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5797** in 620 files |
 | Dashboard pages | **23** |
-| Python | 524 files, 148,861 lines |
+| Python | 524 files, 148,963 lines |
 
 ---
 
@@ -1033,16 +1033,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 473 | 4799 |
+| `tests/unit/` | 474 | 4811 |
 | `tests/integration/` | 145 | 974 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **619** | **5785** |
+| **total** | **620** | **5797** |
 
 ---
 
 ## Configuration
 
-328 settings, all overridable by environment variable.
+329 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1182,6 +1182,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_ADVISOR_MODELS` | `'openrouter/openai/gpt-4o-mini,openrouter/deepseek/deepse…` |
 | `LIFE_GRAPH_ADVISOR_TIMEOUT_SECONDS` | `10` |
 | `LIFE_GRAPH_ADVISOR_MAX_COST_PER_QUERY` | `0.01` |
+| `LIFE_GRAPH_ALLOW_CLOUD_PREFERENCE_MODELS` | `False` |
 | `LIFE_GRAPH_RESEARCH_STALE_DAYS` | `30` |
 | `LIFE_GRAPH_RESEARCH_MAX_PER_RUN` | `5` |
 | `LIFE_GRAPH_RESEARCH_MONTHLY_BUDGET_USD` | `0.6` |
