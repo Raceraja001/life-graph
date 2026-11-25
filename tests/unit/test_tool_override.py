@@ -120,6 +120,12 @@ async def test_fail_task_forwards_tool_override_into_retry(monkeypatch):
         retry_count = 0
         max_retries = 3
         input = {"message": "go"}
+        # The settings carried to the retry as they are.
+        task_name = None
+        priority = "normal"
+        timeout_seconds = 300
+        session_id = None
+        project_id = None
 
     class _FakeResult:
         def scalar_one_or_none(self):
