@@ -503,3 +503,49 @@ There were no migrations (alembic stays at 062) and no package changes. CI was g
   - A retry does not carry its timeout, priority or session.
 - **Old arrays:** properties that micro-dedup turned into arrays before #350 are not repaired.
 - **`dev` tenant client:** a client writes to tenant `dev` without `X-Tenant-ID` (1254 of the pending memories). Owner decision before `LIFE_GRAPH_ENVIRONMENT=production`.
+
+### D28. Release of round 2 (2026-11-25)
+
+**Decision:** the owner said "proceed with parallel execution". Six agents worked; the lead reviewed and merged each PR. The owner approved deleting the legacy `docker` driver code in #365 (AskUserQuestion). Released tag `prod-20261125-0846`. Rollback is `1441f0c1`.
+
+**Included:**
+- **Kernel:** #363, retries keep their settings, and a cancel from another process stops the run.
+- **Memory:**
+  - #366: value changes are detected as contradictions. Recall went from 0.32 to 0.87 at precision 1.0.
+  - #368 and #372: the lab no longer knows held-out names or reads the gold kind label. Held-out R@5 is 0.81, against 0.775 for production.
+- **Authorization:**
+  - #362: safety-rule and trust changes are audited.
+  - #364: owner gate on making a prompt live.
+  - #371: tenant checks on eval cases and runs, and an owner gate on optimize.
+- **Runtime:**
+  - #365: the legacy `docker` mode is fenced and its code deleted.
+  - #369: host mode has no web tools, and files stay in the worktree.
+  - #370: a full-mode shell under a driver gets no secrets.
+- **Personal data:**
+  - #361: distill is local only. It used to fail over to the cloud when the local model errored.
+  - #367: `/ask` is local only, and outside memories are fenced.
+  - #373: extraction, transcripts, eval runs and failure mining are local only.
+- **Tests:** #374, unit tests no longer leak dev-task-event writers, which fixes the exception-logging flake.
+
+There were no migrations and no package changes. CI was green at `65cd1eb`.
+
+**First attempt failed safely:**
+- A stale `index.lock` from 08:04 sat in the prod worktree's git dir, from an unknown process.
+- `git merge` could not write its index. The release script piped the merge output through `tail`, which hid the failure, so it tagged `prod-20261125-0842` at the old commit and restarted prod on the **old** code. Prod stayed healthy.
+- Fix:
+  - With no git process running, the lead removed the empty stale lock, ran `merge --abort` and deleted the bad tag.
+  - The release script now stops when a lock is present, when the merge fails, when a merge is left in progress, or when HEAD did not move.
+- The rerun succeeded.
+
+**Verified on prod:**
+- Health 200, UI 200, `/metrics` without a key 401. All services active. The owner approve path gives 404.
+- 0 errors in the logs. Dev edition 200.
+- The #365, #373 and #366 code is present.
+- The restore drill passed.
+
+**Found, not yet done:**
+- `multi_model_advisor` and `research_engine` send preference text to cloud models by design. Owner's call.
+- Langfuse tracing, if a key is set, sends every prompt to `langfuse_host`.
+- The production early-exit gate can accept a superseded fact.
+- Eval-service methods do no tenant scoping themselves; the router guards them.
+- An empty `LIFE_GRAPH_TOOL_SHELL_MODE` means `full`.
