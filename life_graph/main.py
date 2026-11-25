@@ -6,6 +6,7 @@ service-to-service auth, API versioned under /api/v1/, and middleware pipeline:
 """
 
 import logging
+import os
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass
@@ -35,7 +36,11 @@ from life_graph.core.errors import DomainError
 from life_graph.core.events import enable_redis_bridge, event_bus
 from life_graph.core.logging import setup_logging
 from life_graph.core.plugins import PluginManager
-from life_graph.core.startup_guards import check_auth_exposure
+from life_graph.core.startup_guards import (
+    check_auth_exposure,
+    langfuse_env,
+    langfuse_tracing_allowed,
+)
 from life_graph.runtime import close_arq_pool, get_arq_pool
 from life_graph.storage.database import async_session
 from life_graph.storage.redis import check_redis, close_redis, init_redis
@@ -530,11 +535,15 @@ async def lifespan(app: FastAPI):
             raise RuntimeError(msg)
         logger.warning("%s — continuing, require_embedding_backend is false", msg)
 
-    # Startup — enable Langfuse tracing via LiteLLM (if configured)
-    if settings.langfuse_public_key:
+    # Startup — enable Langfuse tracing via LiteLLM (if configured). Every
+    # prompt goes to langfuse_host, so only a self-hosted one is accepted
+    # unless langfuse_allow_remote is set (core/startup_guards.py).
+    if langfuse_tracing_allowed(settings):
         with startup_step(report, "langfuse_tracing"):
             import litellm
 
+            # LiteLLM reads the host and keys from the environment only.
+            os.environ.update(langfuse_env(settings))
             litellm.success_callback = ["langfuse"]
             litellm.failure_callback = ["langfuse"]
             logger.info("Langfuse tracing enabled → %s", settings.langfuse_host)
