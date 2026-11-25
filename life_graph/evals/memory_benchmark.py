@@ -24,10 +24,15 @@ split alone and then applied unchanged to the held-out split. Production
 abstains through the local relevance judge (services/memory/retrieval.py),
 which this offline lab does not run, so the probe is a report, not a gate.
 
-Stages 4 and 5 still carry hand-written facet, alias and topic-slot lists whose
-words come from both datasets (people's names, schools, companies). For those
-stages the held-out split is not fully held out, and their scores are an upper
-bound on what the same rules would do on unseen data.
+Stages 4 and 5 run on hand-written lists: facets, aliases, question expansions,
+topic slots and past/current cues. Until 2026-11 those lists also named the
+held-out split's people, places and products ("senthil", "saibaba colony",
+"redmi", ...), and `build_corpus` added notes written for held-out messages, so
+the held-out scores of stages 4-5 were an upper bound. Every string that occurs
+in the held-out split but not in the tuning split was then removed (nothing was
+added), so the lists now come from the tuning split alone, and
+`tests/unit/test_memory_benchmark_lab.py` fails if a held-out-only string comes
+back. `lab_rule_strings()` lists what that test checks.
 
 `compare_adaptive_early_exit()` additionally runs the top-of-ladder method twice per
 split — once with the adaptive early-exit gate off and once with it on — so the
@@ -178,92 +183,44 @@ STOPWORDS = frozenset(
 # Facet rules: when a message contains any trigger substring, attach semantic facet tokens
 # so Stage 4+ bridges implicit category questions ("What phone do I use?" -> "Pixel 10").
 FACET_TRIGGERS: tuple[tuple[tuple[str, ...], str], ...] = (
-    (("my name is", "i'm ", "i am ", "calls me", "call me"), "full name owner identity nickname"),
+    (("my name is", "i'm ", "i am ", "calls me", "call me"), "name owner identity nickname"),
     (
         (
             "live in",
             "moved to",
             "shifted to",
-            "rented flat",
-            "new flat",
-            "house in",
             "adyar",
             "rs puram",
-            "saibaba colony",
-            "k.k. nagar",
             "madurai",
             "coimbatore",
             "chennai",
         ),
-        "live residence city flat address stay வசிக்கிறேன் வீடு",
+        "live residence city address stay வசிக்கிறேன் வீடு",
     ),
     (
-        (
-            "work at",
-            "works at",
-            "joined",
-            "first day at",
-            "tessera",
-            "thenral",
-            "zoho",
-            "l&t",
-            "larsen",
-            "freshworks",
-            "offer",
-        ),
-        "work company employer job office நிறுவனம் வேலை",
+        ("work at", "works at", "joined", "first day at", "tessera", "freshworks", "offer"),
+        "work company employer job நிறுவனம் வேலை",
     ),
     (
         (
             "engineering manager",
-            "senior qa manager",
-            "qa manager",
             "tech lead",
             "staff engineer",
             "senior developer",
-            "site engineer",
             "architect",
-            "physiotherapist",
             "doctor",
-            "electrician",
             "promoted",
         ),
         "job title role designation profession occupation do",
     ),
+    (("pixel", "iphone"), "phone mobile handset device use"),
+    (("creta", "i20", "hyundai", "nexon", "car"), "car vehicle drive four wheeler"),
+    (("royal enfield", "ather"), "motorcycle two wheeler ride"),
     (
-        ("pixel", "samsung", "s24", "redmi", "iphone", "oneplus", "vivo"),
-        "phone mobile handset device use",
-    ),
-    (("creta", "i20", "hyundai", "nexon", "baleno", "car"), "car vehicle drive four wheeler"),
-    (
-        ("pulsar", "royal enfield", "hunter 350", "activa", "ather", "bike", "scooter"),
-        "bike motorcycle scooter two wheeler ride",
-    ),
-    (
-        (
-            "chettinad",
-            "vidyashram",
-            "kovai public school",
-            "sri vidya",
-            "school",
-            "class 2",
-            "class 4",
-            "studying",
-        ),
+        ("chettinad", "vidyashram", "school", "class 2", "class 4", "studying"),
         "school attend study education பள்ளி படிக்கிறாள்",
     ),
-    (
-        (
-            "farmlink",
-            "kisanpay",
-            "agrisense",
-            "atlas",
-            "side project",
-            "lead at work",
-            "in charge of",
-        ),
-        "project product app lead build",
-    ),
+    (("farmlink", "atlas", "side project", "lead at work"), "project app lead build"),
     (
         (
             "postgres",
@@ -276,8 +233,6 @@ FACET_TRIGGERS: tuple[tuple[tuple[str, ...], str], ...] = (
             "fastapi",
             "react",
             "flutter",
-            "playwright",
-            "k6",
         ),
         "tech stack database db framework tool use",
     ),
@@ -287,20 +242,8 @@ FACET_TRIGGERS: tuple[tuple[tuple[str, ...], str], ...] = (
     ),
     (("dark mode", "dark theme", "light mode", "theme"), "theme app appearance preference like"),
     (
-        (
-            "lactose",
-            "milk",
-            "dairy",
-            "peanut",
-            "prawn",
-            "shellfish",
-            "mushroom",
-            "allergic",
-            "allergy",
-            "intolerant",
-            "avoid",
-        ),
-        "food allergy intolerant cannot take eat diet அலர்ஜி",
+        ("dairy", "peanut", "prawn", "shellfish", "mushroom", "allergic", "allergy"),
+        "allergy cannot take diet அலர்ஜி",
     ),
     (
         (
@@ -313,139 +256,117 @@ FACET_TRIGGERS: tuple[tuple[tuple[str, ...], str], ...] = (
             "rasam",
             "filter coffee",
             "coffee",
-            "tea",
-            "kaaram",
-            "spicy",
             "cook",
         ),
-        "food cook dish love eat dislike taste காரம் தோசை",
+        "cook dish love taste தோசை",
     ),
     (
-        (
-            "diabet",
-            "sugar",
-            "thyroid",
-            "bp",
-            "blood pressure",
-            "knee pain",
-            "knee",
-            "migraine",
-            "asthma",
-            "medicine",
-            "tablet",
-            "metformin",
-            "thyronorm",
-        ),
-        "health issue condition medicine take medical",
+        ("diabet", "sugar", "bp", "blood pressure", "migraine", "asthma", "medicine", "metformin"),
+        "health issue condition medicine take",
     ),
     (
         ("sony a7", "fujifilm", "canon", "nikon", "camera", "lens", "photography"),
         "camera photography hobby shoot",
     ),
     (
-        (
-            "swimming",
-            "badminton",
-            "cricket",
-            "painting",
-            "bharatanatyam",
-            "violin",
-            "carnatic",
-            "music",
-            "gym",
-            "yoga",
-            "ymca",
-        ),
-        "class hobby sport activity play where when",
+        ("swimming", "cricket", "violin", "carnatic", "music", "yoga", "ymca"),
+        "class hobby activity play where when",
     ),
     (
         ("sip", "mutual fund", "nifty", "index fund", "₹", "rs.", "per month"),
         "sip investment monthly amount money",
     ),
-    (("rent", "वाडகை", "வாடகை", "maintenance", "landlord"), "rent monthly flat house pay"),
-    (("birthday", "born on", "turning"), "birthday born age date பிறந்தநாள்"),
+    (("वाडகை", "வாடகை", "maintenance", "landlord"), "monthly"),
+    (("birthday",), "birthday born age date பிறந்தநாள்"),
     (("anniversary", "married", "wedding"), "wedding anniversary married date"),
-    (
-        ("o negative", "o-", "o positive", "o+", "b+", "a+", "ab+", "blood group"),
-        "blood group type",
-    ),
+    (("o positive", "o+", "b+", "a+", "ab+", "blood group"), "blood group type"),
 )
 
-# Kinship & bilingual alias graph rules (Stage 4+)
+# Kinship & bilingual alias graph rules (Stage 4+). Keys and values come from the
+# tuning split's family (Priya, Anu, Vicky, Divya, ...) plus general words.
 ALIAS_EXPANSIONS: dict[str, tuple[str, ...]] = {
     "wife": ("priyadharshini", "priya", "மனைவி", "cook"),
     "priyadharshini": ("priya", "wife", "மனைவி"),
     "priya": ("priyadharshini", "wife", "மனைவி"),
-    "husband": ("senthil", "senthilkumar", "கணவர்"),
-    "senthil": ("senthilkumar", "husband", "கணவர்"),
-    "senthilkumar": ("senthil", "husband"),
-    "mother": ("amma", "ma", "mom", "lakshmi", "mahalakshmi", "maha", "அம்மா"),
-    "amma": ("mother", "ma", "mom", "lakshmi", "mahalakshmi", "maha", "அம்மா"),
-    "ma": ("mother", "amma", "mahalakshmi", "maha", "lakshmi"),
-    "mahalakshmi": ("maha", "mother", "amma", "ma"),
-    "maha": ("mahalakshmi", "mother", "amma", "ma"),
-    "lakshmi": ("mother", "amma", "college", "thenral"),
-    "father": ("appa", "dad", "rajan", "murugesan", "sundaram", "அப்பா"),
-    "appa": ("father", "dad", "rajan", "murugesan", "sundaram", "அப்பா"),
-    "daughter": ("anushka", "anu", "nila", "மகள்", "நிலா", "அனுஷ்கா", "அனு"),
+    "mother": ("amma", "mom", "lakshmi"),
+    "amma": ("mother", "mom", "lakshmi"),
+    "lakshmi": ("mother", "amma"),
+    "father": ("appa", "dad", "rajan", "sundaram"),
+    "appa": ("father", "dad", "rajan", "sundaram"),
+    "daughter": ("anushka", "anu", "மகள்", "அனுஷ்கா", "அனு"),
     "anushka": ("anu", "daughter", "மகள்"),
     "anu": ("anushka", "daughter", "மகள்"),
-    "nila": ("daughter", "நிலா", "மகள்"),
-    "son": ("vignesh", "vicky", "ilan", "மகன்", "இளன்", "விக்னேஷ்"),
+    "son": ("vignesh", "vicky", "மகன்", "இளன்", "விக்னேஷ்"),
     "vignesh": ("vicky", "son", "மகன்"),
     "vicky": ("vignesh", "son", "மகன்"),
-    "ilan": ("son", "இளன்", "மகன்"),
-    "sister": ("divya", "akka", "thangachi", "அக்கா", "தங்கச்சி"),
+    "sister": ("divya", "thangachi", "அக்கா", "தங்கச்சி"),
     "divya": ("sister", "rajesh", "aadhav"),
-    "brother": ("arjun", "karthik", "murali", "anna", "thambi", "அண்ணா", "தம்பி"),
-    "anna": ("brother", "murali", "arjun", "karthik"),
-    "murali": ("anna", "brother", "husband", "senthil", "dubai", "electrician"),
+    "brother": ("arjun", "karthik", "anna", "thambi", "அண்ணா", "தம்பி"),
+    "anna": ("brother", "arjun", "karthik"),
     "rajesh": ("brother-in-law", "divya", "doctor", "aadhav"),
-    "meera": ("anni", "brother", "wife", "karthik", "physiotherapist", "physio"),
-    "pushpa": ("mother-in-law", "senthil", "amma", "anna nagar"),
+    "meera": ("anni", "brother", "wife", "karthik"),
     "aadhav": ("nephew", "divya", "rajesh", "son"),
     "nephew": ("aadhav", "divya", "rajesh"),
     "farmlink": ("side", "project", "postgres", "firebase", "next"),
     "atlas": ("lead", "work", "project", "eks", "aws", "tessera"),
-    "agrisense": ("thenral", "project", "lead", "playwright", "k6"),
-    "kisanpay": ("thenral", "lead", "qa", "product"),
-    # Tamil query terms -> English/Tamil equivalents
     "இப்போது": ("now", "current", "moved", "live", "work"),
-    "எங்கே": ("where", "live", "location", "place", "city", "adyar", "chennai", "coimbatore"),
-    "வசிக்கிறேன்": (
-        "live",
-        "residence",
-        "flat",
-        "house",
-        "adyar",
-        "chennai",
-        "coimbatore",
-        "saibaba",
-    ),
-    "மகள்": ("daughter", "anushka", "anu", "nila", "நிலா"),
-    "மகன்": ("son", "vignesh", "vicky", "ilan", "இளன்"),
-    "பள்ளியில்": ("school", "chettinad", "vidyashram", "kovai", "class"),
-    "படிக்கிறாள்": ("school", "study", "attend", "class", "chettinad", "kovai"),
-    "நிறுவனத்தில்": ("company", "work", "tessera", "thenral", "zoho"),
-    "வேலை": ("work", "company", "job", "tessera", "thenral", "l&t"),
+    "எங்கே": ("where", "live", "location", "city", "adyar", "chennai", "coimbatore"),
+    "வசிக்கிறேன்": ("live", "residence", "adyar", "chennai", "coimbatore"),
+    "மகள்": ("daughter", "anushka", "anu"),
+    "மகன்": ("son", "vignesh", "vicky", "இளன்"),
+    "பள்ளியில்": ("school", "chettinad", "vidyashram", "class"),
+    "படிக்கிறாள்": ("school", "study", "attend", "class", "chettinad"),
+    "நிறுவனத்தில்": ("company", "work", "tessera"),
+    "வேலை": ("work", "company", "job", "tessera"),
     "மனைவி": ("wife", "priyadharshini", "priya"),
-    "கணவர்": ("husband", "senthil", "senthilkumar"),
-    "அம்மா": ("mother", "amma", "lakshmi", "mahalakshmi", "maha"),
-    "அப்பா": ("father", "appa", "rajan", "murugesan"),
     "கார்": ("car", "creta", "i20", "hyundai"),
-    "பைக்": ("bike", "pulsar", "royal enfield", "hunter"),
-    "போன்": ("phone", "pixel", "samsung", "iphone", "redmi"),
+    "பைக்": ("royal enfield",),
+    "போன்": ("phone", "pixel", "iphone"),
     "பிறந்தநாள்": ("birthday", "born"),
 }
 
-PAST_CUE_RE = re.compile(
-    r"\b(before|previously|earlier|used to|old|first|at first|previous|prior|former|initially|back in|when i was in|in madurai|in coimbatore|in zoho)\b",
-    re.IGNORECASE,
+#: Question words that ask about the past (Stage 5). Plain phrases, joined into
+#: one word-bounded regex below.
+PAST_CUES: tuple[str, ...] = (
+    "before",
+    "previously",
+    "earlier",
+    "used to",
+    "old",
+    "first",
+    "at first",
+    "previous",
+    "prior",
+    "former",
+    "initially",
+    "when i was in",
+    "in madurai",
+    "in coimbatore",
 )
-CURRENT_CUE_RE = re.compile(
-    r"\b(now|current|currently|present|today|latest|these days|do i|does my|does he|does she|is my|what is|where do|which .* do|how much is|இப்போது)\b",
-    re.IGNORECASE,
+#: Question words that ask about the present (Stage 5). Each entry is a regex
+#: fragment; only `which .* do` uses regex syntax.
+CURRENT_CUES: tuple[str, ...] = (
+    "now",
+    "current",
+    "currently",
+    "present",
+    "today",
+    "latest",
+    "these days",
+    "do i",
+    "does my",
+    "does he",
+    "does she",
+    "is my",
+    "what is",
+    "where do",
+    "which .* do",
+    "how much is",
+    "இப்போது",
 )
+
+PAST_CUE_RE = re.compile(r"\b(" + "|".join(PAST_CUES) + r")\b", re.IGNORECASE)
+CURRENT_CUE_RE = re.compile(r"\b(" + "|".join(CURRENT_CUES) + r")\b", re.IGNORECASE)
 
 
 @dataclass
@@ -487,82 +408,42 @@ def _cosine(c1: Counter[str], c2: Counter[str]) -> float:
     return num / den if den > 0 else 0.0
 
 
+#: Topic slots for correction supersession (Stage 5): a message belongs to
+#: `slot` when it contains any `any_of` phrase and, if `also_any_of` is not
+#: empty, also one of those. A later message in the same slot supersedes it.
+SLOT_RULES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("residence", ("live in", "moved to", "shifted to", "staying in"), ()),
+    ("owner_phone", ("my phone", "bought a pixel", "upgraded my phone"), ()),
+    ("family_car", ("our i20", "hyundai creta", "bought a creta", "drive a"), ()),
+    ("employment", ("first day at", "work at", "joined tessera"), ()),
+    ("job_title", ("engineering manager", "promoted to", "tech lead"), ()),
+    ("farmlink_stack", ("farmlink",), ("firebase", "postgres", "next.js", "react")),
+    ("sip_amount", ("sip",), ("10,000", "12,000", "15,000", "increased", "bumped", "raised")),
+    (
+        "child_school",
+        ("chettinad", "little flower", "joined class", "started class", "studies in"),
+        (),
+    ),
+    ("hobby_camera", ("sony a7", "fujifilm", "canon", "camera"), ()),
+)
+
+
 def _detect_slots(text: str) -> set[str]:
     t = text.lower()
-    slots: set[str] = set()
-    if any(
-        w in t
-        for w in ("live in", "moved to", "shifted to", "rented flat", "new flat in", "staying in")
-    ):
-        slots.add("residence")
-    if any(
-        w in t
-        for w in ("my phone", "swapped my", "bought a pixel", "upgraded my phone", "switched to a")
-    ):
-        slots.add("owner_phone")
-    if any(w in t for w in ("sold his pulsar", "rides a", "bought a royal enfield")):
-        slots.add("spouse_bike")
-    if any(w in t for w in ("our i20", "hyundai creta", "bought a creta", "drive a", "our car")):
-        slots.add("family_car")
-    if any(
-        w in t
-        for w in (
-            "first day at",
-            "work at",
-            "joined tessera",
-            "joined thenral",
-            "software engineer at zoho",
-            "qa lead at",
-        )
-    ):
-        slots.add("employment")
-    if any(
-        w in t
-        for w in ("engineering manager", "senior qa manager", "promoted to", "tech lead", "qa lead")
-    ):
-        slots.add("job_title")
-    if any(w in t for w in ("farmlink",)) and any(
-        w in t for w in ("firebase", "postgres", "next.js", "react")
-    ):
-        slots.add("farmlink_stack")
-    if any(w in t for w in ("sip",)) and any(
-        w in t
-        for w in (
-            "5,000",
-            "5000",
-            "8,000",
-            "8000",
-            "9,000",
-            "9000",
-            "10,000",
-            "12,000",
-            "15,000",
-            "increased",
-            "bumped",
-            "raised",
-        )
-    ):
-        slots.add("sip_amount")
-    if any(
-        w in t
-        for w in (
-            "chettinad",
-            "kovai public school",
-            "sri vidya",
-            "little flower",
-            "joined class",
-            "started class",
-            "studies in",
-        )
-    ):
-        slots.add("child_school")
-    if any(w in t for w in ("sony a7", "fujifilm", "canon", "camera")):
-        slots.add("hobby_camera")
-    if any(w in t for w in ("painting class", "moved to friday", "saturday morning painting")):
-        slots.add("painting_schedule")
-    if any(w in t for w in ("rent is", "monthly rent", "rent in")):
-        slots.add("rent")
-    return slots
+    return {
+        slot
+        for slot, any_of, also_any_of in SLOT_RULES
+        if any(w in t for w in any_of) and (not also_any_of or any(w in t for w in also_any_of))
+    }
+
+
+#: In-law and extended-family facets (Stage 4+). A message gets `label` when
+#: every phrase of any one trigger group appears in it.
+RELATION_FACETS: tuple[tuple[tuple[tuple[str, ...], ...], str], ...] = (
+    ((("brother-in-law",), ("rajesh",)), "brother-in-law sister"),
+    ((("anni",), ("meera",)), "brother wife anni sister-in-law"),
+    ((("nephew",), ("aadhav",)), "nephew sister son"),
+)
 
 
 def _build_facets(raw_text: str) -> str:
@@ -571,16 +452,9 @@ def _build_facets(raw_text: str) -> str:
     for triggers, label in FACET_TRIGGERS:
         if any(tr in tl for tr in triggers):
             facets.append(label)
-    if "brother-in-law" in tl or ("divya" in tl and "husband" in tl) or ("rajesh" in tl):
-        facets.append("brother-in-law sister husband")
-    if "mother-in-law" in tl or ("senthil's amma" in tl) or ("pushpa" in tl):
-        facets.append("mother-in-law husband mother")
-    if ("brother's wife" in tl) or ("anni" in tl) or ("meera" in tl):
-        facets.append("brother wife anni sister-in-law")
-    if ("senthil's anna" in tl) or ("murali" in tl):
-        facets.append("husband brother brother-in-law")
-    if ("nephew" in tl) or ("aadhav" in tl):
-        facets.append("nephew sister son")
+    for groups, label in RELATION_FACETS:
+        if any(all(w in tl for w in group) for group in groups):
+            facets.append(label)
     return " ".join(facets)
 
 
@@ -598,23 +472,39 @@ def _extract_entities(text: str) -> set[str]:
     return entities
 
 
+def lab_rule_strings() -> list[str]:
+    """Every string the stage 4-5 rules match on or add, for the leakage test.
+
+    Facet triggers and labels, alias keys and values, slot phrases, relation
+    triggers and labels, question expansions, and the past/current cues (with
+    their regex `.*` split off). The test checks each string and each of its
+    words against the two datasets.
+    """
+    out: list[str] = []
+    for triggers, label in FACET_TRIGGERS:
+        out.extend((*triggers, label))
+    for key, syns in ALIAS_EXPANSIONS.items():
+        out.extend((key, *syns))
+    for _slot, any_of, also_any_of in SLOT_RULES:
+        out.extend((*any_of, *also_any_of))
+    for groups, label in RELATION_FACETS:
+        for group in groups:
+            out.extend(group)
+        out.append(label)
+    for triggers, words in QUESTION_EXPANSIONS:
+        out.extend((*triggers, *words))
+    for cue in (*PAST_CUES, *CURRENT_CUES):
+        out.extend(part.strip() for part in cue.split(".*") if part.strip())
+    return out
+
+
 def build_corpus(data: dict[str, Any]) -> list[EnrichedMemory]:
     messages = data["messages"]
     memories: list[EnrichedMemory] = []
 
-    join_dates: dict[str, date] = {}
-    birth_years: dict[str, int] = {}
-    today_date = date.fromisoformat(data.get("today", "2026-10-31"))
-
-    for m in messages:
-        d = date.fromisoformat(m["date"])
-        tl = m["text"].lower()
-        if "first day at thenral" in tl:
-            join_dates["thenral"] = d
-        # Track birth year if mentioned (e.g. "born in 1961" or "turned 64")
-        if "1961" in tl and ("amma" in tl or "mahalakshmi" in tl or "maha" in tl):
-            birth_years["maha"] = 1961
-
+    # Each memory is rendered as its date plus its own words. Until 2026-11
+    # this also added notes written for single held-out messages ("months after
+    # joining Thenral", "Nila loves math", a birth-year age); they are gone.
     for m in messages:
         d = date.fromisoformat(m["date"])
         raw = m["text"]
@@ -622,18 +512,7 @@ def build_corpus(data: dict[str, Any]) -> list[EnrichedMemory]:
             f"{d.isoformat()} ({d.strftime('%-d %B %Y')}, {d.strftime('%B %-d')}, "
             f"{d.strftime('%-d %b')}, {d.strftime('%b %-d')})"
         )
-        extra_notes: list[str] = []
-        tl = raw.lower()
-        if "kisanpay" in tl and "thenral" in join_dates:
-            months = round((d - join_dates["thenral"]).days / 30.4)
-            extra_notes.append(f"({months} months / six months after joining Thenral)")
-        if "கணக்கு" in raw:
-            extra_notes.append("(Nila daughter loves math / mathematics school subject)")
-        if "1961" in tl and "maha" in birth_years:
-            age_this_year = today_date.year - birth_years["maha"]
-            extra_notes.append(f"(turning {age_this_year} years old this year)")
-
-        rendered = f"[{date_label}] {raw}" + (" " + " ".join(extra_notes) if extra_notes else "")
+        rendered = f"[{date_label}] {raw}"
         facets = _build_facets(raw)
         graph_text = f"{rendered} {facets}".strip()
 
@@ -710,21 +589,23 @@ def _bm25_from_token_lists(
     return scores
 
 
+#: Question phrases that add search words (Stage 4+): when the question
+#: contains any phrase of the first tuple, the words of the second are added.
+QUESTION_EXPANSIONS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("brother-in-law",), ("rajesh", "divya", "doctor")),
+    (("sister-in-law",), ("meera", "anni")),
+    (("side project",), ("farmlink", "next", "postgres", "firebase")),
+    (("lead at work",), ("atlas", "eks", "aws")),
+    (("cannot take",), ("allergy", "allergic", "prawn", "peanut")),
+)
+
+
 def _expand_alias_tokens(question: str, base_tokens: list[str]) -> list[str]:
     ql = question.lower()
     extra: list[str] = []
-    if "brother-in-law" in ql or "husband's brother" in ql:
-        extra.extend(["rajesh", "murali", "divya", "doctor", "electrician", "dubai"])
-    if "mother-in-law" in ql:
-        extra.extend(["pushpa", "senthil", "amma"])
-    if "brother's wife" in ql or "sister-in-law" in ql:
-        extra.extend(["meera", "anni", "physiotherapist", "physio"])
-    if "side project" in ql:
-        extra.extend(["farmlink", "next", "postgres", "firebase"])
-    if "lead at work" in ql:
-        extra.extend(["atlas", "eks", "aws", "agrisense", "kisanpay"])
-    if "can't take" in ql or "cannot take" in ql or "avoid" in ql:
-        extra.extend(["lactose", "milk", "allergy", "allergic", "intolerant", "prawn", "peanut"])
+    for phrases, words in QUESTION_EXPANSIONS:
+        if any(p in ql for p in phrases):
+            extra.extend(words)
 
     for tok in base_tokens:
         for syn in ALIAS_EXPANSIONS.get(tok, ()):
