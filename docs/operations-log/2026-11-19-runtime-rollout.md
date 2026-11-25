@@ -549,3 +549,35 @@ There were no migrations and no package changes. CI was green at `65cd1eb`.
 - The production early-exit gate can accept a superseded fact.
 - Eval-service methods do no tenant scoping themselves; the router guards them.
 - An empty `LIFE_GRAPH_TOOL_SHELL_MODE` means `full`.
+
+### D29. One tenant for the owner; production mode; round 3 (2026-11-25)
+
+**Owner:** "raja is ours - we can store in there - others you decide".
+
+**1. The `dev`-tenant writer is fixed.**
+- The separate `~/jarvis` app wrote memories every ~10 min with no `X-Tenant-ID`, so they landed in the default tenant `dev`. Its memory client, `tools/study_copilot.py` and `server/routes.py` now send `X-Tenant-ID` (`LIFE_GRAPH_TENANT`, default `raja`).
+- These are edits in that repo's working tree, which already held someone else's uncommitted changes, so nothing there was committed. Backups are in `~/life-graph-backups/jarvis-tenant-*`.
+- `jarvis`, `jarvis-mcp` and `pad8-sentry` were restarted. After that, no writes reached `dev`.
+
+**2. Production mode.**
+- `LIFE_GRAPH_ENVIRONMENT=development` became `production` in the prod `.env` (backup: `~/life-graph-backups/env-production-20261125-1002`).
+- A request without `X-Tenant-ID` now gets 400 instead of silently landing in `dev`; with `raja` it gets 200.
+- No client got a 400 in the 10 minutes watched.
+- The remaining `dev` reads came from a browser signed in to the UI as `dev`: they send the header explicitly.
+
+**3. Round 3 released:**
+- #376: the multi-model advisor and research stance run on local models unless `allow_cloud_preference_models=true`.
+- #377: Langfuse traces only go to a self-hosted host unless `langfuse_allow_remote=true`. LiteLLM had never been given the configured host.
+- #378: `scripts/move_tenant_data.py`.
+
+**4. `dev` moved into `raja`:**
+- Backup: `~/life-graph-backups/move-dev-raja-20261125-1038/life_graph.dump` (209 MB).
+- The dry run planned 1508 memories, 173 links, 6 mentions, 11 entities and 290 review approvals; 0 folded and 0 cross-tenant refs. Configuration and history tables stay.
+- `--apply` reported "every table has the planned counts. Committed."
+- `raja` now holds 255 active and 1269 pending memories and 319 pending approvals. `dev` holds 0.
+- Undo: restore that dump to a staging DB and copy the rows back. There is no in-place undo.
+
+**For the owner:**
+- Sign the web UI in as `raja`; the `dev` sign-in now shows an empty tenant.
+- The jarvis app has a Life Graph API key hard-coded in `~/jarvis/server/routes.py`. Move it to its env.
+- Off-site backup: the laptop rest-server is still down.
