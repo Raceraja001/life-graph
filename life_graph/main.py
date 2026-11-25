@@ -205,9 +205,8 @@ async def _step_seed_personas(app: FastAPI, report: StartupReport) -> None:
         from sqlalchemy import distinct, select
 
         from life_graph.models.db import AgentPersona
-        from life_graph.storage.database import async_session as _personas_session
 
-        async with _personas_session() as session:
+        async with async_session() as session:
             persona_tenants = (
                 (await session.execute(select(distinct(AgentPersona.tenant_id)))).scalars().all()
             )
@@ -327,6 +326,17 @@ async def _step_adopted_models(app: FastAPI, report: StartupReport) -> None:
             logger.info("Adopted free models: %s", adopted)
 
 
+async def _step_kernel_tasks_recovery(app: FastAPI, report: StartupReport) -> None:
+    # Chat turns and persona runs die with the process that ran them; their
+    # rows would stay queued/running for ever. Every process may run this:
+    # it only touches rows far past their own timeout (kernel/recovery.py),
+    # so it cannot fail a run the ARQ worker or another API is still doing.
+    with startup_step(report, "kernel_tasks_recovery"):
+        from life_graph.kernel.recovery import fail_interrupted_kernel_tasks
+
+        await fail_interrupted_kernel_tasks(async_session)
+
+
 async def _step_dev_task_runner_lock(app: FastAPI, report: StartupReport) -> None:
     # Only the process holding the runner lock recovers and runs dev tasks, so
     # a second instance on the same database (a preview from another worktree)
@@ -432,6 +442,7 @@ _EXTENDED_STARTUP: tuple[Callable[[FastAPI, StartupReport], Awaitable[None]], ..
     _step_event_subscribers,
     _step_agent_drivers,
     _step_adopted_models,
+    _step_kernel_tasks_recovery,
     _step_dev_task_runner_lock,
     _step_dev_tasks_recovery,
     _step_dev_task_runtime_sweep,

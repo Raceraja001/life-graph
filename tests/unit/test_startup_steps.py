@@ -41,6 +41,9 @@ BEFORE_THE_SPLIT = [
     "autonomous_action_bridges",
     "agent_drivers",
     "adopted_models",
+    # Added 2026-11-25 (audit M2), not in the pre-split function: abandoned
+    # kernel tasks are failed at startup (kernel/recovery.py).
+    "kernel_tasks_recovery",
     "dev_task_runner_lock",
     "dev_tasks_recovery",
     "dev_task_runtime_sweep",
