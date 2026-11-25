@@ -1,6 +1,6 @@
 {
   "benchmark": "life_graph_contradiction_false_merge_v1",
-  "generated_at": "2026-11-25T05:48:42.017987+00:00",
+  "generated_at": "2026-11-25T06:14:31.796111+00:00",
   "dataset_file": "evals/contradiction/pairs.json",
   "dataset_sha256": "ee3163b3cc8c9eb3be4c65eda37e20fb7779e3c31b9e78ea80686422564b95ad",
   "assumed_cosine": 0.95,
@@ -14,44 +14,44 @@
     "contradiction_precision": 1.0,
     "contradiction_recall": 0.4,
     "contradiction_f1": 0.5714,
-    "false_merge_rate": 0.3243,
+    "false_merge_rate": 0.0811,
     "paraphrase_merge_rate": 1.0
   },
   "by_category": {
     "negation": {
       "pairs": 7,
       "flagged": 4,
-      "merged": 3,
+      "merged": 0,
       "contradiction_recall": 0.5714,
-      "false_merge_rate": 0.4286
+      "false_merge_rate": 0.0
     },
     "preference_swap": {
       "pairs": 7,
       "flagged": 6,
-      "merged": 1,
+      "merged": 0,
       "contradiction_recall": 0.8571,
-      "false_merge_rate": 0.1429
+      "false_merge_rate": 0.0
     },
     "value_change": {
       "pairs": 11,
       "flagged": 0,
-      "merged": 2,
+      "merged": 0,
       "contradiction_recall": 0.0,
-      "false_merge_rate": 0.1818
+      "false_merge_rate": 0.0
     },
     "compatible_addition": {
       "pairs": 7,
       "flagged": 0,
-      "merged": 4,
+      "merged": 3,
       "false_contradiction_rate": 0.0,
-      "false_merge_rate": 0.5714
+      "false_merge_rate": 0.4286
     },
     "scoped": {
       "pairs": 5,
       "flagged": 0,
-      "merged": 2,
+      "merged": 0,
       "false_contradiction_rate": 0.0,
-      "false_merge_rate": 0.4
+      "false_merge_rate": 0.0
     },
     "paraphrase": {
       "pairs": 5,
@@ -80,18 +80,9 @@
   ],
   "false_contradictions": [],
   "false_merges": [
-    "neg05",
-    "neg06",
-    "neg07",
-    "pref07",
-    "val09",
-    "val11",
     "add02",
     "add05",
-    "add06",
-    "add07",
-    "scope01",
-    "scope02"
+    "add06"
   ],
   "pairs": [
     {
@@ -150,7 +141,7 @@
       "cosine": 0.95,
       "predicted_contradiction": false,
       "conflict_types": [],
-      "would_merge": true
+      "would_merge": false
     },
     {
       "id": "neg06",
@@ -160,7 +151,7 @@
       "cosine": 0.95,
       "predicted_contradiction": false,
       "conflict_types": [],
-      "would_merge": true
+      "would_merge": false
     },
     {
       "id": "neg07",
@@ -170,7 +161,7 @@
       "cosine": 0.95,
       "predicted_contradiction": false,
       "conflict_types": [],
-      "would_merge": true
+      "would_merge": false
     },
     {
       "id": "pref01",
@@ -252,7 +243,7 @@
       "cosine": 0.95,
       "predicted_contradiction": false,
       "conflict_types": [],
-      "would_merge": true
+      "would_merge": false
     },
     {
       "id": "val01",
@@ -342,7 +333,7 @@
       "cosine": 0.95,
       "predicted_contradiction": false,
       "conflict_types": [],
-      "would_merge": true
+      "would_merge": false
     },
     {
       "id": "val10",
@@ -362,7 +353,7 @@
       "cosine": 0.95,
       "predicted_contradiction": false,
       "conflict_types": [],
-      "would_merge": true
+      "would_merge": false
     },
     {
       "id": "add01",
@@ -432,7 +423,7 @@
       "cosine": 0.95,
       "predicted_contradiction": false,
       "conflict_types": [],
-      "would_merge": true
+      "would_merge": false
     },
     {
       "id": "scope01",
@@ -444,7 +435,7 @@
       "conflict_types": [
         "scope"
       ],
-      "would_merge": true
+      "would_merge": false
     },
     {
       "id": "scope02",
@@ -456,7 +447,7 @@
       "conflict_types": [
         "scope"
       ],
-      "would_merge": true
+      "would_merge": false
     },
     {
       "id": "scope03",

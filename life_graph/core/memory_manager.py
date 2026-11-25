@@ -31,7 +31,11 @@ from life_graph.core.said_at import said_at
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryUpdate
-from life_graph.services.contradiction import differs_by_negation, differs_in_detail
+from life_graph.services.contradiction import (
+    differs_by_negation,
+    differs_in_detail,
+    differs_in_scope,
+)
 
 if TYPE_CHECKING:
     from life_graph.extraction.pipeline import ExtractionPipeline
@@ -409,12 +413,15 @@ class MemoryManager:
             # to the contradiction check below instead. So does a pair that
             # names different values ("3 May" / "4 May", "Priya" / "Maha"):
             # merging kept one and dropped the other (Stage 0, 2026-11-25).
+            # And so does a pair scoped to different projects or modules:
+            # both can be true at once (2026-11-25).
             similar = [
                 (m, s)
                 for m, s in candidates
                 if s >= settings.dedup_threshold
                 and not differs_by_negation(fact.content, m.content)
                 and not differs_in_detail(fact.content, m.content)
+                and not differs_in_scope(context, m.properties)
             ][:5]
             if similar:
                 existing_memory, score = similar[0]  # highest similarity

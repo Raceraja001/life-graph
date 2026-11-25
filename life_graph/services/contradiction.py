@@ -338,14 +338,42 @@ def _check_negation_flip(
     return None
 
 
+# A word that turns a statement into its opposite: "not", "no", "never",
+# "no longer", "without", or a contraction ending in n't ("isn't", "can't").
+# The apostrophe-less spellings ("dont", "cant") are listed too.
+_NEGATOR_RE = re.compile(
+    r"\b(?:not|no|never|none|nobody|nothing|nowhere|neither|nor|without|cannot"
+    r"|dont|doesnt|didnt|isnt|arent|wasnt|werent|cant|couldnt|wont|wouldnt"
+    r"|shouldnt|havent|hasnt|hadnt|aint)\b|\w(?:n't|n\u2019t)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_negator(text: str) -> bool:
+    """Whether the text contains a negating word (see ``_NEGATOR_RE``)."""
+    return _NEGATOR_RE.search(text) is not None
+
+
 def differs_by_negation(text_a: str, text_b: str) -> bool:
     """Whether one text negates the other ("I use X" vs "I don't use X").
 
     MemoryManager asks this before its near-duplicate merge: a negation
     barely moves an embedding, so the two can score above dedup_threshold
     and used to be merged as one memory, losing the "not" (2026-10-22).
+
+    Two checks. First the contradiction rules (``_check_negation_flip``).
+    Then, since those only know a few verbs (use, like, prefer, always),
+    a plain asymmetry: one text has a negating word and the other has none
+    ("Priya eats meat" / "Priya does not eat meat", "I am allergic" / "I am
+    not allergic", "has never drunk", "no longer", "isn't", "can't"),
+    2026-11-25. The asymmetry is only a merge guard: it does not flag a
+    contradiction. It does not look at which verb the "not" belongs to, so
+    "I live in Chennai, not Pune" and "I live in Chennai" are also kept
+    apart; that costs a duplicate memory, never a lost "not".
     """
-    return _check_negation_flip(text_a, text_b) is not None
+    if _check_negation_flip(text_a, text_b) is not None:
+        return True
+    return _has_negator(text_a) != _has_negator(text_b)
 
 
 # Capitalised words that are grammar, not a detail ("My", "The", "I").
@@ -362,36 +390,79 @@ _CALENDAR = frozenset(
         "wednesday thursday friday saturday sunday"
     ).split()
 )
+# Number words. "one", "first" and "second" are left out: they are mostly
+# pronouns or time ("the one I like", "first time", "a second"), and a change
+# to or from them is still caught by the other word ("class one" / "class two").
+_NUMBER_WORDS = frozenset(
+    (  # noqa: SIM905 - a word list reads better as one string
+        "zero two three four five six seven eight nine ten eleven twelve thirteen "
+        "fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty "
+        "fifty sixty seventy eighty ninety hundred thousand lakh lakhs crore crores "
+        "million billion dozen third fourth fifth sixth seventh eighth ninth tenth"
+    ).split()
+)
+# Colour words, plus "light"/"dark" (a light vs dark theme or shade).
+_COLOUR_WORDS = frozenset(
+    (  # noqa: SIM905 - a word list reads better as one string
+        "white black grey gray red blue green yellow orange purple pink brown silver "
+        "golden gold maroon navy beige violet cream light dark"
+    ).split()
+)
+# Lowercase words that are values on their own: a changed month, weekday,
+# number word or colour is a different fact, not a paraphrase.
+_VALUE_WORDS = _CALENDAR | _NUMBER_WORDS | _COLOUR_WORDS
+# Spellings of the same value, so "grey" and "gray" do not count as different.
+_SAME_VALUE = {"gray": "grey"}
 _NUMBER_RE = re.compile(r"\d+(?:[.,:/]\d+)*")
 _CAPITALISED_RE = re.compile(r"\b([A-Z][\w-]*)")
 _WORD_RE = re.compile(r"[a-z0-9]+(?:[.,:/][0-9]+)*")
 
 
+def _words(text: str) -> set[str]:
+    """Lowercased words, with spellings of the same value made one."""
+    return {_SAME_VALUE.get(w, w) for w in _WORD_RE.findall(text.lower())}
+
+
 def _details(text: str) -> set[str]:
-    """The specific values a statement carries: numbers, dates, names."""
+    """The specific values a statement carries: numbers, dates, names, and
+    number and colour words ("four", "grey")."""
     found = set(_NUMBER_RE.findall(text))
-    found |= {w.lower() for w in _CAPITALISED_RE.findall(text) if w.lower() not in _NOT_DETAILS}
-    found |= {w for w in _WORD_RE.findall(text.lower()) if w in _CALENDAR}
+    found |= {
+        _SAME_VALUE.get(w.lower(), w.lower())
+        for w in _CAPITALISED_RE.findall(text)
+        if w.lower() not in _NOT_DETAILS
+    }
+    found |= {w for w in _words(text) if w in _VALUE_WORDS}
     return found
 
 
 def differs_in_detail(text_a: str, text_b: str) -> bool:
     """Whether one text names a value the other does not mention at all.
 
-    A number, a month or weekday, or a capitalised name in one text that does
-    not appear (in any case) anywhere in the other. "Priya's birthday is 3 May"
+    A number, a month or weekday, a number word ("four"), a colour ("grey",
+    "dark"), or a capitalised name in one text that does not appear (in any
+    case) anywhere in the other. "Priya's birthday is 3 May"
     and "Priya's birthday is 4 May" embed almost the same, and so do "Priya's
     birthday…" and "Maha's birthday…"; merging either pair keeps one value and
     drops the other. MemoryManager asks this before its near-duplicate merge
     (Stage 0 finding 5, 2026-11-25); a pair that differs is stored as its own
     memory and goes to the contradiction check. Erring towards "differs" only
-    costs a duplicate, never a lost fact.
+    costs a duplicate, never a lost fact. Number and colour words were added
+    on 2026-11-25: "class four" / "class five" and "a white car" / "a grey
+    car" used to merge.
+
+    Two texts that each prefer a different thing ("I prefer pytest" / "I
+    prefer unittest", the detector's entity swap) also differ: lowercase
+    names carry no capital, and the merge used to fold the swap into one
+    memory before the contradiction check could see it (2026-11-25).
     """
-    words_a = set(_WORD_RE.findall(text_a.lower()))
-    words_b = set(_WORD_RE.findall(text_b.lower()))
-    return any(d not in words_b for d in _details(text_a)) or any(
+    words_a = _words(text_a)
+    words_b = _words(text_b)
+    if any(d not in words_b for d in _details(text_a)) or any(
         d not in words_a for d in _details(text_b)
-    )
+    ):
+        return True
+    return _check_entity_swap(text_a, text_b) is not None
 
 
 def _check_entity_swap(new_text: str, existing_text: str) -> str | None:
@@ -460,8 +531,27 @@ def _check_scope_difference(
     Returns:
         Scope description string if the scopes differ, else None.
     """
-    old_props = memory.properties or {}
-    new_props = new_properties or {}
+    return _scope_difference(memory.properties or {}, new_properties or {})
+
+
+def differs_in_scope(
+    props_a: dict[str, Any] | None,
+    props_b: dict[str, Any] | None,
+) -> bool:
+    """Whether two memories' properties name a different project or module.
+
+    MemoryManager asks this before its near-duplicate merge (2026-11-25):
+    "We prefer pytest" for project alpha and "We prefer unittest" for
+    project beta are both true, and merging them kept one. Merging a scoped
+    fact into an unscoped one would also copy the scope onto it. Same rule
+    as the contradiction detector's scope check: a project or module on
+    either side that the other does not share.
+    """
+    return _scope_difference(props_a or {}, props_b or {}) is not None
+
+
+def _scope_difference(old_props: dict[str, Any], new_props: dict[str, Any]) -> str | None:
+    """The project/module values that differ, as text, or None."""
     scopes: list[str] = []
 
     for key in ("project", "module"):
