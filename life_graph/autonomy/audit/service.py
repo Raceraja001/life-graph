@@ -35,7 +35,9 @@ class AuditService:
         Maps the callers' friendly kwargs onto real ``AuditLogEntry`` columns:
         ``action_id`` → ``auto_action_id``, ``command`` → ``action_command``,
         ``details`` → ``classification_reasoning`` (the generic JSONB bucket).
-        Fills the NOT NULL ``actor_id`` / ``action_name`` with sensible fallbacks.
+        Fills the NOT NULL ``actor_id`` / ``action_name`` with sensible fallbacks:
+        an explicit ``actor_id`` wins, then ``agent_id``, then "system" (a trust
+        override names both — the agent it is about and the owner who made it).
         """
         from life_graph.autonomy.models import AuditLogEntry
 
@@ -59,7 +61,7 @@ class AuditService:
                 tenant_id=tenant_id,
                 agent_id=agent_id,
                 actor_type=kwargs.get("actor_type", "agent"),
-                actor_id=agent_id or kwargs.get("actor_id") or "system",
+                actor_id=kwargs.get("actor_id") or agent_id or "system",
                 action_type=action_type,
                 action_name=kwargs.get("action_name") or action_type,
                 action_command=kwargs.get("command"),
@@ -160,14 +162,27 @@ class AuditService:
         changed_by: str,
         old_value: dict | None = None,
         new_value: dict | None = None,
+        actor_type: str = "operator",
     ) -> uuid.UUID:
-        """Log a safety rule modification."""
+        """Log a safety rule change: create, update, delete or seed.
+
+        ``changed_by`` is who the server saw calling (api/approval_identity.py
+        ``resolver``) and becomes the row's ``actor_id``; ``actor_type`` must be
+        agent, operator or system (ck_al_actor_type). ``action_name`` is
+        ``rule_<change_type>``. The rule id goes in the details, not in
+        ``auto_action_id`` (a rule is not an auto action); ``result`` only takes
+        outcomes, so ``_append`` stores "success" and keeps ``change_type`` as
+        ``raw_result``.
+        """
         return await self._append(
             tenant_id=tenant_id,
             action_type="rule_change",
-            action_id=rule_id,
+            action_name=f"rule_{change_type}",
+            actor_type=actor_type,
+            actor_id=changed_by,
             result=change_type,
             details={
+                "rule_id": str(rule_id) if rule_id else None,
                 "changed_by": changed_by,
                 "old_value": old_value,
                 "new_value": new_value,
@@ -179,19 +194,31 @@ class AuditService:
         tenant_id: str,
         agent_id: str,
         project_id: str | None,
-        old_score: float,
+        old_score: float | None,
         new_score: float,
         reason: str,
         overridden_by: str,
+        trust_action_type: str | None = None,
+        actor_type: str = "operator",
     ) -> uuid.UUID:
-        """Log a trust score manual override."""
+        """Log a trust score manual override.
+
+        ``agent_id`` is the agent whose trust changed; ``overridden_by`` is who
+        the server saw calling and becomes the row's ``actor_id``.
+        ``old_score`` is the score in force before (the old override if there
+        was one), or None when the agent had no score yet for that action.
+        """
         return await self._append(
             tenant_id=tenant_id,
             action_type="trust_override",
+            action_name="trust_override",
             agent_id=agent_id,
+            actor_type=actor_type,
+            actor_id=overridden_by,
             project_id=project_id,
             result="override",
             details={
+                "action_type": trust_action_type,
                 "old_score": old_score,
                 "new_score": new_score,
                 "reason": reason,
