@@ -9,6 +9,11 @@ owner's alone (api/approval_identity.py ``owner_only``); ``created_by`` is who
 the server saw calling. So is resuming autonomy after the kill switch was
 pulled. Pausing stays open to any caller — stopping is always safe — and so
 do the reads and ``/classify``, which writes nothing.
+
+Every rule write leaves one audit_log row (``rule_change``) naming who made
+it. The change is committed first; the audit row is best effort, as for the
+kill switch: if it cannot be written that is logged as an error, and the
+change stands.
 """
 
 from __future__ import annotations
@@ -71,6 +76,8 @@ async def create_rule(
         priority=body.priority,
         description=body.description,
     )
+    await session.commit()
+    await _audit_rule_change(tenant_id, request, "create", rule.id, new=_rule_snapshot(rule))
     return success_response(SafetyRuleResponse.model_validate(rule))
 
 
@@ -118,10 +125,18 @@ async def update_rule(
     """Update a safety rule (partial update; owner only)."""
     owner_only(request, "Writing a safety rule")
     svc = SafetyRuleService(session)
+    existing = await svc.get_rule(tenant_id, rule_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Safety rule not found")
+    old = _rule_snapshot(existing)
     updates = body.model_dump(exclude_unset=True)
     rule = await svc.update_rule(tenant_id, rule_id, **updates)
     if rule is None:
         raise HTTPException(status_code=404, detail="Safety rule not found")
+    await session.commit()
+    await _audit_rule_change(
+        tenant_id, request, "update", rule_id, old=old, new=_rule_snapshot(rule)
+    )
     return success_response(SafetyRuleResponse.model_validate(rule))
 
 
@@ -135,9 +150,13 @@ async def delete_rule(
     """Delete a safety rule (owner only)."""
     owner_only(request, "Writing a safety rule")
     svc = SafetyRuleService(session)
+    existing = await svc.get_rule(tenant_id, rule_id)
+    old = _rule_snapshot(existing) if existing is not None else None
     deleted = await svc.delete_rule(tenant_id, rule_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Safety rule not found")
+    await session.commit()
+    await _audit_rule_change(tenant_id, request, "delete", rule_id, old=old)
     return success_response({"deleted": True})
 
 
@@ -188,7 +207,42 @@ async def seed_defaults(
     owner_only(request, "Writing a safety rule")
     svc = SafetyRuleService(session)
     rules = await svc.seed_defaults(tenant_id)
+    await session.commit()
+    created = {"created": [{"id": r.id, "action_name": r.action_name} for r in rules]}
+    await _audit_rule_change(tenant_id, request, "seed", new=created)
     return success_response([SafetyRuleResponse.model_validate(r) for r in rules])
+
+
+def _rule_snapshot(rule) -> dict:
+    """A rule as plain JSON, for the audit row's old/new value."""
+    return SafetyRuleResponse.model_validate(rule).model_dump(mode="json")
+
+
+async def _audit_rule_change(
+    tenant_id: str,
+    request: Request,
+    change_type: str,
+    rule_id: str | None = None,
+    old: dict | None = None,
+    new: dict | None = None,
+) -> None:
+    """One audit_log row per rule write, with who did it (the resolver).
+
+    Called after the change is committed. Best effort: a failed audit write
+    is logged and the change stands (the same choice as the kill switch).
+    """
+    try:
+        await get_audit_service().log_rule_change(
+            tenant_id=tenant_id,
+            rule_id=rule_id,
+            change_type=change_type,
+            changed_by=resolver(request),
+            old_value=old,
+            new_value=new,
+        )
+    except Exception:
+        logger.error("Safety rule %s for %s not written to the audit log", change_type, tenant_id,
+                     exc_info=True)  # fmt: skip
 
 
 # ── Kill Switch ──────────────────────────────────────────────
