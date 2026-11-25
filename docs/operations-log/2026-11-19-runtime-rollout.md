@@ -430,3 +430,31 @@ There were no new migrations; alembic stays at 062. There were also no changes t
 
 **Not yet released:** prod is at `prod-20261125-0126`. #332-#342 are on master.
 
+
+### D26. Release of M16 and the Stage 0 M1 fixes (2026-11-25)
+
+**Decision:** the owner said "you decide for me and continue" (D25). Released tag `prod-20261125-0513`. Rollback is `0945191a`.
+
+**Included:**
+- M16: #332, #333 and #334.
+- Stage 0 M1: #336-#342.
+- Docs: #343.
+
+There were no migrations (alembic stays at 062) and no package changes. CI was green at `0635fb8`; only bot docs commits came after it. The `state-doc` job failure on `d72938f` was the bot's push race, not a test.
+
+**Verified on prod:**
+- Health 200, UI 200, `/metrics` without a key 401.
+- API, UI and dev runner all active. The owner approve path still gives 404 on a fake id.
+- Playwright Chromium launches. 0 errors in the API and worker logs. Dev edition health 200.
+- The #338, #341 and #342 code is present.
+- The kill switch reads `autonomy_paused=false` for `raja`.
+- **The restore drill passed with the released scripts.**
+- In the first minutes after restart, no "autonomy is paused" refusals were logged, so tenants without a config row are not stopped.
+
+**Backups:** `.env` and `pip freeze` in `~/life-graph-backups/release-20261125-2/`.
+
+**Rollback:** check out `0945191a` on `prod`, then run `./dev.sh restart`.
+
+**Still open (owner):**
+- The off-site restic copy: the laptop rest-server is refusing connections.
+- The approval backlog.
