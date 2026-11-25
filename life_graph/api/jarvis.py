@@ -1133,6 +1133,9 @@ async def undo_save(memory_id: uuid.UUID):
         if row is not None:
             # A correction (memory_save replaces_id) superseded the old fact;
             # taking the correction back must not leave neither of them active.
+            # A near-duplicate merged into this one (merged_into) is not an
+            # earlier value: it stays folded away, as page._restore_replaced
+            # leaves it (2026-11-25).
             await session.execute(
                 text(
                     # superseded_at goes too, or the restored fact still reads
@@ -1141,6 +1144,7 @@ async def undo_save(memory_id: uuid.UUID):
                     " updated_at = NOW(),"
                     " properties = COALESCE(properties, '{}'::jsonb) - 'superseded_at'"
                     " WHERE tenant_id = :t AND superseded_by = :id AND status = 'superseded'"
+                    " AND NOT (COALESCE(properties, '{}'::jsonb) ? 'merged_into')"
                 ),
                 {"id": memory_id, "t": tenant_id},
             )
