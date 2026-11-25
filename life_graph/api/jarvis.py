@@ -81,6 +81,7 @@ from life_graph.services.chat_turn import (
     stream_turn,
 )
 from life_graph.services.lead import LEAD
+from life_graph.services.memory import transitions
 from life_graph.services.memory.sources import source_label
 from life_graph.storage.database import async_session
 
@@ -1000,7 +1001,7 @@ async def _voice_reply(heard: str, turn: dict):
 
 async def _transcribe(audio: UploadFile) -> str:
     """The recording's words, transcribed on this machine only."""
-    from life_graph.api.multimodal import _get_multimodal_service
+    from life_graph.api.dependencies import MultimodalUnavailableError, get_multimodal_service
 
     data = await audio.read(MAX_AUDIO_BYTES + 1)
     if not data:
@@ -1008,9 +1009,11 @@ async def _transcribe(audio: UploadFile) -> str:
     if len(data) > MAX_AUDIO_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Recording is too long.")
     try:
-        heard = await _get_multimodal_service().transcribe_only(
+        heard = await get_multimodal_service().transcribe_only(
             data, audio.filename or "voice.m4a", local_only=True
         )
+    except MultimodalUnavailableError as err:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(err)) from err
     except ValueError:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "I couldn't hear anything."
@@ -1071,10 +1074,14 @@ async def _review(memory_id: uuid.UUID, action: str, request: Request) -> dict:
     ``approvals_require_owner`` is on, and who decided is recorded.
     """
     from life_graph.api.dependencies import get_store
-    from life_graph.api.memories import _transition
 
     require_owner(request)
-    row = await _transition(memory_id, action, get_store(), decided_by=resolver(request))
+    try:
+        row = await transitions.transition(
+            memory_id, action, get_store(), decided_by=resolver(request)
+        )
+    except transitions.MemoryTransitionError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from None
     return {"id": str(row.id), "status": row.status}
 
 

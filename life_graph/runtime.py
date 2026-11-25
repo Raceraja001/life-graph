@@ -566,6 +566,8 @@ if TYPE_CHECKING:
 
     from arq.connections import ArqRedis
 
+    from life_graph.services.multimodal import MultiModalService
+
 _arq_pool: ArqRedis | None = None
 _arq_pool_loop: asyncio.AbstractEventLoop | None = None
 _arq_pool_lock: tuple[asyncio.Lock, asyncio.AbstractEventLoop] | None = None
@@ -608,3 +610,36 @@ async def close_arq_pool() -> None:
             import logging
 
             logging.getLogger(__name__).warning("Closing the arq pool failed", exc_info=True)
+
+
+class MultimodalUnavailableError(RuntimeError):
+    """The file-storage client (the minio package) is not installed."""
+
+
+_multimodal_service: MultiModalService | None = None
+
+
+def get_multimodal_service() -> MultiModalService:
+    """The MultiModalService singleton, built on first use.
+
+    MultimodalUnavailableError without the minio package; the routes answer 503
+    (api/multimodal.py, api/jarvis.py).
+    """
+    global _multimodal_service
+    from life_graph.core.events import event_bus
+    from life_graph.services.multimodal import MultiModalService
+    from life_graph.storage.minio_client import MinIOStorage
+
+    if _multimodal_service is None:
+        try:
+            minio = MinIOStorage()
+        except ImportError as err:
+            raise MultimodalUnavailableError(
+                "MinIO client (minio package) is not installed"
+            ) from err
+        _multimodal_service = MultiModalService(
+            minio=minio,
+            event_bus=event_bus,
+            pipeline=get_extraction_pipeline(),
+        )
+    return _multimodal_service

@@ -180,7 +180,7 @@ async def test_conversations_and_messages_are_the_devices_own(client):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_voice_is_transcribed_locally_and_spoken_back(client, monkeypatch):
-    from life_graph.api import jarvis, multimodal
+    from life_graph.api import jarvis
     from life_graph.services import assistant_chat
 
     _, token = await _pair(client)
@@ -198,7 +198,7 @@ async def test_voice_is_transcribed_locally_and_spoken_back(client, monkeypatch)
     async def fake_speak(text, client=None):
         return b"ID3mp3"
 
-    monkeypatch.setattr(multimodal, "_get_multimodal_service", lambda: FakeStt())
+    monkeypatch.setattr("life_graph.runtime.get_multimodal_service", lambda: FakeStt())
     monkeypatch.setattr(jarvis, "_answer", fake_answer)
     monkeypatch.setattr(assistant_chat, "speak", fake_speak)
 

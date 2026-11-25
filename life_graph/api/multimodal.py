@@ -15,11 +15,9 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from life_graph.api.dependencies import get_extraction_pipeline
+from life_graph.api.dependencies import MultimodalUnavailableError, get_multimodal_service
 from life_graph.api.responses import success_response
-from life_graph.core.events import event_bus
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.storage.minio_client import MinIOStorage
 
 if TYPE_CHECKING:
     from life_graph.services.multimodal import MultiModalService
@@ -75,28 +73,14 @@ def _validate_upload(file: UploadFile, data: bytes, allowed_types: set[str], lab
     return filename
 
 
-_multimodal_service: MultiModalService | None = None
-
-
 def _get_multimodal_service() -> MultiModalService:
-    """Lazy-build the MultiModalService singleton."""
-    global _multimodal_service
-    from life_graph.services.multimodal import MultiModalService
-
-    if _multimodal_service is None:
-        try:
-            minio = MinIOStorage()
-        except ImportError as err:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="MinIO client (minio package) is not installed",
-            ) from err
-        _multimodal_service = MultiModalService(
-            minio=minio,
-            event_bus=event_bus,
-            pipeline=get_extraction_pipeline(),
-        )
-    return _multimodal_service
+    """The MultiModalService singleton (life_graph/runtime.py); 503 without minio."""
+    try:
+        return get_multimodal_service()
+    except MultimodalUnavailableError as err:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(err)
+        ) from err
 
 
 @router.post(
