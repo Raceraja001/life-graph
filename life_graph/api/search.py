@@ -850,6 +850,8 @@ async def ask_brain(
             "importance": m.importance,
             "confidence": m.confidence,
             "source_type": m.source_type,
+            # Outside memories are fenced as data in the prompt (synthesis.py).
+            "trust_tier": getattr(row, "trust_tier", None),
             # From the retrieved row, not the MemoryResponse (which carries no
             # validity window, so these were always None): an as_of question
             # can bring back a replaced or since-ended fact, and the model must

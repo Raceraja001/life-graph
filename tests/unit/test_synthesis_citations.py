@@ -51,7 +51,7 @@ class _FakeClient:
     def __init__(self, reply: str):
         self._reply = reply
 
-    async def chat(self, **kwargs):
+    async def chat_local_only(self, **kwargs):  # synthesis is local-only (D25)
         return self._reply
 
 

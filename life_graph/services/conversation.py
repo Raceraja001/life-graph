@@ -33,6 +33,8 @@ async def _judged_retrieve(question: str, history: list[dict[str, str]]) -> list
             "tags": m.tags or [],
             "importance": m.importance,
             "created_at": m.created_at.isoformat() if m.created_at else None,
+            # Outside memories are fenced as data in the prompt (synthesis.py).
+            "trust_tier": getattr(m, "trust_tier", None),
         }
         for m in found
     ]

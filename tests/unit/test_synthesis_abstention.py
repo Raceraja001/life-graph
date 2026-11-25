@@ -20,8 +20,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from life_graph.services.synthesis import (
-    ABSTENTION_SENTENCE,
     _SYNTHESIS_SYSTEM_PROMPT,
+    ABSTENTION_SENTENCE,
     SynthesisService,
     _is_abstention,
 )
@@ -30,7 +30,7 @@ MEMORIES = [{"id": "11111111-1111-1111-1111-111111111111", "content": "x", "tags
 
 
 def _service(answer: str) -> SynthesisService:
-    return SynthesisService(client=AsyncMock(chat=AsyncMock(return_value=answer)))
+    return SynthesisService(client=AsyncMock(chat_local_only=AsyncMock(return_value=answer)))
 
 
 class TestTheFlag:
