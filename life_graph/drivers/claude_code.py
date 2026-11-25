@@ -43,6 +43,12 @@ DEFAULT_COST_PER_TASK_USD = 0.10  # frontier cost class; actual cost read from C
 _ALLOWED_TOOLS_FLAG = "--allowedTools"
 _DISALLOWED_TOOLS_FLAG = "--disallowedTools"
 _PERMISSION_MODE_FLAG = "--permission-mode"
+# Host mode only. Verified against `claude --help` (2.1.x) and by hand
+# (2026-11-25): it ignores user, project and local settings files and
+# confines Read/Glob/Grep (and Write/Edit) to the working directory. A read
+# of a file outside it, or of a symlink in it that points outside, is denied.
+# It also removes Bash and WebFetch unless --tools names them.
+_RESTRICTED_FLAG = "--restricted"
 
 # The CLI's most restrictive non-interactive permission mode (verified
 # against `claude --help`: choices are acceptEdits, auto, bypassPermissions,
@@ -95,8 +101,55 @@ _TOOL_NAME_TO_CLI: dict[str, tuple[str, ...]] = {
 # tools (Read/Glob/Grep/WebSearch/WebFetch) are intentionally NOT denied:
 # they carry no blast radius, and hard-denying them would newly break
 # existing personas (e.g. uzhavu-ops) that this branch is meant not to
-# regress.
+# regress. On the host that is not true (see _HOST_DENIED_CLI_TOOLS below).
 _DENIABLE_CLI_TOOLS: tuple[str, ...] = ("Bash", "Edit", "NotebookEdit", "Write")
+
+# Host mode (driver_claude_sandbox=none): the CLI runs as the API's user, so
+# a read tool can reach ~/.ssh or a .env, and a web tool can send what it
+# read anywhere (Stage 0, 2026-11-25). On the host the web tools are always
+# denied, and with the shell denied the run gets --restricted, which keeps
+# the file tools inside the working directory. In a container (task) none of
+# this applies: the worktree is the only host path and egress is allowlisted.
+_HOST_DENIED_CLI_TOOLS: tuple[str, ...] = ("WebFetch", "WebSearch")
+
+
+def _permission_args(
+    cli_tools: list[str] | None, *, host_mode: bool, host_shell_denied: bool
+) -> list[str]:
+    """The CLI's permission flags for this dispatch.
+
+    *cli_tools* is the persona's CLI allowlist (``None`` = unscoped). On the
+    host (*host_mode*) the web tools are denied, and, unless the operator
+    allowed the host shell, ``--restricted`` confines the file tools to the
+    working directory. ``--restricted`` would also remove Bash, so it is
+    left off when the host shell is allowed; that opt-in already means the
+    agent can read anything the user can.
+    """
+    args: list[str] = []
+    denied: set[str] = set(_HOST_DENIED_CLI_TOOLS) if host_mode else set()
+    if host_shell_denied:
+        denied.add("Bash")
+    if cli_tools is not None:
+        args += [
+            _ALLOWED_TOOLS_FLAG,
+            ",".join(cli_tools),
+            # --allowedTools is a PRE-APPROVAL list, not a sandbox: an
+            # unlisted tool call still falls through to the CLI's permission
+            # system. Pin the mode so a permissive host default cannot
+            # approve it on our behalf.
+            _PERMISSION_MODE_FLAG,
+            _RESTRICTIVE_PERMISSION_MODE,
+        ]
+        # ...and deny the dangerous tools outright, so the scoping does not
+        # depend on the permission system answering right.
+        denied.update(_disallowed_cli_tools(cli_tools))
+    # Unscoped dispatch: the CLI's own permissions decide, which a host
+    # settings.json can widen. The host denials apply regardless.
+    if denied:
+        args += [_DISALLOWED_TOOLS_FLAG, ",".join(sorted(denied))]
+    if host_mode and host_shell_denied:
+        args.append(_RESTRICTED_FLAG)
+    return args
 
 
 def _disallowed_cli_tools(cli_tools: list[str]) -> list[str]:
@@ -343,31 +396,37 @@ class ClaudeCodeDriver:
                     metadata={"exit_status": "refused_host_shell"},
                 )
 
+        # On the host the web tools are denied (_HOST_DENIED_CLI_TOOLS): drop
+        # them from the allowlist too, loudly, the same way as Bash above.
+        host_mode = not sandbox.driver_sandbox_enabled()
+        host_web = [t for t in (cli_tools or []) if t in _HOST_DENIED_CLI_TOOLS]
+        if host_mode and host_web:
+            logger.warning(
+                "claude_code task %s: %s removed from the persona's tools on the host; set "
+                "driver_claude_sandbox=task for a run with allowlisted network access",
+                packet.task_id,
+                ",".join(host_web),
+            )
+            cli_tools = [t for t in cli_tools or [] if t not in _HOST_DENIED_CLI_TOOLS]
+            if not cli_tools:
+                return DriverResult(
+                    success=False,
+                    error=(
+                        "This persona needs web access, and the claude_code driver runs "
+                        "on the host: set driver_claude_sandbox=task"
+                    ),
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                    metadata={"exit_status": "refused_host_web"},
+                )
+
         cwd, worktree = await resolve_workdir(packet, workdir)
         try:
             # stream-json (which -p only allows with --verbose) instead of
             # json: the same final result, plus every step that led to it.
             args = [self._binary, "-p", prompt, "--output-format", "stream-json", "--verbose"]
-            if cli_tools is not None:
-                args += [
-                    _ALLOWED_TOOLS_FLAG,
-                    ",".join(cli_tools),
-                    # --allowedTools is a PRE-APPROVAL list, not a sandbox:
-                    # an unlisted tool call still falls through to the CLI's
-                    # permission system. Pin the mode so a permissive host
-                    # default cannot approve it on our behalf.
-                    _PERMISSION_MODE_FLAG,
-                    _RESTRICTIVE_PERMISSION_MODE,
-                ]
-                # ...and deny the dangerous tools outright, so the scoping
-                # does not depend on the permission system answering right.
-                denied = _disallowed_cli_tools(cli_tools)
-                if denied:
-                    args += [_DISALLOWED_TOOLS_FLAG, ",".join(denied)]
-            elif host_shell_denied:
-                # Unscoped dispatch: the CLI's own permissions decide, which a
-                # host settings.json can widen. Bash is denied regardless.
-                args += [_DISALLOWED_TOOLS_FLAG, "Bash"]
+            args += _permission_args(
+                cli_tools, host_mode=host_mode, host_shell_denied=host_shell_denied
+            )
 
             sandboxed = sandbox.driver_sandbox_enabled()
             boundary = settings.driver_claude_sandbox if sandboxed else "host"
@@ -421,6 +480,13 @@ class ClaudeCodeDriver:
                     # (legacy open-network container) or "task" (task_runtime).
                     "boundary": boundary,
                     "host_shell": "denied" if host_shell_denied else "allowed",
+                    # Host only: whether the file tools were kept to the
+                    # working directory (--restricted).
+                    **(
+                        {"host_files": "workdir_only" if host_shell_denied else "unconfined"}
+                        if host_mode
+                        else {}
+                    ),
                     **audit,
                 },
             )

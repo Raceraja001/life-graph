@@ -235,6 +235,10 @@ class DriverSettings(BaseModel):
     # process's user. Off: the claude_code driver's Bash tool is denied on
     # the host (OpenCode's bash already is, driver_opencode_allow_bash).
     # Turning this on is a statement that the host is a disposable dev box.
+    # Also on the host, always: WebFetch/WebSearch are denied, and while the
+    # shell is denied the CLI runs with --restricted, which keeps its file
+    # tools inside the worktree (drivers/claude_code.py:_permission_args).
+    # With this on, --restricted is left off (it would remove Bash too).
     driver_allow_host_shell: bool = False
     # Extra variable names a host-run driver CLI may inherit. Host-run
     # drivers otherwise get only PATH/HOME/locale-style variables -- never

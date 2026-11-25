@@ -75,8 +75,11 @@ async def test_dispatch_passes_allowed_tools_flag_to_the_cli(tmp_path, monkeypat
     monkeypatch.setattr(settings, "driver_allow_host_shell", True)
     driver = ClaudeCodeDriver(binary="claude")
     packet = ContextPacket(
-        task_id=uuid.uuid4(), tenant_id="t1", task_type="code",
-        instruction="fix it", allowed_tools=["file_read", "run_command"],
+        task_id=uuid.uuid4(),
+        tenant_id="t1",
+        task_type="code",
+        instruction="fix it",
+        allowed_tools=["file_read", "run_command"],
         persona_system_prompt="You are Cody.",
     )
 
@@ -122,7 +125,9 @@ async def test_dispatch_omits_flag_when_unscoped(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "driver_allow_host_shell", True)
     driver = ClaudeCodeDriver(binary="claude")
     packet = ContextPacket(
-        task_id=uuid.uuid4(), tenant_id="t1", task_type="code",
+        task_id=uuid.uuid4(),
+        tenant_id="t1",
+        task_type="code",
         instruction="fix it",
     )
 
@@ -142,10 +147,12 @@ async def test_dispatch_omits_flag_when_unscoped(tmp_path, monkeypatch):
 
     await driver.dispatch(packet, tmp_path)
 
-    assert "--allowedTools" not in captured_args["args"]
-    # No scoping requested → don't touch the CLI's own permission handling.
-    assert "--permission-mode" not in captured_args["args"]
-    assert "--disallowedTools" not in captured_args["args"]
+    args = captured_args["args"]
+    assert "--allowedTools" not in args
+    # No scoping requested → don't touch the CLI's own permission handling...
+    assert "--permission-mode" not in args
+    # ...except the host-mode denial of the web tools (Stage 0, 2026-11-25).
+    assert args[args.index("--disallowedTools") + 1] == "WebFetch,WebSearch"
 
 
 @pytest.mark.asyncio
@@ -154,8 +161,11 @@ async def test_dispatch_refuses_when_no_tool_maps_to_the_cli(tmp_path, monkeypat
     semantics: never invoke the subprocess at all."""
     driver = ClaudeCodeDriver(binary="claude")
     packet = ContextPacket(
-        task_id=uuid.uuid4(), tenant_id="t1", task_type="code",
-        instruction="fix it", allowed_tools=["delegate_to_persona"],
+        task_id=uuid.uuid4(),
+        tenant_id="t1",
+        task_type="code",
+        instruction="fix it",
+        allowed_tools=["delegate_to_persona"],
     )
 
     calls = []
@@ -181,8 +191,11 @@ async def test_dispatch_still_runs_for_an_empty_but_unscoped_packet(tmp_path, mo
     be conflated."""
     driver = ClaudeCodeDriver(binary="claude")
     packet = ContextPacket(
-        task_id=uuid.uuid4(), tenant_id="t1", task_type="code",
-        instruction="fix it", allowed_tools=[],
+        task_id=uuid.uuid4(),
+        tenant_id="t1",
+        task_type="code",
+        instruction="fix it",
+        allowed_tools=[],
     )
 
     async def _fake_exec(*args, **kwargs):
