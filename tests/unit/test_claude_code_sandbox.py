@@ -1,8 +1,12 @@
-"""ClaudeCodeDriver, sandboxed: routes through sandbox.run_driver instead of
-a bare host subprocess when driver_claude_sandbox="docker", stages a
-throwaway copy of the CLI's own credentials rather than the live
-~/.claude, cleans that copy up even on failure, and fails closed (never
-falls back to host execution) when the sandbox itself is unavailable.
+"""ClaudeCodeDriver, sandboxed: routes through the per-task runtime instead of
+a bare host subprocess when driver_claude_sandbox="task", stages a throwaway
+copy of the CLI's own credentials (legacy opt-in) rather than the live
+~/.claude, cleans that copy up even on failure, and fails closed (never falls
+back to host execution) when the sandbox itself is unavailable.
+
+The old "docker" mode (open-network container, no policy check) is fenced
+(owner decision D25, 2026-11-25): every dispatch in it refuses before any
+login is staged or any process starts.
 """
 
 from __future__ import annotations
@@ -13,19 +17,23 @@ import pytest
 
 from life_graph.drivers.base import ContextPacket
 from life_graph.drivers.claude_code import ClaudeCodeDriver
-from life_graph.services.dev import sandbox
+from life_graph.services.dev import sandbox, task_runtime
 
 
 @pytest.fixture
-def sandboxed(monkeypatch):
+def sandboxed(monkeypatch, tmp_path):
     from life_graph.config import settings
 
-    monkeypatch.setattr(settings, "driver_claude_sandbox", "docker")
+    monkeypatch.setattr(settings, "driver_claude_sandbox", "task")
+    # No project environment build: these tests are about the login and the
+    # boundary, not the mounted test tools (test_driver_tool_env.py).
+    monkeypatch.setattr(settings, "driver_runtime_project_tools", False)
     # These tests exercise the legacy staged copy; the long-lived token path
     # is in test_claude_code_sandbox_login.py.
     monkeypatch.setattr(settings, "driver_claude_code_allow_staged_login", True)
     monkeypatch.setattr(settings, "driver_claude_code_oauth_token", "")
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.setattr(settings, "verifier_sandbox_cache_dir", str(tmp_path / "envs"))
 
 
 def _packet(**overrides):
@@ -38,7 +46,13 @@ def _packet(**overrides):
     )
 
 
-async def test_dispatch_stages_credentials_and_calls_run_driver(tmp_path, sandboxed, monkeypatch):
+def _ok(stdout='{"result": "ok", "session_id": "s1"}'):
+    return task_runtime.RuntimeOutcome(0, stdout, "", {"runtime": "task"})
+
+
+async def test_dispatch_stages_credentials_and_runs_in_the_runtime(
+    tmp_path, sandboxed, monkeypatch
+):
     from life_graph.config import settings
 
     creds = tmp_path / "creds" / ".credentials.json"
@@ -48,25 +62,24 @@ async def test_dispatch_stages_credentials_and_calls_run_driver(tmp_path, sandbo
 
     seen = {}
 
-    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
-        seen["argv"] = argv
-        seen["workdir"] = workdir
-        seen["credentials_dir"] = credentials_dir
+    async def fake_run(req):
+        seen["req"] = req
         # The staged copy must exist and be separate from the real file.
-        assert (credentials_dir / ".credentials.json").read_text() == '{"token": "secret"}'
-        assert credentials_dir != creds.parent
-        return sandbox.SandboxResult(0, '{"result": "ok", "session_id": "s1"}', "")
+        assert (req.credentials / ".credentials.json").read_text() == '{"token": "secret"}'
+        assert req.credentials != creds.parent
+        return _ok()
 
-    monkeypatch.setattr(sandbox, "run_driver", fake_run_driver)
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
 
     driver = ClaudeCodeDriver(binary="claude")
     result = await driver.dispatch(_packet(), tmp_path / "work")
 
     assert result.success is True
     assert result.metadata["sandboxed"] is True
-    assert seen["argv"][0] == "claude"
+    assert result.metadata["boundary"] == "task"
+    assert seen["req"].command[0] == sandbox.DRIVER_CLI
     # The credentials copy is gone again once the dispatch is done.
-    assert not seen["credentials_dir"].exists()
+    assert not seen["req"].credentials.exists()
 
 
 async def test_credentials_are_cleaned_up_even_on_failure(tmp_path, sandboxed, monkeypatch):
@@ -79,11 +92,11 @@ async def test_credentials_are_cleaned_up_even_on_failure(tmp_path, sandboxed, m
 
     staged_dirs = []
 
-    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
-        staged_dirs.append(credentials_dir)
+    async def fake_run(req):
+        staged_dirs.append(req.credentials)
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(sandbox, "run_driver", fake_run_driver)
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
 
     driver = ClaudeCodeDriver(binary="claude")
     result = await driver.dispatch(_packet(), tmp_path / "work")
@@ -100,9 +113,9 @@ async def test_missing_credentials_file_refuses_without_running(tmp_path, sandbo
     )
 
     async def must_not_run(*a, **kw):
-        raise AssertionError("run_driver must never be called without credentials")
+        raise AssertionError("the runtime must never be started without credentials")
 
-    monkeypatch.setattr(sandbox, "run_driver", must_not_run)
+    monkeypatch.setattr(task_runtime.runtime, "run", must_not_run)
 
     driver = ClaudeCodeDriver(binary="claude")
     result = await driver.dispatch(_packet(), tmp_path / "work")
@@ -120,10 +133,10 @@ async def test_sandbox_unavailable_never_falls_back_to_the_host(tmp_path, sandbo
     creds.write_text("{}")
     monkeypatch.setattr(settings, "driver_claude_code_creds_path", str(creds))
 
-    async def unavailable(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
+    async def unavailable(req):
         raise sandbox.SandboxUnavailableError("image not built")
 
-    monkeypatch.setattr(sandbox, "run_driver", unavailable)
+    monkeypatch.setattr(task_runtime.runtime, "run", unavailable)
 
     async def must_not_run(*a, **kw):
         raise AssertionError("host subprocess must never be spawned when sandboxing is on")
@@ -147,16 +160,41 @@ async def test_sandbox_timeout_reports_as_timeout_not_a_generic_error(
     creds.write_text("{}")
     monkeypatch.setattr(settings, "driver_claude_code_creds_path", str(creds))
 
-    async def timed_out(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
-        raise sandbox.SandboxUnavailableError(f"sandboxed command timed out after {timeout}s")
+    async def timed_out(req):
+        raise sandbox.SandboxUnavailableError(f"sandboxed command timed out after {req.timeout}s")
 
-    monkeypatch.setattr(sandbox, "run_driver", timed_out)
+    monkeypatch.setattr(task_runtime.runtime, "run", timed_out)
 
     driver = ClaudeCodeDriver(binary="claude")
     result = await driver.dispatch(_packet(), tmp_path / "work", timeout=5)
 
     assert result.success is False
     assert result.metadata["exit_status"] == "timeout"
+
+
+async def test_legacy_docker_mode_is_fenced_and_nothing_runs(tmp_path, monkeypatch):
+    """D25: driver_claude_sandbox=docker refuses every dispatch, before any
+    login is staged, any container is started, or any host process runs."""
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "driver_claude_sandbox", "docker")
+    monkeypatch.setattr(settings, "driver_claude_code_oauth_token", "sk-ant-oat01-" + "x" * 40)
+
+    async def never(*a, **kw):
+        raise AssertionError("the fenced docker mode must not run anything")
+
+    monkeypatch.setattr(task_runtime.runtime, "run", never)
+    monkeypatch.setattr(sandbox, "_exec", never)
+    monkeypatch.setattr(sandbox, "stage_credentials", never)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", never)
+
+    result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path / "work")
+
+    assert result.success is False
+    assert result.metadata["exit_status"] == "sandbox_unavailable"
+    assert result.metadata["boundary"] == "docker"
+    assert "driver_claude_sandbox=docker is switched off" in result.error
+    assert "SANDBOX=task" in result.error  # says what to set instead
 
 
 async def test_host_dispatch_is_unaffected_when_sandbox_is_off(tmp_path, monkeypatch):
@@ -242,11 +280,11 @@ async def test_dispatch_streams_and_returns_every_step(tmp_path, sandboxed, monk
         ]
     )
 
-    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
-        seen["argv"] = argv
-        return sandbox.SandboxResult(0, stream, "")
+    async def fake_run(req):
+        seen["argv"] = list(req.command)
+        return _ok(stream)
 
-    monkeypatch.setattr(sandbox, "run_driver", fake_run_driver)
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
 
     result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path / "work")
 
@@ -275,24 +313,20 @@ async def test_api_key_mode_passes_the_key_by_name_and_stages_no_login(
     monkeypatch.setattr(sandbox, "stage_credentials", no_staging)
     seen = {}
 
-    async def fake_image():
-        return "sha256:x"
+    async def fake_run(req):
+        seen["req"] = req
+        return _ok('{"result": "ok"}')
 
-    async def fake_exec(argv, timeout, container=None, env=None):
-        seen["argv"], seen["env"] = argv, env
-        return sandbox.SandboxResult(0, '{"result": "ok"}', "")
-
-    monkeypatch.setattr(sandbox, "_driver_image_id", fake_image)
-    monkeypatch.setattr(sandbox, "_exec", fake_exec)
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
 
     result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path / "work")
 
     assert result.success is True
-    argv = seen["argv"]
-    assert "ANTHROPIC_API_KEY" in argv  # by name only...
-    assert not any("sk-ant-test-key" in a for a in argv)  # ...never the value in argv
-    assert seen["env"] == {"ANTHROPIC_API_KEY": "sk-ant-test-key-1234567890"}
-    assert not any("claude-config" in a and ":/claude-config" in a for a in argv)
+    req = seen["req"]
+    assert req.secret_env == {"ANTHROPIC_API_KEY": "sk-ant-test-key-1234567890"}  # by name only
+    assert not any("sk-ant-test-key" in a for a in req.command)  # never on the command line
+    assert "sk-ant-test-key" not in str(req.env)
+    assert req.credentials is None  # no login mounted
 
 
 async def test_api_key_mode_without_a_key_fails_instead_of_using_the_login(

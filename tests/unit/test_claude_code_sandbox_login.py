@@ -82,35 +82,27 @@ async def test_the_env_var_works_as_well_as_the_setting(oauth, tmp_path, monkeyp
     assert got["req"].secret_env == {"CLAUDE_CODE_OAUTH_TOKEN": TOKEN}
 
 
-async def test_legacy_docker_mode_passes_the_token_by_name(oauth, tmp_path, monkeypatch):
+async def test_legacy_docker_mode_is_fenced_even_with_a_token(oauth, tmp_path, monkeypatch):
+    # D25: the old open-network container no longer runs, login or not.
     monkeypatch.setattr(settings, "driver_claude_sandbox", "docker")
     monkeypatch.setattr(settings, "driver_claude_code_oauth_token", TOKEN)
-    seen = {}
 
-    async def fake_image():
-        return "sha256:x"
+    async def never(*a, **k):
+        raise AssertionError("the fenced docker mode must not run anything")
 
-    async def fake_exec(argv, timeout, container=None, env=None):
-        seen["argv"], seen["env"] = argv, env
-        return sandbox.SandboxResult(0, '{"result": "ok"}', "")
-
-    monkeypatch.setattr(sandbox, "_driver_image_id", fake_image)
-    monkeypatch.setattr(sandbox, "_exec", fake_exec)
+    monkeypatch.setattr(task_runtime.runtime, "run", never)
+    monkeypatch.setattr(sandbox, "_exec", never)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", never)
     result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path / "work")
 
-    argv = seen["argv"]
-    assert result.success is True
-    assert "CLAUDE_CODE_OAUTH_TOKEN" in argv  # by name...
-    assert not any(TOKEN in a for a in argv)  # ...never the value on the command line
-    assert seen["env"] == {"CLAUDE_CODE_OAUTH_TOKEN": TOKEN}
-    assert not any(":/claude-config" in a for a in argv)
+    assert result.success is False
+    assert result.metadata["exit_status"] == "sandbox_unavailable"
+    assert "switched off" in result.error
+    assert TOKEN not in result.error
 
 
-@pytest.mark.parametrize("mode", ["task", "docker"])
-async def test_no_token_refuses_instead_of_copying_the_host_login(
-    oauth, tmp_path, monkeypatch, mode
-):
-    monkeypatch.setattr(settings, "driver_claude_sandbox", mode)
+async def test_no_token_refuses_instead_of_copying_the_host_login(oauth, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "driver_claude_sandbox", "task")
 
     async def never(*a, **k):
         raise AssertionError("nothing may run without a login")

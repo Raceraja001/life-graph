@@ -184,71 +184,39 @@ async def test_missing_image_is_unavailable(docker_mode, tmp_path, monkeypatch):
 
 # ── Driver sandbox (claude_code) ─────────────────────────────
 #
-# The opposite shape from the check-phase run() above: network stays on,
-# the workdir is read-write, and only a throwaway credentials copy is
-# mounted alongside it — never the live ~/.claude.
+# The old open-network driver container (run_driver) is fenced (owner
+# decision D25, 2026-11-25): it refuses without touching docker. The driver
+# runs in the per-task runtime (test_driver_execution_boundary.py).
 
 
-@pytest.fixture
-def driver_docker_mode(monkeypatch, tmp_path):
+async def test_run_driver_is_fenced_and_never_calls_docker(tmp_path, monkeypatch):
     from life_graph.config import settings
 
     monkeypatch.setattr(settings, "driver_claude_sandbox", "docker")
-    monkeypatch.setattr(settings, "verifier_sandbox_cache_dir", str(tmp_path / "envs"))
-    return settings
+
+    async def never(*a, **kw):
+        raise AssertionError("the fenced driver container must not call docker")
+
+    monkeypatch.setattr(sandbox, "_exec", never)
+    with pytest.raises(sandbox.SandboxUnavailableError, match="SANDBOX=task"):
+        await sandbox.run_driver(["claude", "-p", "hi"], tmp_path / "w", tmp_path / "c")
 
 
-async def test_run_driver_flags_open_network_and_write_the_workdir(
-    driver_docker_mode, tmp_path, monkeypatch
-):
-    captured = {}
+@pytest.mark.parametrize("mode", ["docker"])
+def test_refuse_legacy_driver_sandbox_refuses_docker(mode, monkeypatch):
+    from life_graph.config import settings
 
-    async def fake_exec(argv, timeout, container=None, env=None):
-        captured["argv"] = argv
-        return sandbox.SandboxResult(0, "", "")
-
-    monkeypatch.setattr(sandbox, "_exec", fake_exec)
-    workdir = tmp_path / "work"
-    creds = tmp_path / "creds"
-    await sandbox.run_driver(["claude", "-p", "hi"], workdir, creds)
-    argv = captured["argv"]
-    joined = " ".join(argv)
-    assert "--network" not in argv  # unlike run(): network stays on
-    assert "--read-only" in argv  # root fs still locked
-    assert argv[argv.index("--cap-drop") + 1] == "ALL"
-    assert f"{workdir}:/work" in joined and f"{workdir}:/work:ro" not in joined  # rw
-    # rw, not :ro: the CLI refreshes its access token in place (confirmed by
-    # hand — a :ro mount left it authenticating with a stale token).
-    assert f"{creds}:/claude-config" in joined and f"{creds}:/claude-config:ro" not in joined
-    assert argv[argv.index("--entrypoint") + 1] == "/usr/local/bin/claude"
+    monkeypatch.setattr(settings, "driver_claude_sandbox", mode)
+    with pytest.raises(sandbox.SandboxUnavailableError, match="switched off"):
+        sandbox.refuse_legacy_driver_sandbox()
 
 
-async def test_run_driver_uses_the_images_cli_not_the_host_path(
-    driver_docker_mode, tmp_path, monkeypatch
-):
-    captured = {}
+@pytest.mark.parametrize("mode", ["task", "none"])
+def test_refuse_legacy_driver_sandbox_leaves_task_and_none_alone(mode, monkeypatch):
+    from life_graph.config import settings
 
-    async def fake_exec(argv, timeout, container=None, env=None):
-        captured["argv"] = argv
-        return sandbox.SandboxResult(0, "", "")
-
-    monkeypatch.setattr(sandbox, "_exec", fake_exec)
-    await sandbox.run_driver(
-        ["/home/someone/.local/bin/claude", "-p", "hi"], tmp_path / "w", tmp_path / "c"
-    )
-    argv = captured["argv"]
-    assert argv[argv.index("--entrypoint") + 1] == "/usr/local/bin/claude"
-    assert "/home/someone/.local/bin/claude" not in argv
-    assert argv[-2:] == ["-p", "hi"]
-
-
-async def test_run_driver_missing_image_is_unavailable(driver_docker_mode, tmp_path, monkeypatch):
-    async def fake_exec(argv, timeout, container=None, env=None):
-        return sandbox.SandboxResult(1, "", "No such image")
-
-    monkeypatch.setattr(sandbox, "_exec", fake_exec)
-    with pytest.raises(sandbox.SandboxUnavailableError, match="build.sh"):
-        await sandbox.run_driver(["claude"], tmp_path / "w", tmp_path / "c")
+    monkeypatch.setattr(settings, "driver_claude_sandbox", mode)
+    sandbox.refuse_legacy_driver_sandbox()  # no error
 
 
 async def test_stage_credentials_copies_not_links_and_is_private(tmp_path, monkeypatch):

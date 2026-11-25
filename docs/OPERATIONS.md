@@ -633,7 +633,7 @@ Where coding drivers run, and how to run them safely. Design and threat model:
 | Driver | Where it runs | Shell | Environment |
 |---|---|---|---|
 | `claude_code`, `DRIVER_CLAUDE_SANDBOX=task` | per-task container; worktree is the only host path; internal network; egress only via allowlisting proxy | yes, inside the container | built in code, validated (no `LIFE_GRAPH_*`, no secrets) |
-| `claude_code`, `=docker` (legacy) | container on docker's default bridge (open network) | yes, inside the container | as above, minus the network policy |
+| `claude_code`, `=docker` (**fenced**, D25) | nothing runs: every dispatch fails with `sandbox_unavailable`, and runtime health reports `driver_sandbox_fenced`. It was a container on docker's open default bridge that skipped the policy check | — | — |
 | `claude_code`, `=none` | host, as the API user | **denied** unless `DRIVER_ALLOW_HOST_SHELL=true` | allowlist (`drivers/host_exec.py`) |
 | `opencode` (**parked**: `DRIVER_OPENCODE_ENABLED=false`, reports unavailable) | host, as the API user | **denied** unless `DRIVER_OPENCODE_ALLOW_BASH=true` | allowlist |
 | `local` | in the API process | `run_command`: `TOOL_SHELL_MODE=allowlist` (read-only programs) | `shell_allowlist.child_env()`, also in `full` mode while a driver has confined the tools to a task (`confine_to`) |
@@ -759,7 +759,7 @@ What it does not close:
 
 ### Claude login for sandboxed runs
 
-A sandboxed `claude_code` run (`task` or `docker`) in OAuth mode uses a **long-lived token**:
+A sandboxed `claude_code` run (`task`) in OAuth mode uses a **long-lived token**:
 
 ```bash
 claude setup-token        # in WSL, as the user the API runs as; opens the browser once
@@ -818,8 +818,15 @@ fully subnetted". The daemon config is not changed (that would restart every con
 
 ### Rollback
 
-Set `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=docker` (previous container behaviour) and restart.
-There is no schema change.
+Roll back to the **previous `task` image tag**: set `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_IMAGE`
+(and `LIFE_GRAPH_DRIVER_RUNTIME_EGRESS_IMAGE`, if the proxy changed) to the tag that worked
+and restart. Keep `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=task`. There is no schema change.
+
+`LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=docker` is **not** a rollback any more (owner decision
+D25, 2026-11-25). That mode ran the agent on docker's open default network, with the host
+reachable on its gateway, and skipped `validate_spec`. It is fenced: every `claude_code`
+dispatch refuses with `sandbox_unavailable`, and runtime health raises
+`driver_sandbox_fenced` (critical). It never falls back to the host.
 
 ### Dev-task runner (where tasks execute)
 
@@ -927,6 +934,7 @@ dev tasks in the last 30 days.
 | `orphans` | warning | Containers or networks left by tasks that are not running, older than 5 min | The periodic sweep should remove them; see "Inspect and clean up" |
 | `memory_pressure` | warning | An agent container is at 90% or more of its memory limit | `docker stats`; consider `DRIVER_CLAUDE_SANDBOX_MEMORY` |
 | `docker_unavailable` | warning | Containers could not be listed while tasks use them | The docker daemon |
+| `driver_sandbox_fenced` | critical | `DRIVER_CLAUDE_SANDBOX=docker` is set; that mode is switched off, so every `claude_code` task fails | Set it to `task` (see "Rollback") |
 | `db_unavailable` | critical | The database check failed | Postgres |
 
 ### Benchmark and reliability checks

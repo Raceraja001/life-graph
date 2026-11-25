@@ -26,7 +26,7 @@ Add a per-task runtime, built on the existing validator, and make it a third val
 
 ```
 driver_claude_sandbox = none   | host; Bash denied unless driver_allow_host_shell
-                      | docker | legacy open-network container (kept as the rollback)
+                      | docker | legacy open-network container (fenced 2026-11-25, D25)
                       | task   | per-task runtime (this ADR)  ← recommended
 ```
 
@@ -84,7 +84,7 @@ Alongside the runtime, and for every driver on the host:
 - **Login revocation (found in prod, 2026-11-19).** The first design mounted a throwaway copy of `~/.claude/.credentials.json`. With the host's access token expired, the CLI in the container refreshed it inside the copy. The refresh token rotated, so the host's own login was revoked, and every later run failed with a 401. Writing the refreshed file back was rejected: it would let an agent plant its own account's login on the host. The fix is the long-lived token (owner choice A). The copy stays behind `driver_claude_code_allow_staged_login`, off by default.
 - **Anything reachable on an allowlisted host is reachable.** The proxy fences by hostname and does not terminate TLS.
 - **The worktree's `.git` file reveals the origin path** inside the container. Git commands there fail, because the origin's git dir is not mounted; landing happens on the host.
-- **The legacy `docker` mode uses the default bridge,** where the host is reachable on its gateway. Prefer `task`. Verifier setup moved behind the same isolated network and proxy on 2026-11-19.
+- **The legacy `docker` mode used the default bridge,** where the host is reachable on its gateway. It is fenced since 2026-11-25 (D25): every dispatch in it refuses. Verifier setup moved behind the same isolated network and proxy on 2026-11-19.
 - **Verifier setup can still write to an allowlisted registry.** `registry.npmjs.org` accepts `npm publish` and `plugins.gradle.org` accepts plugin publishes. Code that runs during setup (lifecycle or build scripts, a dependency's install script) could publish a package that carries the token. The fix is a read-only mirror or pull-through cache. The manifest scan is a fast first check, not the enforcement: an agent that runs at the same time as setup (OpenCode's host-run `run_tests`) could race it. The proxy is what holds then.
 - **The per-task proxy listens on `0.0.0.0`,** so anything on the shared `lg-rt-outbound` bridge can use it, but only to reach the allowlisted hosts.
 - **OpenCode still runs on the host.** Bash is denied and the env is now allowlisted, but its file tools can read anything the user can. Moving it into the runtime is the next driver; it needs an Ollama egress rule, because the proxy refuses private addresses today.
@@ -92,7 +92,7 @@ Alongside the runtime, and for every driver on the host:
 
 ## Rollback
 
-- `driver_claude_sandbox=docker` gives the previous container behaviour.
+- Roll back to the previous `task` image tag (`driver_claude_sandbox_image`). `driver_claude_sandbox=docker` is fenced (D25) and no longer a rollback.
 - `driver_claude_sandbox=none` gives the host, with Bash denied.
 - `driver_allow_host_shell=true` / `verifier_allow_host_execution=true` restore the old host behaviour on a disposable dev box.
 - No schema change, so reverting the PR is enough.

@@ -86,6 +86,24 @@ def test_docker_unavailable_matters_only_when_tasks_use_containers(monkeypatch):
     assert _codes(_report(containers={"available": False, "reason": "x"})) == []
 
 
+def test_the_fenced_docker_driver_mode_is_a_critical_issue(monkeypatch):
+    # D25: every claude_code task fails in this mode, so it must not be quiet.
+    monkeypatch.setattr(settings, "driver_claude_sandbox", "docker")
+    r = _report()
+    assert _codes(r) == ["driver_sandbox_fenced"]
+    assert r.status == "critical"
+    assert "task" in r.issues[0].detail
+    # Containers are not in use then, so a missing daemon is not also raised.
+    r = _report(containers={"available": False, "reason": "x"})
+    assert _codes(r) == ["driver_sandbox_fenced"]
+
+
+@pytest.mark.parametrize("mode", ["task", "none"])
+def test_task_and_host_modes_are_not_reported_as_fenced(mode, monkeypatch):
+    monkeypatch.setattr(settings, "driver_claude_sandbox", mode)
+    assert "driver_sandbox_fenced" not in _codes(_report())
+
+
 def test_the_report_carries_no_task_data():
     d = _report(tasks={"stale_leases": 1}).as_dict()
     text = str(d)
