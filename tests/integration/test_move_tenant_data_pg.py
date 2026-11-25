@@ -231,14 +231,26 @@ def test_every_tenant_table_is_classified(engine):
 
 def test_check_schema_flags_unclassified_table_and_unregistered_fk():
     schema = mtd.Schema(
-        tenant_tables={*mtd.MOVE, *mtd.LEAVE_CONFIG, *mtd.LEAVE_OPERATIONAL, "public.new_thing"},
-        fks=[("public.new_thing", "memory_id", "public.memories")],
-        tenant_uniques={"public.sessions": {"uq_sessions_new"}},
+        tenant_tables={*mtd.MOVE, *mtd.LEAVE_CONFIG, *mtd.LEAVE_OPERATIONAL, "new_thing"},
+        fks=[("new_thing", "memory_id", "memories")],
+        tenant_uniques={"sessions": {"uq_sessions_new"}},
     )
     problems = "\n".join(mtd.check_schema(schema))
-    assert "public.new_thing: has tenant_id but is not classified" in problems
-    assert "public.new_thing.memory_id references folded table public.memories" in problems
-    assert "public.sessions: per-tenant unique index uq_sessions_new" in problems
+    assert "new_thing: has tenant_id but is not classified" in problems
+    assert "new_thing.memory_id references folded table memories" in problems
+    assert "sessions: per-tenant unique index uq_sessions_new" in problems
+
+
+def test_check_schema_refuses_a_shadowed_tenant_table():
+    schema = mtd.Schema(
+        tenant_tables={*mtd.MOVE, *mtd.LEAVE_CONFIG, *mtd.LEAVE_OPERATIONAL},
+        fks=[],
+        tenant_uniques={},
+        hidden={"other.memories"},
+    )
+    assert mtd.check_schema(schema) == [
+        "other.memories: has tenant_id but bare names do not reach it (shadowed or off search_path)"
+    ]
 
 
 # ── Dry run ───────────────────────────────────────────────────
@@ -251,20 +263,20 @@ def test_dry_run_writes_nothing_and_reports_the_plan(engine):
     plan = mtd.run(engine, source=w.src, target=w.tgt, out=lines.append)
     assert _snapshot(engine, w) == before
 
-    mem = plan.tables["public.memories"]
+    mem = plan.tables["memories"]
     assert (mem.source_before, mem.target_before, mem.merged, mem.moving) == (3, 1, 1, 2)
-    assert plan.maps["public.memories"] == {str(w.ids["m1"]): str(w.ids["t1"])}
-    assert plan.maps["public.entities"] == {str(w.ids["ex_s"]): str(w.ids["ex_t"])}
-    me = plan.tables["public.memory_entities"]
+    assert plan.maps["memories"] == {str(w.ids["m1"]): str(w.ids["t1"])}
+    assert plan.maps["entities"] == {str(w.ids["ex_s"]): str(w.ids["ex_t"])}
+    me = plan.tables["memory_entities"]
     assert (me.merged, me.moving) == (1, 2)
-    ap = plan.tables["public.approvals"]
+    ap = plan.tables["approvals"]
     assert (ap.source_before, ap.merged, ap.kept, ap.moving) == (3, 1, 1, 1)
-    assert "public.tenant_configs" not in plan.tables
+    assert "tenant_configs" not in plan.tables
     # The AGE graph is reported, not moved; these synthetic tenants have no vertices.
     assert plan.graph_vertices == 0
     text_out = "\n".join(lines)
     assert "Dry run: nothing was written" in text_out
-    assert "public.memories" in text_out
+    assert "memories" in text_out
 
 
 def test_dry_run_transaction_is_read_only(engine, monkeypatch):
@@ -357,7 +369,7 @@ def test_apply_rolls_back_on_mismatch(engine, backup):
         # A write the plan did not know about: the source is no longer empty.
         conn.execute(Memory.__table__.insert().values(content="late", tenant_id=w.src))
 
-    with pytest.raises(mtd.VerifyError, match="public.memories: source has 1"):
+    with pytest.raises(mtd.VerifyError, match="memories: source has 1"):
         mtd.run(
             engine,
             source=w.src,
@@ -386,7 +398,7 @@ def test_apply_refuses_cross_tenant_refs_unless_allowed(engine, backup):
         allow_cross_refs=True,
         out=_quiet,
     )
-    assert plan.cross_refs == {"public.agent_sessions.memory_session_id -> public.sessions": 1}
+    assert plan.cross_refs == {"agent_sessions.memory_session_id -> sessions": 1}
     assert _scalar(engine, "SELECT count(*) FROM memories WHERE tenant_id = :t", t=w.src) == 0
 
 

@@ -11,7 +11,8 @@ script moves them, and everything that hangs off them, across.
 
 What it moves, and what it leaves
 ---------------------------------
-Every table with a ``tenant_id`` column is listed in exactly one of
+Every table with a ``tenant_id`` column (in whichever schema the search
+path finds it) is listed in exactly one of
 :data:`MOVE`, :data:`LEAVE_CONFIG` or :data:`LEAVE_OPERATIONAL`, each with the
 reason. The script reads the live schema first and refuses to run if it finds
 a tenant table that is not listed, so a new table cannot be silently skipped
@@ -81,102 +82,102 @@ if TYPE_CHECKING:
 
 #: Moved. The value says why and what happens on a collision.
 MOVE: dict[str, str] = {
-    "public.memories": "the memories; exact duplicates (content_hash) folded into the target row",
-    "public.memory_links": "links between memories; repointed, duplicates/self-links dropped",
-    "public.memory_entities": "memory mentions entity; repointed, duplicates dropped",
-    "public.entities": "people/things memories mention; same key -> merged into the target row",
-    "public.sessions": "interaction sessions memories were created in",
-    "public.intentions": "reminders/intentions taken from memories",
-    "public.knowledge_gaps": "questions memory could not answer",
-    "public.procedures": "learned procedures",
-    "public.approvals": "memory review items only (kinds: contradiction, merge, entity_alias, "
+    "memories": "the memories; exact duplicates (content_hash) folded into the target row",
+    "memory_links": "links between memories; repointed, duplicates/self-links dropped",
+    "memory_entities": "memory mentions entity; repointed, duplicates dropped",
+    "entities": "people/things memories mention; same key -> merged into the target row",
+    "sessions": "interaction sessions memories were created in",
+    "intentions": "reminders/intentions taken from memories",
+    "knowledge_gaps": "questions memory could not answer",
+    "procedures": "learned procedures",
+    "approvals": "memory review items only (kinds: contradiction, merge, entity_alias, "
     "archive); same source+source_ref in target -> dropped",
-    "public.review_cards": "study cards made from memories; same dedup_key -> folded",
-    "life_graph.study_reviews": "study review history (card ids repointed)",
-    "public.conversations": "chat conversations",
-    "public.conversation_messages": "chat turns (cited memory ids repointed)",
-    "public.preferences": "the owner's preferences",
-    "public.evidence": "evidence for preferences",
-    "public.advisor_sessions": "questions asked of the advisor and its answers",
-    "public.documents": "the owner's documents (ids, passports, ...)",
-    "public.money_transactions": "money transactions; same dedup_hash in target -> dropped",
-    "public.invoices": "invoices; same number in target -> LEFT in source and reported",
-    "life_graph.capture_events": "raw captures memories came from; same Telegram message -> folded",
-    "life_graph.corrections": "corrections the owner made",
-    "life_graph.decisions": "decisions",
-    "life_graph.predictions": "predictions",
-    "life_graph.challenges": "challenges to decisions",
-    "life_graph.interview_questions": "questions to ask the owner",
-    "life_graph.calibration_snapshots": "prediction calibration history",
+    "review_cards": "study cards made from memories; same dedup_key -> folded",
+    "study_reviews": "study review history (card ids repointed)",
+    "conversations": "chat conversations",
+    "conversation_messages": "chat turns (cited memory ids repointed)",
+    "preferences": "the owner's preferences",
+    "evidence": "evidence for preferences",
+    "advisor_sessions": "questions asked of the advisor and its answers",
+    "documents": "the owner's documents (ids, passports, ...)",
+    "money_transactions": "money transactions; same dedup_hash in target -> dropped",
+    "invoices": "invoices; same number in target -> LEFT in source and reported",
+    "capture_events": "raw captures memories came from; same Telegram message -> folded",
+    "corrections": "corrections the owner made",
+    "decisions": "decisions",
+    "predictions": "predictions",
+    "challenges": "challenges to decisions",
+    "interview_questions": "questions to ask the owner",
+    "calibration_snapshots": "prediction calibration history",
 }
 
 #: Left: configuration. Belongs to how the tenant is set up, not what it knows.
 LEAVE_CONFIG: dict[str, str] = {
-    "public.tenant_configs": "the tenant's own settings row",
-    "public.agent_personas": "persona definitions",
-    "public.devices": "paired devices / owner keys",
-    "public.device_pairing_codes": "pairing codes",
-    "public.telegram_bindings": "which chat belongs to which tenant",
-    "public.telegram_pairing_codes": "pairing codes",
-    "public.push_subscriptions": "browser push endpoints",
-    "public.tenant_webhooks": "webhook settings",
-    "public.notification_channels": "notification settings",
-    "life_graph.vault_secrets": "encrypted secrets",
-    "life_graph.capabilities": "authorization grants",
-    "life_graph.standing_rules": "authorization rules",
-    "public.action_safety_rules": "autonomy safety rules",
-    "public.autonomy_levels": "autonomy level per project",
-    "public.trust_scores": "agent trust scores",
-    "public.watch_configs": "watcher settings",
-    "public.connector_accounts": "connected accounts (credentials, cursors)",
-    "public.connector_items": "items synced by a connected account; stay with the account",
-    "public.money_budgets": "budget settings",
-    "public.money_category_rules": "categorisation rules",
-    "public.page_monitors": "page monitor settings",
-    "public.scheduled_jobs": "schedules",
-    "public.workflows": "workflow definitions",
-    "public.projects": "registered code projects",
-    "public.prompt_versions": "prompt versions",
-    "public.eval_suites": "eval suites",
-    "public.shadow_enrollments": "shadow-mode enrolment",
+    "tenant_configs": "the tenant's own settings row",
+    "agent_personas": "persona definitions",
+    "devices": "paired devices / owner keys",
+    "device_pairing_codes": "pairing codes",
+    "telegram_bindings": "which chat belongs to which tenant",
+    "telegram_pairing_codes": "pairing codes",
+    "push_subscriptions": "browser push endpoints",
+    "tenant_webhooks": "webhook settings",
+    "notification_channels": "notification settings",
+    "vault_secrets": "encrypted secrets",
+    "capabilities": "authorization grants",
+    "standing_rules": "authorization rules",
+    "action_safety_rules": "autonomy safety rules",
+    "autonomy_levels": "autonomy level per project",
+    "trust_scores": "agent trust scores",
+    "watch_configs": "watcher settings",
+    "connector_accounts": "connected accounts (credentials, cursors)",
+    "connector_items": "items synced by a connected account; stay with the account",
+    "money_budgets": "budget settings",
+    "money_category_rules": "categorisation rules",
+    "page_monitors": "page monitor settings",
+    "scheduled_jobs": "schedules",
+    "workflows": "workflow definitions",
+    "projects": "registered code projects",
+    "prompt_versions": "prompt versions",
+    "eval_suites": "eval suites",
+    "shadow_enrollments": "shadow-mode enrolment",
 }
 
 #: Left: operational history of the server running as that tenant.
 LEAVE_OPERATIONAL: dict[str, str] = {
-    "public.agent_tasks": "dev-agent tasks",
-    "public.agent_run_steps": "dev-agent run steps",
-    "public.agent_messages": "agent-to-agent messages",
-    "public.agent_sessions": "agent routing sessions",
-    "life_graph.dev_task_events": "dev-task event stream",
-    "life_graph.verification_runs": "dev-task verification",
-    "life_graph.driver_stats": "driver statistics",
-    "public.approval_queue": "shell-command approval queue (tied to agent tasks)",
-    "public.auto_actions": "autonomous actions",
-    "public.audit_log": "audit log",
-    "public.budget_spend": "spend against budget caps",
-    "public.tenant_usage": "usage metering",
-    "public.job_runs": "background job runs",
-    "public.nightly_run_log": "nightly run log",
-    "public.optimization_runs": "prompt optimisation runs",
-    "public.cross_system_syncs": "sync history",
-    "public.watch_events": "watcher events",
-    "public.watcher_notifications": "watcher notifications",
-    "public.watcher_runs": "watcher runs",
-    "public.workflow_runs": "workflow runs",
-    "public.shadow_runs": "shadow-mode runs",
-    "public.notifications": "sent notifications",
-    "public.extraction_traces": "extraction debug traces",
-    "public.research_runs": "research job runs",
-    "public.external_sessions": "transcript-upload cursors",
-    "public.shared_context": "agent shared context",
-    "public.topic_findings": "tech-watch job output",
-    "public.llm_offers": "free-LLM-offer job output",
-    "public.tech_radar": "tech-radar job output",
+    "agent_tasks": "dev-agent tasks",
+    "agent_run_steps": "dev-agent run steps",
+    "agent_messages": "agent-to-agent messages",
+    "agent_sessions": "agent routing sessions",
+    "dev_task_events": "dev-task event stream",
+    "verification_runs": "dev-task verification",
+    "driver_stats": "driver statistics",
+    "approval_queue": "shell-command approval queue (tied to agent tasks)",
+    "auto_actions": "autonomous actions",
+    "audit_log": "audit log",
+    "budget_spend": "spend against budget caps",
+    "tenant_usage": "usage metering",
+    "job_runs": "background job runs",
+    "nightly_run_log": "nightly run log",
+    "optimization_runs": "prompt optimisation runs",
+    "cross_system_syncs": "sync history",
+    "watch_events": "watcher events",
+    "watcher_notifications": "watcher notifications",
+    "watcher_runs": "watcher runs",
+    "workflow_runs": "workflow runs",
+    "shadow_runs": "shadow-mode runs",
+    "notifications": "sent notifications",
+    "extraction_traces": "extraction debug traces",
+    "research_runs": "research job runs",
+    "external_sessions": "transcript-upload cursors",
+    "shared_context": "agent shared context",
+    "topic_findings": "tech-watch job output",
+    "llm_offers": "free-LLM-offer job output",
+    "tech_radar": "tech-radar job output",
 }
 
 #: Tables with no tenant_id that follow a moved table through a foreign key.
 FOLLOWERS: dict[str, str] = {
-    "public.memory_sessions": "memory <-> session pairs; follow memories, memory_id repointed",
+    "memory_sessions": "memory <-> session pairs; follow memories, memory_id repointed",
 }
 
 #: Approval kinds that are memory review items and move with the memories.
@@ -184,7 +185,7 @@ MEMORY_APPROVAL_KINDS = ("contradiction", "merge", "entity_alias", "archive")
 
 #: Extra row filter for MOVE tables that only partly move.
 ROW_FILTER: dict[str, str] = {
-    "public.approvals": "kind IN ('contradiction', 'merge', 'entity_alias', 'archive')",
+    "approvals": "kind IN ('contradiction', 'merge', 'entity_alias', 'archive')",
 }
 
 #: Folded tables -> every column that points at them. Each is repointed from
@@ -192,49 +193,49 @@ ROW_FILTER: dict[str, str] = {
 #: The schema check refuses to run if a foreign key into one of these tables
 #: is missing here. ``[]`` marks a uuid[] column.
 REFS: dict[str, tuple[str, ...]] = {
-    "public.memories": (
-        "public.memories.supersedes",
-        "public.memories.superseded_by",
-        "public.memory_links.source_memory_id",
-        "public.memory_links.target_memory_id",
-        "public.memory_entities.memory_id",
-        "public.memory_sessions.memory_id",
-        "public.intentions.source_memory",
-        "public.knowledge_gaps.resolved_by",
-        "public.review_cards.source_memory_id",
-        "public.conversation_messages.cited_memory_ids[]",
+    "memories": (
+        "memories.supersedes",
+        "memories.superseded_by",
+        "memory_links.source_memory_id",
+        "memory_links.target_memory_id",
+        "memory_entities.memory_id",
+        "memory_sessions.memory_id",
+        "intentions.source_memory",
+        "knowledge_gaps.resolved_by",
+        "review_cards.source_memory_id",
+        "conversation_messages.cited_memory_ids[]",
     ),
-    "public.entities": (
-        "public.entities.canonical_id",
-        "public.memory_entities.entity_id",
+    "entities": (
+        "entities.canonical_id",
+        "memory_entities.entity_id",
     ),
-    "life_graph.capture_events": (
-        "public.memories.capture_event_id",
-        "life_graph.corrections.capture_event_id",
-        "life_graph.interview_questions.answer_capture_id",
-        "life_graph.decisions.capture_event_id",
-        "life_graph.predictions.capture_event_id",
+    "capture_events": (
+        "memories.capture_event_id",
+        "corrections.capture_event_id",
+        "interview_questions.answer_capture_id",
+        "decisions.capture_event_id",
+        "predictions.capture_event_id",
     ),
-    "public.review_cards": ("life_graph.study_reviews.card_id",),
+    "review_cards": ("study_reviews.card_id",),
 }
 
 #: Columns handled by the pair-table code, not by a plain UPDATE.
 _PAIR_COLUMNS = {
-    "public.memory_links.source_memory_id",
-    "public.memory_links.target_memory_id",
-    "public.memory_entities.memory_id",
-    "public.memory_entities.entity_id",
-    "public.memory_sessions.memory_id",
+    "memory_links.source_memory_id",
+    "memory_links.target_memory_id",
+    "memory_entities.memory_id",
+    "memory_entities.entity_id",
+    "memory_sessions.memory_id",
 }
 
 #: Unique indexes on MOVE tables that include tenant_id, and are handled.
 HANDLED_UNIQUES = {
-    "public.entities": "uq_entities_tenant_key",
-    "public.approvals": "uq_approvals_source_ref",
-    "public.review_cards": "uq_review_cards_dedup",
-    "public.money_transactions": "uq_money_transactions_dedup",
-    "public.invoices": "uq_invoices_number",
-    "life_graph.capture_events": "uq_ce_telegram_message",
+    "entities": "uq_entities_tenant_key",
+    "approvals": "uq_approvals_source_ref",
+    "review_cards": "uq_review_cards_dedup",
+    "money_transactions": "uq_money_transactions_dedup",
+    "invoices": "uq_invoices_number",
+    "capture_events": "uq_ce_telegram_message",
 }
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -249,9 +250,16 @@ class VerifyError(Exception):
 
 
 def _q(table: str) -> str:
-    """``schema.table`` as a quoted identifier. Only ever our own constants."""
-    schema, name = table.split(".")
-    return f'"{schema}"."{name}"'
+    """*table* as a quoted identifier. Only ever our own constants.
+
+    Names are bare on purpose: which schema a table lives in depends on the
+    database role (the ``"$user"`` entry of ``search_path``; on the owner's
+    instance some tables sit in the ``life_graph`` schema, in CI all are in
+    ``public``). The app's ORM uses bare names too, so this resolves to
+    exactly the tables the app reads and writes. :func:`discover` only sees
+    tables visible on the search path, and refuses shadowed ones.
+    """
+    return f'"{table}"'
 
 
 # ── Schema discovery and checks ───────────────────────────────
@@ -259,43 +267,53 @@ def _q(table: str) -> str:
 
 @dataclass
 class Schema:
+    #: tables (bare names, as the search path resolves them) with tenant_id
     tenant_tables: set[str]
     #: (child_table, child_column, parent_table)
     fks: list[tuple[str, str, str]]
     #: table -> names of unique indexes whose columns include tenant_id
     tenant_uniques: dict[str, set[str]]
+    #: schema.table with tenant_id that bare names do not reach (shadowed or
+    #: off the search path); refused, since rows there would be missed
+    hidden: set[str] = field(default_factory=set)
+
+
+_SYSTEM = "('pg_catalog', 'information_schema', 'ag_catalog', 'pg_toast')"
 
 
 def discover(conn: Connection) -> Schema:
     """Read which tables have tenant_id, every FK, and per-tenant unique indexes."""
-    tenant_tables = {
-        r[0]
-        for r in conn.execute(
-            text(
-                """
-                SELECT c.table_schema || '.' || c.table_name
-                FROM information_schema.columns c
-                JOIN information_schema.tables t
-                  ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-                WHERE c.column_name = 'tenant_id' AND t.table_type = 'BASE TABLE'
-                  AND c.table_schema NOT IN ('pg_catalog', 'information_schema', 'ag_catalog')
-                """
-            )
+    tenant_tables: set[str] = set()
+    hidden: set[str] = set()
+    for schema_name, name, visible in conn.execute(
+        text(
+            f"""
+            SELECT n.nspname, c.relname, pg_table_is_visible(c.oid)
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id'
+                               AND NOT a.attisdropped
+            WHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN {_SYSTEM}
+            """
         )
-    }
+    ):
+        if visible:
+            tenant_tables.add(name)
+        else:
+            hidden.add(f"{schema_name}.{name}")
     fks = [
         (r[0], r[1], r[2])
         for r in conn.execute(
             text(
-                """
-                SELECT cn.nspname || '.' || cc.relname, a.attname, pn.nspname || '.' || pc.relname
+                f"""
+                SELECT cc.relname, a.attname, pc.relname
                 FROM pg_constraint con
                 JOIN pg_class cc ON cc.oid = con.conrelid
                 JOIN pg_namespace cn ON cn.oid = cc.relnamespace
                 JOIN pg_class pc ON pc.oid = con.confrelid
-                JOIN pg_namespace pn ON pn.oid = pc.relnamespace
                 JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[1]
-                WHERE con.contype = 'f' AND cn.nspname NOT IN ('pg_catalog', 'ag_catalog')
+                WHERE con.contype = 'f' AND cn.nspname NOT IN {_SYSTEM}
+                  AND pg_table_is_visible(cc.oid) AND pg_table_is_visible(pc.oid)
                 """
             )
         )
@@ -303,20 +321,20 @@ def discover(conn: Connection) -> Schema:
     tenant_uniques: dict[str, set[str]] = {}
     for table, index in conn.execute(
         text(
-            """
-            SELECT n.nspname || '.' || c.relname, ic.relname
+            f"""
+            SELECT c.relname, ic.relname
             FROM pg_index i
             JOIN pg_class c ON c.oid = i.indrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_class ic ON ic.oid = i.indexrelid
             JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
             WHERE i.indisunique AND NOT i.indisprimary AND a.attname = 'tenant_id'
-              AND n.nspname NOT IN ('pg_catalog', 'ag_catalog', 'pg_toast')
+              AND n.nspname NOT IN {_SYSTEM} AND pg_table_is_visible(c.oid)
             """
         )
     ):
         tenant_uniques.setdefault(table, set()).add(index)
-    return Schema(tenant_tables, fks, tenant_uniques)
+    return Schema(tenant_tables, fks, tenant_uniques, hidden)
 
 
 def check_schema(schema: Schema) -> list[str]:
@@ -327,6 +345,10 @@ def check_schema(schema: Schema) -> list[str]:
         set(LEAVE_CONFIG) & set(LEAVE_OPERATIONAL)
     )
     problems += [f"{t}: listed twice (move and leave)" for t in sorted(overlap)]
+    problems += [
+        f"{t}: has tenant_id but bare names do not reach it (shadowed or off search_path)"
+        for t in sorted(schema.hidden)
+    ]
     problems += [
         f"{t}: has tenant_id but is not classified (add it to MOVE or LEAVE_*)"
         for t in sorted(schema.tenant_tables - listed)
@@ -437,7 +459,7 @@ def _build_maps(conn: Connection, src: str, tgt: str) -> dict[str, dict[str, str
     p = {"src": src, "tgt": tgt}
     live = "('active', 'pending')"
     return {
-        "public.memories": _pairs(
+        "memories": _pairs(
             conn,
             f"""
             SELECT s.id, (
@@ -450,27 +472,27 @@ def _build_maps(conn: Connection, src: str, tgt: str) -> dict[str, dict[str, str
             """,
             p,
         ),
-        "public.entities": _pairs(
+        "entities": _pairs(
             conn,
             "SELECT s.id, t.id FROM entities s JOIN entities t "
             "ON t.key = s.key AND t.tenant_id = :tgt WHERE s.tenant_id = :src",
             p,
         ),
-        "life_graph.capture_events": _pairs(
+        "capture_events": _pairs(
             conn,
             """
             SELECT s.id, (
-                SELECT t.id FROM life_graph.capture_events t
+                SELECT t.id FROM capture_events t
                 WHERE t.tenant_id = :tgt AND t.surface = 'telegram'
                   AND t.properties->>'chat_id' = s.properties->>'chat_id'
                   AND t.properties->>'message_id' = s.properties->>'message_id' LIMIT 1)
-            FROM life_graph.capture_events s
+            FROM capture_events s
             WHERE s.tenant_id = :src AND s.surface = 'telegram'
               AND s.properties->>'chat_id' IS NOT NULL AND s.properties->>'message_id' IS NOT NULL
             """,
             p,
         ),
-        "public.review_cards": _pairs(
+        "review_cards": _pairs(
             conn,
             "SELECT s.id, t.id FROM review_cards s JOIN review_cards t "
             "ON t.dedup_key = s.dedup_key AND t.tenant_id = :tgt WHERE s.tenant_id = :src",
@@ -506,7 +528,7 @@ def _plan_pairs(
 
 
 def _plan_links(conn: Connection, plan: Plan) -> None:
-    mm = plan.maps["public.memories"]
+    mm = plan.maps["memories"]
     if not mm:
         return
     olds = list(mm)
@@ -539,7 +561,7 @@ def _plan_links(conn: Connection, plan: Plan) -> None:
 
 
 def _plan_mentions(conn: Connection, plan: Plan) -> None:
-    mm, em = plan.maps["public.memories"], plan.maps["public.entities"]
+    mm, em = plan.maps["memories"], plan.maps["entities"]
     if not mm and not em:
         return
     rows = conn.execute(
@@ -569,7 +591,7 @@ def _plan_mentions(conn: Connection, plan: Plan) -> None:
 
 
 def _plan_memory_sessions(conn: Connection, plan: Plan) -> None:
-    mm = plan.maps["public.memories"]
+    mm = plan.maps["memories"]
     if not mm:
         return
     rows = conn.execute(
@@ -603,11 +625,11 @@ def _rewrite_ids(value: str, mapping: dict[str, str]) -> str:
 
 def _plan_approvals(conn: Connection, plan: Plan) -> None:
     """Repoint ids inside moving approvals; drop ones the target already has."""
-    mapping = {**plan.maps["public.memories"], **plan.maps["public.entities"]}
+    mapping = {**plan.maps["memories"], **plan.maps["entities"]}
     rows = conn.execute(
         text(
             f"SELECT id, source, source_ref, payload::text FROM approvals "
-            f"WHERE tenant_id = :src AND {ROW_FILTER['public.approvals']} ORDER BY created_at, id"
+            f"WHERE tenant_id = :src AND {ROW_FILTER['approvals']} ORDER BY created_at, id"
         ),
         {"src": plan.source},
     ).all()
@@ -661,16 +683,16 @@ def build_plan(conn: Connection, schema: Schema, source: str, target: str) -> Pl
         )
     ]
     merged = {t: len(m) for t, m in plan.maps.items()}
-    merged["public.memory_links"] = sum(c.new is None for c in plan.links)
-    merged["public.memory_entities"] = sum(c.new is None for c in plan.mentions)
-    merged["public.approvals"] = len(plan.approvals_dropped)
-    merged["public.money_transactions"] = len(plan.money_dropped)
+    merged["memory_links"] = sum(c.new is None for c in plan.links)
+    merged["memory_entities"] = sum(c.new is None for c in plan.mentions)
+    merged["approvals"] = len(plan.approvals_dropped)
+    merged["money_transactions"] = len(plan.money_dropped)
     for table in MOVE:
         tp = TablePlan(table, _count(conn, table, source), _count(conn, table, target))
         tp.merged = merged.get(table, 0)
         if table in ROW_FILTER:
             tp.kept = tp.source_before - _count(conn, table, source, ROW_FILTER[table])
-        if table == "public.invoices":
+        if table == "invoices":
             tp.skipped = len(plan.invoices_skipped)
         plan.tables[table] = tp
     plan.cross_refs = cross_refs(conn, schema, source)
@@ -707,16 +729,16 @@ def _exec(conn: Connection, sql: str, params: dict[str, Any] | None = None) -> i
 
 
 def _repoint_column(conn: Connection, ref: str, mapping: dict[str, str]) -> None:
-    """Point *ref* (``schema.table.column``) from folded ids to their targets, any tenant."""
+    """Point *ref* (``table.column``) from folded ids to their targets, any tenant."""
     is_array = ref.endswith("[]")
-    schema, table, column = ref.removesuffix("[]").split(".")
+    table, column = ref.removesuffix("[]").split(".")
     params = {"olds": list(mapping), "news": list(mapping.values())}
     m = "(SELECT unnest(CAST(:olds AS uuid[])) AS old, unnest(CAST(:news AS uuid[])) AS new) m"
     if is_array:
         _exec(
             conn,
             f"""
-            UPDATE {_q(f"{schema}.{table}")} c SET {column} = (
+            UPDATE {_q(table)} c SET {column} = (
                 SELECT array_agg(coalesce(m.new, u.x) ORDER BY u.ord)
                 FROM unnest(c.{column}) WITH ORDINALITY u(x, ord) LEFT JOIN {m} ON m.old = u.x)
             WHERE c.{column} && CAST(:olds AS uuid[])
@@ -726,8 +748,7 @@ def _repoint_column(conn: Connection, ref: str, mapping: dict[str, str]) -> None
     else:
         _exec(
             conn,
-            f"UPDATE {_q(f'{schema}.{table}')} c SET {column} = m.new FROM {m} "
-            f"WHERE c.{column} = m.old",
+            f"UPDATE {_q(table)} c SET {column} = m.new FROM {m} WHERE c.{column} = m.old",
             params,
         )
 
@@ -765,7 +786,7 @@ def _fold(conn: Connection, plan: Plan) -> None:
     Approvals and money rows dropped as duplicates go first, so rewriting the
     remaining approvals cannot trip their unique key on a row about to go.
     """
-    em = plan.maps["public.entities"]
+    em = plan.maps["entities"]
     if em:
         _exec(
             conn,
@@ -785,8 +806,8 @@ def _fold(conn: Connection, plan: Plan) -> None:
         for ref in REFS[table]:
             if ref.removesuffix("[]") not in _PAIR_COLUMNS:
                 _repoint_column(conn, ref, mapping)
-    _delete_ids(conn, plan, "public.approvals", plan.approvals_dropped)
-    _delete_ids(conn, plan, "public.money_transactions", plan.money_dropped)
+    _delete_ids(conn, plan, "approvals", plan.approvals_dropped)
+    _delete_ids(conn, plan, "money_transactions", plan.money_dropped)
     for aid, (ref, payload) in plan.approval_rewrites.items():
         _exec(
             conn,
@@ -817,7 +838,7 @@ def _move_rows(conn: Connection, plan: Plan) -> None:
         if table in ROW_FILTER:
             clauses.append(f"({ROW_FILTER[table]})")
         params: dict[str, Any] = {"src": plan.source, "tgt": plan.target}
-        if table == "public.invoices" and plan.invoices_skipped:
+        if table == "invoices" and plan.invoices_skipped:
             clauses.append("NOT (id = ANY(CAST(:skip AS uuid[])))")
             params["skip"] = plan.invoices_skipped
         n = _exec(
@@ -989,7 +1010,7 @@ def report(plan: Plan, out: Callable[[str], None] = print) -> None:
     out(f"  approvals rewritten (ids inside repointed): {len(plan.approval_rewrites)}")
     if plan.invoices_skipped:
         out(f"  invoices left in source (number clash): {', '.join(plan.invoices_skipped)}")
-    kept = plan.tables["public.approvals"].kept
+    kept = plan.tables["approvals"].kept
     out(f"  approvals of other kinds left in source: {kept}")
     if plan.cross_refs:
         out("\nRows that would point across tenants after the move:")
