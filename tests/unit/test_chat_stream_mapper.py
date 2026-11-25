@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from life_graph.services.chat_stream import map_bus_event
+from life_graph.services.chat_stream import expand_compound, map_bus_event
 
 
 def ev(depth, persona, etype, **payload):
@@ -21,7 +21,11 @@ def test_depth0_token_is_assistant_delta():
 def test_child_first_token_emits_delegation_start_then_child_delta():
     seen = set()
     first = map_bus_event(ev(1, "tutor", "token", content="A"), seen)
-    assert first == {"type": "delegation_start", "child_id": "tid-tutor", "persona": "tutor"}
+    # The first token opens the child AND keeps its text ("A" used to be dropped).
+    assert expand_compound(first) == [
+        {"type": "delegation_start", "child_id": "tid-tutor", "persona": "tutor"},
+        {"type": "child_delta", "child_id": "tid-tutor", "persona": "tutor", "text": "A"},
+    ]
     assert "tid-tutor" in seen
     second = map_bus_event(ev(1, "tutor", "token", content="B"), seen)
     assert second == {
@@ -69,6 +73,29 @@ def test_tool_results_are_redacted_and_trimmed():
 def test_child_done_without_prior_token_signals_both():
     out = map_bus_event(ev(1, "scout", "done"), set())
     assert out == {"type": "delegation_start+done", "child_id": "tid-scout", "persona": "scout"}
+    assert expand_compound(out) == [
+        {"type": "delegation_start", "child_id": "tid-scout", "persona": "scout"},
+        {"type": "child_done", "child_id": "tid-scout", "persona": "scout"},
+    ]
+
+
+def test_plain_events_expand_to_themselves():
+    out = map_bus_event(ev(0, "jarvis", "token", content="hi"), set())
+    assert expand_compound(out) == [out]
+
+
+def test_child_text_is_whole_across_first_and_later_tokens():
+    seen = set()
+    frames = []
+    for piece in ("Hel", "lo ", "there"):
+        frames += expand_compound(map_bus_event(ev(1, "tutor", "token", content=piece), seen))
+    assert [f["type"] for f in frames] == [
+        "delegation_start",
+        "child_delta",
+        "child_delta",
+        "child_delta",
+    ]
+    assert "".join(f["text"] for f in frames if f["type"] == "child_delta") == "Hello there"
 
 
 def test_depth0_error_maps_to_fatal_error():

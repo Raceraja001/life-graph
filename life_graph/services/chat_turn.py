@@ -22,7 +22,11 @@ from sqlalchemy import select
 
 from life_graph.core.run_taint import TAINT_INPUT_KEY
 from life_graph.core.trust import with_shared
-from life_graph.services.chat_stream import get_chat_stream_bus, map_bus_event
+from life_graph.services.chat_stream import (
+    expand_compound,
+    get_chat_stream_bus,
+    map_bus_event,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -462,23 +466,10 @@ async def stream_turn(tenant_id: str, body: ChatStreamRequest, pm: Any) -> Async
             mapped = map_bus_event(raw, seen)
             if mapped is None:
                 continue
-            if mapped["type"] == "delegation_start+done":
-                yield sse(
-                    {
-                        "type": "delegation_start",
-                        "child_id": mapped["child_id"],
-                        "persona": mapped["persona"],
-                    }
-                )
-                yield sse(
-                    {
-                        "type": "child_done",
-                        "child_id": mapped["child_id"],
-                        "persona": mapped["persona"],
-                    }
-                )
-                continue
-            yield sse(mapped)
+            # A child's first event comes as a compound marker: two frames
+            # (delegation_start, then its first child_delta or child_done).
+            for frame in expand_compound(mapped):
+                yield sse(frame)
             # Only a TOP-LEVEL (depth-0) done/error ends the stream. A delegated
             # child's error surfaces to the client as the non-fatal `child_error`
             # chat event (mapped by map_bus_event, never "error" for depth>=1),
