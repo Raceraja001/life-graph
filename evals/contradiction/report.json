@@ -1,0 +1,548 @@
+{
+  "benchmark": "life_graph_contradiction_false_merge_v1",
+  "generated_at": "2026-11-25T05:48:42.017987+00:00",
+  "dataset_file": "evals/contradiction/pairs.json",
+  "dataset_sha256": "ee3163b3cc8c9eb3be4c65eda37e20fb7779e3c31b9e78ea80686422564b95ad",
+  "assumed_cosine": 0.95,
+  "thresholds": {
+    "dedup_threshold": 0.92,
+    "contradiction_similarity_threshold": 0.75
+  },
+  "overall": {
+    "pairs": 42,
+    "contradiction_pairs": 25,
+    "contradiction_precision": 1.0,
+    "contradiction_recall": 0.4,
+    "contradiction_f1": 0.5714,
+    "false_merge_rate": 0.3243,
+    "paraphrase_merge_rate": 1.0
+  },
+  "by_category": {
+    "negation": {
+      "pairs": 7,
+      "flagged": 4,
+      "merged": 3,
+      "contradiction_recall": 0.5714,
+      "false_merge_rate": 0.4286
+    },
+    "preference_swap": {
+      "pairs": 7,
+      "flagged": 6,
+      "merged": 1,
+      "contradiction_recall": 0.8571,
+      "false_merge_rate": 0.1429
+    },
+    "value_change": {
+      "pairs": 11,
+      "flagged": 0,
+      "merged": 2,
+      "contradiction_recall": 0.0,
+      "false_merge_rate": 0.1818
+    },
+    "compatible_addition": {
+      "pairs": 7,
+      "flagged": 0,
+      "merged": 4,
+      "false_contradiction_rate": 0.0,
+      "false_merge_rate": 0.5714
+    },
+    "scoped": {
+      "pairs": 5,
+      "flagged": 0,
+      "merged": 2,
+      "false_contradiction_rate": 0.0,
+      "false_merge_rate": 0.4
+    },
+    "paraphrase": {
+      "pairs": 5,
+      "flagged": 0,
+      "merged": 5,
+      "false_contradiction_rate": 0.0,
+      "merge_rate": 1.0
+    }
+  },
+  "missed_contradictions": [
+    "neg05",
+    "neg06",
+    "neg07",
+    "pref07",
+    "val01",
+    "val02",
+    "val03",
+    "val04",
+    "val05",
+    "val06",
+    "val07",
+    "val08",
+    "val09",
+    "val10",
+    "val11"
+  ],
+  "false_contradictions": [],
+  "false_merges": [
+    "neg05",
+    "neg06",
+    "neg07",
+    "pref07",
+    "val09",
+    "val11",
+    "add02",
+    "add05",
+    "add06",
+    "add07",
+    "scope01",
+    "scope02"
+  ],
+  "pairs": [
+    {
+      "id": "neg01",
+      "category": "negation",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "negation"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "neg02",
+      "category": "negation",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "negation"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "neg03",
+      "category": "negation",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "negation"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "neg04",
+      "category": "negation",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "negation"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "neg05",
+      "category": "negation",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "neg06",
+      "category": "negation",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "neg07",
+      "category": "negation",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "pref01",
+      "category": "preference_swap",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "preference_change"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "pref02",
+      "category": "preference_swap",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "preference_change"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "pref03",
+      "category": "preference_swap",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "preference_change"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "pref04",
+      "category": "preference_swap",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "preference_change"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "pref05",
+      "category": "preference_swap",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "preference_change"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "pref06",
+      "category": "preference_swap",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": true,
+      "conflict_types": [
+        "preference_change"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "pref07",
+      "category": "preference_swap",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "val01",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "val02",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "val03",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "val04",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "val05",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "val06",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "val07",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "val08",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "val09",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "val10",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "val11",
+      "category": "value_change",
+      "gold_contradiction": true,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "add01",
+      "category": "compatible_addition",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "add02",
+      "category": "compatible_addition",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "add03",
+      "category": "compatible_addition",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "add04",
+      "category": "compatible_addition",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": false
+    },
+    {
+      "id": "add05",
+      "category": "compatible_addition",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "add06",
+      "category": "compatible_addition",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "add07",
+      "category": "compatible_addition",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "scope01",
+      "category": "scoped",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [
+        "scope"
+      ],
+      "would_merge": true
+    },
+    {
+      "id": "scope02",
+      "category": "scoped",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [
+        "scope"
+      ],
+      "would_merge": true
+    },
+    {
+      "id": "scope03",
+      "category": "scoped",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [
+        "scope"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "scope04",
+      "category": "scoped",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [
+        "scope"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "scope05",
+      "category": "scoped",
+      "gold_contradiction": false,
+      "gold_distinct": true,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [
+        "scope"
+      ],
+      "would_merge": false
+    },
+    {
+      "id": "dup01",
+      "category": "paraphrase",
+      "gold_contradiction": false,
+      "gold_distinct": false,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "dup02",
+      "category": "paraphrase",
+      "gold_contradiction": false,
+      "gold_distinct": false,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "dup03",
+      "category": "paraphrase",
+      "gold_contradiction": false,
+      "gold_distinct": false,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "dup04",
+      "category": "paraphrase",
+      "gold_contradiction": false,
+      "gold_distinct": false,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    },
+    {
+      "id": "dup05",
+      "category": "paraphrase",
+      "gold_contradiction": false,
+      "gold_distinct": false,
+      "cosine": 0.95,
+      "predicted_contradiction": false,
+      "conflict_types": [],
+      "would_merge": true
+    }
+  ]
+}

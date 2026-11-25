@@ -1,0 +1,54 @@
+{
+  "description": "Labeled synthetic memory pairs for the contradiction detector and the ingest near-duplicate merge (M3, 2026-11-25). No real memories. 'existing' is the stored memory, 'new' the incoming fact. 'contradiction': the new fact replaces the existing one, so the detector should suggest a supersede. 'distinct': the two are different facts, so merging them into one memory would lose one of them.",
+  "assumed_cosine": 0.95,
+  "assumed_cosine_note": "Every pair is scored as if the embedder put it at this cosine, which is above dedup_threshold (0.92) and contradiction_similarity_threshold (0.75). That is the hard case these rules exist for: a negation or a changed value barely moves an embedding. A pair may override it with its own 'cosine'.",
+  "pairs": [
+    {"id": "neg01", "category": "negation", "existing": "I use Docker for local development.", "new": "I don't use Docker for local development.", "contradiction": true, "distinct": true},
+    {"id": "neg02", "category": "negation", "existing": "I always run the tests before pushing.", "new": "I never run the tests before pushing.", "contradiction": true, "distinct": true},
+    {"id": "neg03", "category": "negation", "existing": "I like spicy food.", "new": "I don't like spicy food.", "contradiction": true, "distinct": true},
+    {"id": "neg04", "category": "negation", "existing": "I use tabs for indentation.", "new": "I avoid tabs for indentation.", "contradiction": true, "distinct": true},
+    {"id": "neg05", "category": "negation", "existing": "Priya eats meat.", "new": "Priya does not eat meat.", "contradiction": true, "distinct": true},
+    {"id": "neg06", "category": "negation", "existing": "I am allergic to peanuts.", "new": "I am not allergic to peanuts.", "contradiction": true, "distinct": true},
+    {"id": "neg07", "category": "negation", "existing": "Arun drinks alcohol.", "new": "Arun has never drunk alcohol.", "contradiction": true, "distinct": true},
+
+    {"id": "pref01", "category": "preference_swap", "existing": "I prefer PostgreSQL.", "new": "I prefer MongoDB.", "contradiction": true, "distinct": true},
+    {"id": "pref02", "category": "preference_swap", "existing": "My favourite editor is Vim.", "new": "My favourite editor is VS Code.", "contradiction": true, "distinct": true},
+    {"id": "pref03", "category": "preference_swap", "existing": "I use Django.", "new": "I switched to FastAPI.", "contradiction": true, "distinct": true},
+    {"id": "pref04", "category": "preference_swap", "existing": "I use Firebase for the side project.", "new": "I stopped using Firebase.", "contradiction": true, "distinct": true},
+    {"id": "pref05", "category": "preference_swap", "existing": "I prefer Emacs.", "new": "I moved to Neovim.", "contradiction": true, "distinct": true},
+    {"id": "pref06", "category": "preference_swap", "existing": "I like tea.", "new": "I no longer like tea.", "contradiction": true, "distinct": true},
+    {"id": "pref07", "category": "preference_swap", "existing": "I like the light theme.", "new": "These days I like the dark theme better.", "contradiction": true, "distinct": true},
+
+    {"id": "val01", "category": "value_change", "existing": "Priya's birthday is 3 May.", "new": "Priya's birthday is 4 May.", "contradiction": true, "distinct": true},
+    {"id": "val02", "category": "value_change", "existing": "My rent is 18,000 rupees a month.", "new": "My rent is 21,000 rupees a month.", "contradiction": true, "distinct": true},
+    {"id": "val03", "category": "value_change", "existing": "I live in Chennai.", "new": "I live in Coimbatore.", "contradiction": true, "distinct": true},
+    {"id": "val04", "category": "value_change", "existing": "My manager is Anand.", "new": "My manager is Deepa.", "contradiction": true, "distinct": true},
+    {"id": "val05", "category": "value_change", "existing": "The dentist appointment is on Tuesday.", "new": "The dentist appointment is on Thursday.", "contradiction": true, "distinct": true},
+    {"id": "val06", "category": "value_change", "existing": "Our flight to Delhi leaves at 7:30.", "new": "Our flight to Delhi leaves at 9:15.", "contradiction": true, "distinct": true},
+    {"id": "val07", "category": "value_change", "existing": "I work at Zoho.", "new": "I work at Freshworks.", "contradiction": true, "distinct": true},
+    {"id": "val08", "category": "value_change", "existing": "My monthly SIP is 5000 rupees.", "new": "My monthly SIP is 8000 rupees.", "contradiction": true, "distinct": true},
+    {"id": "val09", "category": "value_change", "existing": "Our car is a white hatchback.", "new": "Our car is a grey hatchback.", "contradiction": true, "distinct": true},
+    {"id": "val10", "category": "value_change", "existing": "The project deadline is the end of March.", "new": "The project deadline is the end of June.", "contradiction": true, "distinct": true},
+    {"id": "val11", "category": "value_change", "existing": "My son is in class four.", "new": "My son is in class five.", "contradiction": true, "distinct": true},
+
+    {"id": "add01", "category": "compatible_addition", "existing": "I use VS Code.", "new": "I use Python for scripts.", "contradiction": false, "distinct": true},
+    {"id": "add02", "category": "compatible_addition", "existing": "I like dosa.", "new": "I like idli.", "contradiction": false, "distinct": true},
+    {"id": "add03", "category": "compatible_addition", "existing": "I use Postgres for the side project.", "new": "I use Redis for caching.", "contradiction": false, "distinct": true},
+    {"id": "add04", "category": "compatible_addition", "existing": "Priya's birthday is 3 May.", "new": "Maha's birthday is 3 May.", "contradiction": false, "distinct": true},
+    {"id": "add05", "category": "compatible_addition", "existing": "We have a dog.", "new": "We have a cat.", "contradiction": false, "distinct": true},
+    {"id": "add06", "category": "compatible_addition", "existing": "I play badminton.", "new": "I also play cricket on weekends.", "contradiction": false, "distinct": true},
+    {"id": "add07", "category": "compatible_addition", "existing": "I drink filter coffee every morning.", "new": "I drink green tea in the evening.", "contradiction": false, "distinct": true},
+
+    {"id": "scope01", "category": "scoped", "existing": "We prefer pytest.", "existing_properties": {"project": "alpha"}, "new": "We prefer unittest.", "new_properties": {"project": "beta"}, "contradiction": false, "distinct": true},
+    {"id": "scope02", "category": "scoped", "existing": "Prefer tabs.", "existing_properties": {"module": "frontend"}, "new": "Prefer spaces.", "new_properties": {"module": "backend"}, "contradiction": false, "distinct": true},
+    {"id": "scope03", "category": "scoped", "existing": "We use Webpack.", "existing_properties": {"project": "alpha"}, "new": "We switched to Vite.", "new_properties": {"project": "beta"}, "contradiction": false, "distinct": true},
+    {"id": "scope04", "category": "scoped", "existing": "Always deploy on Friday.", "existing_properties": {"project": "alpha"}, "new": "Never deploy on Friday.", "new_properties": {"project": "beta"}, "contradiction": false, "distinct": true},
+    {"id": "scope05", "category": "scoped", "existing": "Use an ORM.", "new": "Don't use an ORM.", "new_properties": {"project": "beta"}, "contradiction": false, "distinct": true},
+
+    {"id": "dup01", "category": "paraphrase", "existing": "I live in Chennai.", "new": "I live in Chennai now.", "contradiction": false, "distinct": false},
+    {"id": "dup02", "category": "paraphrase", "existing": "My daughter Nila studies at Kovai Public School.", "new": "Nila studies at Kovai Public School.", "contradiction": false, "distinct": false},
+    {"id": "dup03", "category": "paraphrase", "existing": "I prefer dark mode.", "new": "I really prefer dark mode.", "contradiction": false, "distinct": false},
+    {"id": "dup04", "category": "paraphrase", "existing": "Priya's birthday is 3 May.", "new": "Priya's birthday is on 3 May.", "contradiction": false, "distinct": false},
+    {"id": "dup05", "category": "paraphrase", "existing": "I use Docker.", "new": "I use Docker every day.", "contradiction": false, "distinct": false}
+  ]
+}
