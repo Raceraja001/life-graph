@@ -4,28 +4,28 @@
     "contradiction_precision": 1.0,
     "contradiction_recall": 0.4,
     "paraphrase_merge_rate": 1.0,
-    "false_merge_rate": 0.3243
+    "false_merge_rate": 0.0811
   },
   "by_category": {
     "negation": {
       "contradiction_recall": 0.5714,
-      "false_merge_rate": 0.4286
+      "false_merge_rate": 0.0
     },
     "preference_swap": {
       "contradiction_recall": 0.8571,
-      "false_merge_rate": 0.1429
+      "false_merge_rate": 0.0
     },
     "value_change": {
       "contradiction_recall": 0.0,
-      "false_merge_rate": 0.1818
+      "false_merge_rate": 0.0
     },
     "compatible_addition": {
       "false_contradiction_rate": 0.0,
-      "false_merge_rate": 0.5714
+      "false_merge_rate": 0.4286
     },
     "scoped": {
       "false_contradiction_rate": 0.0,
-      "false_merge_rate": 0.4
+      "false_merge_rate": 0.0
     },
     "paraphrase": {
       "false_contradiction_rate": 0.0,

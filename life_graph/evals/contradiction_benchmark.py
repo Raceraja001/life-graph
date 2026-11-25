@@ -9,9 +9,9 @@ that embeds almost the same:
   precision/recall, overall and per category.
 * **False merge.** Would the ingest near-duplicate merge fold two different
   facts into one memory? MemoryManager._process_fact merges a candidate when
-  its cosine is at least `settings.dedup_threshold` and neither
-  `differs_by_negation` nor `differs_in_detail` says the texts differ.
-  `would_merge()` asks the same three questions with the same production
+  its cosine is at least `settings.dedup_threshold` and none of
+  `differs_by_negation`, `differs_in_detail` and `differs_in_scope` says the
+  two differ. `would_merge()` asks the same four questions with the same production
   helpers. The false-merge rate is the share of distinct-fact pairs it would
   merge; the paraphrase merge rate is the share of true duplicates it still
   merges (the price of erring towards "differs").
@@ -43,6 +43,7 @@ from life_graph.services.contradiction import (
     ContradictionDetector,
     differs_by_negation,
     differs_in_detail,
+    differs_in_scope,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -68,16 +69,23 @@ def _unit_pair(cosine: float) -> tuple[list[float], list[float]]:
     return [1.0, 0.0], [cosine, math.sqrt(max(0.0, 1.0 - cosine * cosine))]
 
 
-def would_merge(new_text: str, existing_text: str, cosine: float) -> bool:
+def would_merge(
+    new_text: str,
+    existing_text: str,
+    cosine: float,
+    new_properties: dict[str, Any] | None = None,
+    existing_properties: dict[str, Any] | None = None,
+) -> bool:
     """Whether MemoryManager._process_fact would merge these two as one memory.
 
-    The same three conditions, with the same production helpers and threshold
+    The same four conditions, with the same production helpers and threshold
     (core/memory_manager.py, the near-match dedup step).
     """
     return (
         cosine >= settings.dedup_threshold
         and not differs_by_negation(new_text, existing_text)
         and not differs_in_detail(new_text, existing_text)
+        and not differs_in_scope(new_properties, existing_properties)
     )
 
 
@@ -109,7 +117,13 @@ def evaluate_pair(pair: dict[str, Any], assumed_cosine: float) -> dict[str, Any]
         "cosine": cosine,
         "predicted_contradiction": bool(supersede),
         "conflict_types": sorted({c.conflict_type for c in found}),
-        "would_merge": would_merge(pair["new"], pair["existing"], cosine),
+        "would_merge": would_merge(
+            pair["new"],
+            pair["existing"],
+            cosine,
+            pair.get("new_properties"),
+            pair.get("existing_properties"),
+        ),
     }
 
 
