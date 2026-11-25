@@ -162,6 +162,14 @@ restore_dump() {
     local db=$1 dump=$2 log=$3 jobs=${RESTORE_JOBS:-1} tmp rc=0
     tmp=$(mktemp -d)
     local common=(-h "$DB_HOST" -U "$DB_USER" -d "$db" --no-owner --no-privileges --exit-on-error)
+    # Index builds without parallel workers. A parallel build (pgvector's HNSW
+    # index above all) sizes a dynamic shared memory segment by
+    # maintenance_work_mem, and the database container's 64 MB /dev/shm could
+    # not hold it: "could not resize shared memory segment ... No space left on
+    # device" failed the weekly drill on 2026-11-22. A serial build needs no
+    # segment; it is slower, and a restore is rare.
+    local PGOPTIONS="${PGOPTIONS:-} -c max_parallel_maintenance_workers=0"
+    export PGOPTIONS
     : > "$log"
     pg_restore -l "$dump" > "$tmp/all.list" 2>> "$log" || { rm -rf "$tmp"; return 1; }
     # ag_graph first, then ag_label (the foreign key needs that order).
