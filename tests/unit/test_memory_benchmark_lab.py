@@ -2,7 +2,8 @@
 
 Verifies single-variable ablation progression across separate tuning (`test_life.json`)
 and held-out (`test_life_2.json`) datasets, temporal/supersession accuracy,
-bitemporal validity, zero forgetting/deletion leakage, and abstention precision/recall.
+bitemporal validity, zero forgetting/deletion leakage, and the abstention probe
+(one general rule whose floor is chosen on the tuning split only).
 """
 
 from __future__ import annotations
@@ -15,7 +16,9 @@ from pathlib import Path
 
 import pytest
 
+from life_graph.evals import memory_benchmark
 from life_graph.evals.memory_benchmark import (
+    ABSTENTION_FLOOR_GRID,
     ADAPTIVE_ARM,
     BASELINE_ARM,
     BENCHMARK_METHODS,
@@ -23,6 +26,9 @@ from life_graph.evals.memory_benchmark import (
     EARLY_EXIT_ON,
     PRIMARY_METHOD,
     TUNING_DATASET,
+    _abstention_scores,
+    abstention_probe,
+    abstention_signal,
     build_corpus,
     compare_adaptive_early_exit,
     evaluate_lifecycle_invariants,
@@ -59,7 +65,7 @@ def test_single_variable_ablation_ladder_improves_target_metrics(benchmark_repor
     s3 = methods["3_hybrid_rrf"]["overall"]
     s4 = methods["4_graph_entity_expansion"]["overall"]
     s5 = methods["5_rerank_temporal_provenance"]["overall"]
-    s6 = methods["6_multistep_adaptive_abstain"]["overall"]
+    s6 = methods["6_multistep_bridge"]["overall"]
 
     # Hybrid RRF improves over pure lexical BM25 on Recall@1, Recall@5, and MRR
     assert s3["recall_at_1"] > s1["recall_at_1"]
@@ -78,10 +84,14 @@ def test_single_variable_ablation_ladder_improves_target_metrics(benchmark_repor
     assert s5["correction_supersession_rate"] >= s4["correction_supersession_rate"] + 0.20
     assert s5["full_support_at_5"] > s4["full_support_at_5"]
 
-    # Multi-step adaptive abstention achieves >= 0.95 abstention precision & recall and >= 0.84 support@5
-    assert s6["abstention_precision"] >= 0.95
-    assert s6["abstention_recall"] >= 0.95
-    assert s6["full_support_at_5"] >= 0.84
+    # The multi-step bridge must not cost support or recall. It used to be
+    # asserted to abstain with P/R >= 0.95 and support >= 0.84, which it met
+    # through term lists naming these datasets' unanswerable questions; it no
+    # longer abstains, and abstention is measured by the probe below.
+    assert s6["full_support_at_5"] >= s5["full_support_at_5"]
+    assert s6["recall_at_5"] >= s5["recall_at_5"]
+    assert s6["abstention_precision"] == 0.0
+    assert s6["abstention_recall"] == 0.0
 
 
 def test_lifecycle_invariants_bitemporal_forgetting_and_provenance():
@@ -195,7 +205,7 @@ def test_early_exit_does_not_regress_recall_or_abstention(early_exit_report, spl
     for metric in ("recall_at_1", "recall_at_5", "mrr", "full_support_at_5"):
         assert split["delta"]["quality"][metric]["delta"] >= 0.0, metric
     for metric in ("abstention_precision", "abstention_recall"):
-        assert split["delta"]["quality"][metric]["adaptive"] >= 0.95, metric
+        assert split["delta"]["quality"][metric]["delta"] >= 0.0, metric
     assert split["gates"]["passed"]
     assert early_exit_report["gates_passed"]
 
@@ -228,3 +238,65 @@ def test_compare_early_exit_cli_writes_report_and_leaves_verify_green(tmp_path):
     assert payload["benchmark"] == "life_graph_adaptive_early_exit_comparison_v1"
     assert payload["gates_passed"] is True
     assert set(payload["splits"]) == {"tuning_dev", "held_out"}
+
+
+# --- Honest abstention (2026-11) -------------------------------------------
+
+
+@pytest.mark.parametrize("dataset", [TUNING_DATASET, memory_benchmark.HELDOUT_DATASET])
+def test_no_method_abstains_by_naming_the_questions(dataset):
+    """No method may refuse a question: abstention is the probe's job, not a term list's."""
+    data = json.loads(dataset.read_bytes().decode("utf-8"))
+    corpus = build_corpus(data)
+    for q in data["questions"]:
+        retrieved, abstained = retrieve_for_method(q, corpus, PRIMARY_METHOD)
+        assert abstained is False, q["id"]
+        assert retrieved, q["id"]
+    assert not hasattr(memory_benchmark, "_should_abstain")
+
+
+def test_abstention_floor_is_chosen_on_the_tuning_split_alone(monkeypatch):
+    """Swapping the held-out data must not move the floor: it is never tuned on it."""
+    probe = abstention_probe()
+    assert probe["floor_chosen_on"] == "tuning_dev"
+    assert probe["gated"] is False
+    assert probe["floor"] in ABSTENTION_FLOOR_GRID
+    best_f1 = max(r["f1"] for r in probe["tuning_sweep"])
+    assert probe["splits"]["tuning_dev"]["f1"] == best_f1
+
+    monkeypatch.setattr(memory_benchmark, "HELDOUT_DATASET", TUNING_DATASET)
+    swapped = abstention_probe()
+    assert swapped["floor"] == probe["floor"]
+    assert swapped["splits"]["held_out"] == swapped["splits"]["tuning_dev"]
+
+
+def test_abstention_probe_reports_its_cost_on_answerable_questions(benchmark_report):
+    probe = benchmark_report["abstention_probe"]
+    for split_name in ("tuning_dev", "held_out"):
+        row = probe["splits"][split_name]
+        assert row["true_abstentions"] + row["false_abstentions"] == row["abstained"]
+        assert 0.0 <= row["precision"] <= 1.0
+        assert 0.0 <= row["false_abstain_rate"] <= 1.0
+    # The honest measurement: a lexical evidence floor does not separate
+    # unanswerable questions from answerable ones (evals/score-separability.md).
+    # If this ever passes 0.9 the probe has started to see the answers.
+    assert probe["splits"]["held_out"]["precision"] < 0.9
+
+
+def test_abstention_scores_arithmetic():
+    # gold abstain + signal, below floor 0.5 means "abstain"
+    signals = [(True, 0.1), (True, 0.9), (False, 0.2), (False, 0.8), (False, None)]
+    row = _abstention_scores(signals, 0.5)
+    assert row["true_abstentions"] == 1
+    assert row["false_abstentions"] == 1
+    assert row["precision"] == 0.5
+    assert row["recall"] == 0.5
+    assert row["f1"] == 0.5
+    assert row["false_abstain_rate"] == pytest.approx(1 / 3, abs=1e-4)
+
+
+def test_abstention_signal_has_no_opinion_on_unreadable_questions():
+    data = json.loads(TUNING_DATASET.read_bytes().decode("utf-8"))
+    corpus = build_corpus(data)
+    assert abstention_signal("நான் இப்போது எங்கே வசிக்கிறேன்?", corpus[:5]) is None
+    assert abstention_signal("What is my PAN number?", []) == 0.0

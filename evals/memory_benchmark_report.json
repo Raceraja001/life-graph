@@ -1,6 +1,6 @@
 {
-  "benchmark": "life_graph_memory_evaluation_laboratory_v1",
-  "generated_at": "2026-11-17T08:47:05.687500+00:00",
+  "benchmark": "life_graph_memory_evaluation_laboratory_v2",
+  "generated_at": "2026-11-25T05:42:10.699971+00:00",
   "splits": {
     "tuning_dev": {
       "split": "tuning_dev",
@@ -26,8 +26,8 @@
             "correction_supersession_rate": 0.8,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.165,
-            "latency_ms_p95": 0.204
+            "latency_ms_p50": 0.155,
+            "latency_ms_p95": 0.196
           },
           "by_kind": {
             "about": {
@@ -152,8 +152,8 @@
             "correction_supersession_rate": 0.6667,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.438,
-            "latency_ms_p95": 0.631
+            "latency_ms_p50": 0.426,
+            "latency_ms_p95": 0.532
           },
           "by_kind": {
             "about": {
@@ -278,8 +278,8 @@
             "correction_supersession_rate": 0.8667,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.734,
-            "latency_ms_p95": 0.934
+            "latency_ms_p50": 0.705,
+            "latency_ms_p95": 0.833
           },
           "by_kind": {
             "about": {
@@ -404,8 +404,8 @@
             "correction_supersession_rate": 0.6667,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 1.174,
-            "latency_ms_p95": 1.632
+            "latency_ms_p50": 1.046,
+            "latency_ms_p95": 1.489
           },
           "by_kind": {
             "about": {
@@ -530,8 +530,8 @@
             "correction_supersession_rate": 1.0,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 1.363,
-            "latency_ms_p95": 2.113
+            "latency_ms_p50": 1.052,
+            "latency_ms_p95": 1.401
           },
           "by_kind": {
             "about": {
@@ -641,7 +641,7 @@
             }
           ]
         },
-        "6_multistep_adaptive_abstain": {
+        "6_multistep_bridge": {
           "overall": {
             "total_questions": 140,
             "answerable_questions": 125,
@@ -651,13 +651,13 @@
             "recall_at_5": 0.896,
             "mrr": 0.6929,
             "ndcg_at_5": 0.7395,
-            "full_support_at_5": 0.8643,
+            "full_support_at_5": 0.7571,
             "temporal_accuracy": 0.92,
             "correction_supersession_rate": 1.0,
-            "abstention_precision": 1.0,
-            "abstention_recall": 1.0,
-            "latency_ms_p50": 1.497,
-            "latency_ms_p95": 2.131
+            "abstention_precision": 0.0,
+            "abstention_recall": 0.0,
+            "latency_ms_p50": 1.177,
+            "latency_ms_p95": 1.827
           },
           "by_kind": {
             "about": {
@@ -669,10 +669,10 @@
             },
             "abstain": {
               "count": 15,
-              "recall_at_1": 1.0,
-              "recall_at_5": 1.0,
-              "mrr": 1.0,
-              "full_support_at_5": 1.0
+              "recall_at_1": 0.0,
+              "recall_at_5": 0.0,
+              "mrr": 0.0,
+              "full_support_at_5": 0.0
             },
             "alias": {
               "count": 10,
@@ -793,8 +793,8 @@
             "correction_supersession_rate": 0.7391,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.262,
-            "latency_ms_p95": 0.407
+            "latency_ms_p50": 0.236,
+            "latency_ms_p95": 0.304
           },
           "by_kind": {
             "about": {
@@ -933,8 +933,8 @@
             "correction_supersession_rate": 0.6957,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.696,
-            "latency_ms_p95": 0.893
+            "latency_ms_p50": 0.62,
+            "latency_ms_p95": 0.78
           },
           "by_kind": {
             "about": {
@@ -1073,8 +1073,8 @@
             "correction_supersession_rate": 0.6087,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 1.218,
-            "latency_ms_p95": 1.634
+            "latency_ms_p50": 1.001,
+            "latency_ms_p95": 1.231
           },
           "by_kind": {
             "about": {
@@ -1213,8 +1213,8 @@
             "correction_supersession_rate": 0.6522,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 1.946,
-            "latency_ms_p95": 2.745
+            "latency_ms_p50": 1.617,
+            "latency_ms_p95": 2.207
           },
           "by_kind": {
             "about": {
@@ -1353,8 +1353,8 @@
             "correction_supersession_rate": 0.8696,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 1.9,
-            "latency_ms_p95": 2.429
+            "latency_ms_p50": 1.67,
+            "latency_ms_p95": 2.183
           },
           "by_kind": {
             "about": {
@@ -1478,7 +1478,7 @@
             }
           ]
         },
-        "6_multistep_adaptive_abstain": {
+        "6_multistep_bridge": {
           "overall": {
             "total_questions": 185,
             "answerable_questions": 169,
@@ -1488,13 +1488,13 @@
             "recall_at_5": 0.8994,
             "mrr": 0.7112,
             "ndcg_at_5": 0.7498,
-            "full_support_at_5": 0.8432,
+            "full_support_at_5": 0.7568,
             "temporal_accuracy": 0.8846,
             "correction_supersession_rate": 0.8696,
-            "abstention_precision": 1.0,
-            "abstention_recall": 1.0,
-            "latency_ms_p50": 2.189,
-            "latency_ms_p95": 3.098
+            "abstention_precision": 0.0,
+            "abstention_recall": 0.0,
+            "latency_ms_p50": 1.799,
+            "latency_ms_p95": 2.54
           },
           "by_kind": {
             "about": {
@@ -1506,10 +1506,10 @@
             },
             "abstain": {
               "count": 16,
-              "recall_at_1": 1.0,
-              "recall_at_5": 1.0,
-              "mrr": 1.0,
-              "full_support_at_5": 1.0
+              "recall_at_1": 0.0,
+              "recall_at_5": 0.0,
+              "mrr": 0.0,
+              "full_support_at_5": 0.0
             },
             "alias": {
               "count": 15,
@@ -1626,5 +1626,137 @@
     "forgetting_leakage_rate": 0.0,
     "forgetting_clean": true,
     "provenance_contradiction_gate_ok": true
+  },
+  "abstention_probe": {
+    "rule": "abstain when no top-5 hit of the primary method accounts for at least `floor` of the question's content words (core.evidence.lexical_entailment_score); questions with no scorable English content words never abstain",
+    "method": "6_multistep_bridge",
+    "floor": 0.7,
+    "floor_chosen_on": "tuning_dev",
+    "gated": false,
+    "splits": {
+      "tuning_dev": {
+        "floor": 0.7,
+        "abstained": 87,
+        "abstain_questions": 15,
+        "true_abstentions": 14,
+        "false_abstentions": 73,
+        "precision": 0.1609,
+        "recall": 0.9333,
+        "f1": 0.2745,
+        "false_abstain_rate": 0.584
+      },
+      "held_out": {
+        "floor": 0.7,
+        "abstained": 110,
+        "abstain_questions": 16,
+        "true_abstentions": 13,
+        "false_abstentions": 97,
+        "precision": 0.1182,
+        "recall": 0.8125,
+        "f1": 0.2063,
+        "false_abstain_rate": 0.574
+      }
+    },
+    "tuning_sweep": [
+      {
+        "floor": 0.2,
+        "abstained": 7,
+        "abstain_questions": 15,
+        "true_abstentions": 2,
+        "false_abstentions": 5,
+        "precision": 0.2857,
+        "recall": 0.1333,
+        "f1": 0.1818,
+        "false_abstain_rate": 0.04
+      },
+      {
+        "floor": 0.3,
+        "abstained": 10,
+        "abstain_questions": 15,
+        "true_abstentions": 2,
+        "false_abstentions": 8,
+        "precision": 0.2,
+        "recall": 0.1333,
+        "f1": 0.16,
+        "false_abstain_rate": 0.064
+      },
+      {
+        "floor": 0.4,
+        "abstained": 30,
+        "abstain_questions": 15,
+        "true_abstentions": 5,
+        "false_abstentions": 25,
+        "precision": 0.1667,
+        "recall": 0.3333,
+        "f1": 0.2222,
+        "false_abstain_rate": 0.2
+      },
+      {
+        "floor": 0.5,
+        "abstained": 33,
+        "abstain_questions": 15,
+        "true_abstentions": 5,
+        "false_abstentions": 28,
+        "precision": 0.1515,
+        "recall": 0.3333,
+        "f1": 0.2083,
+        "false_abstain_rate": 0.224
+      },
+      {
+        "floor": 0.6,
+        "abstained": 67,
+        "abstain_questions": 15,
+        "true_abstentions": 11,
+        "false_abstentions": 56,
+        "precision": 0.1642,
+        "recall": 0.7333,
+        "f1": 0.2683,
+        "false_abstain_rate": 0.448
+      },
+      {
+        "floor": 0.7,
+        "abstained": 87,
+        "abstain_questions": 15,
+        "true_abstentions": 14,
+        "false_abstentions": 73,
+        "precision": 0.1609,
+        "recall": 0.9333,
+        "f1": 0.2745,
+        "false_abstain_rate": 0.584
+      },
+      {
+        "floor": 0.8,
+        "abstained": 92,
+        "abstain_questions": 15,
+        "true_abstentions": 14,
+        "false_abstentions": 78,
+        "precision": 0.1522,
+        "recall": 0.9333,
+        "f1": 0.2617,
+        "false_abstain_rate": 0.624
+      },
+      {
+        "floor": 0.9,
+        "abstained": 92,
+        "abstain_questions": 15,
+        "true_abstentions": 14,
+        "false_abstentions": 78,
+        "precision": 0.1522,
+        "recall": 0.9333,
+        "f1": 0.2617,
+        "false_abstain_rate": 0.624
+      },
+      {
+        "floor": 1.0,
+        "abstained": 92,
+        "abstain_questions": 15,
+        "true_abstentions": 14,
+        "false_abstentions": 78,
+        "precision": 0.1522,
+        "recall": 0.9333,
+        "f1": 0.2617,
+        "false_abstain_rate": 0.624
+      }
+    ]
   }
 }
