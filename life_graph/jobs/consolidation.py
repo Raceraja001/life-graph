@@ -31,6 +31,7 @@ from life_graph.models.schemas import MemoryCreate
 from life_graph.scoring.decay import DecayCalculator
 from life_graph.scoring.importance import ImportanceTagger, _importance_tier
 from life_graph.services.contradiction import ContradictionDetector
+from life_graph.services.llm.resilient import LOCAL_PROVIDERS
 from life_graph.storage.postgres import PostgresMemoryStore
 
 if TYPE_CHECKING:
@@ -494,12 +495,35 @@ class ConsolidationPipeline:
 
     # ── Step 5: Distill ───────────────────────────────────────
 
-    async def _distill(self, clusters: list[list[Memory]]) -> list[dict[str, Any]]:
-        """Summarise large clusters into principle memories via LLM.
+    @staticmethod
+    def _local_distill_model() -> str | None:
+        """The local model that distills, or None when there is none.
 
-        Only clusters with >= 3 memories are distilled. Uses litellm
-        with the cheap model to minimise cost. Returns a list of dicts
-        describing each newly created principle.
+        The clusters are the owner's own memories, so they go to a model on
+        this machine only (owner decision D25). ``llm_model_cheap`` is used
+        when it names a local model (prod sets it to one); otherwise the
+        local synthesis model. With local inference switched off there is
+        no local model, and distillation is skipped.
+        """
+        from life_graph.config import settings
+
+        if not settings.use_local_llm:
+            return None
+        cheap = (settings.llm_model_cheap or "").strip()
+        if cheap.startswith(LOCAL_PROVIDERS):
+            # The Ollama path strips its own prefixes; LM Studio wants the bare name.
+            return cheap.removeprefix("lm_studio/")
+        return (settings.lm_synthesis_model or "").strip() or None
+
+    async def _distill(self, clusters: list[list[Memory]]) -> list[dict[str, Any]]:
+        """Summarise large clusters into principle memories via a local LLM.
+
+        Only clusters with >= 3 memories are distilled. The memories are the
+        owner's own, so the request goes to the local runtime only
+        (``chat_local_only``), never to the cloud failover chain, whatever
+        ``llm_model_cheap`` or ``use_hybrid_llm`` say. With no local model
+        it skips and logs why. Returns a list of dicts describing each newly
+        created principle.
 
         Memories already named as a source of an existing principle are
         dropped from their cluster first, so a second run over the same
@@ -520,6 +544,15 @@ class ConsolidationPipeline:
         if not large_clusters:
             return []
 
+        model = self._local_distill_model()
+        if model is None:
+            logger.info(
+                "Distill skipped for %d clusters: no local model (use_local_llm is off), "
+                "and personal memories are never sent to a cloud model",
+                len(large_clusters),
+            )
+            return []
+
         principles: list[dict[str, Any]] = []
 
         for cluster in large_clusters:
@@ -533,17 +566,18 @@ class ConsolidationPipeline:
             )
 
             try:
-                from life_graph.config import settings
-                from life_graph.runtime import get_resilient_llm
+                from life_graph.runtime import get_lm_client
 
-                response = await get_resilient_llm().acompletion(
+                # Local only: get_resilient_llm() fails over to cloud models
+                # even when its primary is local. Returns "" on failure.
+                reply = await get_lm_client().chat_local_only(
                     messages=[{"role": "user", "content": prompt}],
-                    model=settings.llm_model_cheap,
+                    model=model,
                     max_tokens=150,
                     temperature=0.3,
                 )
-                principle_text = response.choices[0].message.content.strip()
-                cost = response._hidden_params.get("response_cost", 0.0) or 0.0
+                principle_text = (reply or "").strip()
+                cost = 0.0  # local inference is free
 
                 if not principle_text:
                     logger.warning("Distill returned no text for a cluster of %d", len(cluster))

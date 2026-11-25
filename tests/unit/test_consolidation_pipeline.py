@@ -316,20 +316,7 @@ async def test_distilled_principle_carries_current_tenant(monkeypatch):
     """A principle written with the column default lands in tenant 'legacy'."""
     set_tenant_context("acme", "system")
     pipeline, recorder = _pipeline()
-
-    fake_response = MagicMock()
-    fake_response.choices = [MagicMock()]
-    fake_response.choices[0].message.content = "  Prefer boring technology.  "
-    fake_response._hidden_params = {"response_cost": 0.0002}
-
-    async def _acompletion(**kwargs):
-        return fake_response
-
-    fake_llm = MagicMock()
-    fake_llm.acompletion = _acompletion
-    monkeypatch.setattr(
-        "life_graph.api.dependencies.get_resilient_llm", lambda: fake_llm, raising=False
-    )
+    _fake_llm(monkeypatch, text="  Prefer boring technology.  ")
 
     cluster = [_make_memory(f"memory {i}", embedding=[1.0, 0.0]) for i in range(3)]
     principles = await pipeline._distill([cluster])
@@ -337,7 +324,7 @@ async def test_distilled_principle_carries_current_tenant(monkeypatch):
     assert len(principles) == 1
     assert principles[0]["content"] == "Prefer boring technology."
     assert principles[0]["source_count"] == 3
-    assert principles[0]["cost_usd"] == pytest.approx(0.0002)
+    assert principles[0]["cost_usd"] == 0.0  # local inference (D25)
 
     # Stored through PostgresMemoryStore.store(), which stamps the tenant
     # from the context — so the principle cannot land in 'legacy'.
@@ -345,20 +332,92 @@ async def test_distilled_principle_carries_current_tenant(monkeypatch):
     assert recorder["added"] == [], "principle bypassed the store path"
 
 
+def _no_cloud(monkeypatch):
+    """Make every cloud route fail the test if distill ever takes it."""
+    from life_graph.services.llm.client import LMStudioClient
+
+    def _cloud(*_a, **_kw):
+        raise AssertionError("personal memories were sent to the cloud LLM")
+
+    monkeypatch.setattr("life_graph.runtime.get_resilient_llm", _cloud)
+    monkeypatch.setattr(LMStudioClient, "_cloud_chat", _cloud)
+    monkeypatch.setattr("litellm.acompletion", _cloud, raising=False)
+
+
 def _fake_llm(monkeypatch, text="Prefer boring technology."):
-    fake_response = MagicMock()
-    fake_response.choices = [MagicMock()]
-    fake_response.choices[0].message.content = text
-    fake_response._hidden_params = {"response_cost": 0.0}
+    """A local client that answers *text*; the cloud routes raise. Returns the client."""
+    _no_cloud(monkeypatch)
+    client = MagicMock()
+    client.chat_local_only = AsyncMock(return_value=text)
+    monkeypatch.setattr("life_graph.runtime.get_lm_client", lambda: client)
+    return client
 
-    async def _acompletion(**kwargs):
-        return fake_response
 
-    fake_llm = MagicMock()
-    fake_llm.acompletion = _acompletion
-    monkeypatch.setattr(
-        "life_graph.api.dependencies.get_resilient_llm", lambda: fake_llm, raising=False
-    )
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cheap", "expected"),
+    [
+        ("ollama_chat/qwen3:14b", "ollama_chat/qwen3:14b"),  # prod: a local cheap model
+        ("lm_studio/qwen2.5-7b", "qwen2.5-7b"),
+        ("openrouter/openai/gpt-oss-20b:free", "local-synth"),  # cloud default -> local model
+    ],
+)
+async def test_distill_stays_local_even_in_hybrid_mode(monkeypatch, cheap, expected):
+    """D25: a cluster of the owner's memories never reaches a cloud model, even
+    with hybrid mode on, an OpenRouter key set and a cloud llm_model_cheap."""
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "use_local_llm", True)
+    monkeypatch.setattr(settings, "use_hybrid_llm", True)
+    monkeypatch.setattr(settings, "openrouter_api_key", "sk-fake")
+    monkeypatch.setattr(settings, "llm_model_cheap", cheap)
+    monkeypatch.setattr(settings, "lm_synthesis_model", "local-synth")
+    set_tenant_context("acme", "system")
+    pipeline, _ = _pipeline()
+    client = _fake_llm(monkeypatch)
+    cluster = [_make_memory(f"secret {i}", embedding=[1.0, 0.0]) for i in range(3)]
+
+    principles = await pipeline._distill([cluster])
+
+    assert [p["content"] for p in principles] == ["Prefer boring technology."]
+    client.chat_local_only.assert_awaited_once()
+    assert client.chat_local_only.await_args.kwargs["model"] == expected
+    assert "secret 0" in client.chat_local_only.await_args.kwargs["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_distill_skips_when_no_local_model(monkeypatch, caplog):
+    """With local inference off there is no local model: distill skips, says why,
+    and sends nothing anywhere."""
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "use_local_llm", False)
+    monkeypatch.setattr(settings, "use_hybrid_llm", True)
+    monkeypatch.setattr(settings, "openrouter_api_key", "sk-fake")
+    set_tenant_context("acme", "system")
+    pipeline, _ = _pipeline()
+    client = _fake_llm(monkeypatch)
+    cluster = [_make_memory(f"secret {i}", embedding=[1.0, 0.0]) for i in range(3)]
+
+    with caplog.at_level("INFO", logger="life_graph.jobs.consolidation"):
+        assert await pipeline._distill([cluster]) == []
+
+    client.chat_local_only.assert_not_awaited()
+    assert pipeline._store.calls == []
+    assert "no local model" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_distill_empty_local_reply_stores_nothing(monkeypatch):
+    """chat_local_only returns "" when the local runtime is down: no principle,
+    and no fallback to the cloud (the cloud routes raise in _fake_llm)."""
+    set_tenant_context("acme", "system")
+    pipeline, _ = _pipeline()
+    _fake_llm(monkeypatch, text="")
+    cluster = [_make_memory(f"memory {i}", embedding=[1.0, 0.0]) for i in range(3)]
+
+    assert await pipeline._distill([cluster]) == []
+    assert pipeline._store.calls == []
 
 
 @pytest.mark.asyncio
