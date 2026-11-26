@@ -59,22 +59,24 @@ class AgentSettings(BaseModel):
 
     # ── OS Kernel ──────────────────────────────────────────
     # Personal tools on cloud kernel runs (kernel/process_manager._run_agent).
-    # Off (default): PERSONAL_TOOLS (services/lead.py: memory_*, email_*,
+    # On (default): PERSONAL_TOOLS (services/lead.py: memory_*, email_*,
     # calendar_*, bills/money, study cards, delegate_to_persona, ...) are cut
-    # only on Jarvis's general cloud route; every other persona keeps them on
-    # whatever model it runs. On: cut on EVERY run that can leave the machine
-    # -- its model, or any model in llm_fallback_chain / llm_paid_fallback_model,
-    # is not local -- for every persona, the rule drivers/local.py already
-    # applies to dispatched tasks.
-    # The trade-off: off means a cloud-model persona (admin, scout, tutor, rex,
-    # scribe, assistant are seeded on agent_llm_model, cloud by default) can
-    # send the owner's memories and mail to that cloud model, against the
-    # owner's "personal data stays local" policy. On, today, strips most of
-    # those personas' tools and breaks swe-lead's dev-team delegation
-    # (delegate_to_persona) on cloud models, because the default fallback
-    # chain is cloud. The real fix is local models (and a local-only fallback
-    # chain) for the personas that need personal tools; then turn this on.
-    kernel_cloud_strip_personal_tools: bool = False
+    # on EVERY run that can leave the machine -- its model, or any model it
+    # may fail over to (llm_fallback_chain, OmniRoute, llm_paid_fallback_model;
+    # connectors/locality.run_is_local), is not local -- for every persona.
+    # This is the rule drivers/local.py already applies to dispatched tasks,
+    # and the charter's "personal data is handled by local models only".
+    # A local run keeps them, and so does a personal Jarvis request that is
+    # pinned to local models.
+    # What it costs: a persona on a cloud model (admin, scout, tutor, rex,
+    # scribe, assistant and swe-lead are seeded on agent_llm_model, cloud by
+    # default) cannot read memories, mail, calendar or money, and swe-lead
+    # cannot hand work to the dev team (delegate_to_persona) while it runs
+    # on a cloud model or with a cloud fallback chain. To give a persona
+    # those tools back, put it on a local model with a local-only fallback
+    # chain. Off restores the old rule -- only Jarvis's general cloud route
+    # loses them -- and lets other personas send personal data to the cloud.
+    kernel_cloud_strip_personal_tools: bool = True
     # Must stay > ProcessManager.MAX_DELEGATION_DEPTH (currently 5): each
     # delegate_to_persona(wait=True) hop blocks its parent's semaphore
     # permit while waiting on the child, so a full-depth delegation chain

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from life_graph.config import settings
 from life_graph.services import lead
 
 CLOUD = "claude-cli"
@@ -211,7 +212,14 @@ async def test_run_agent_sends_no_personal_data_to_the_cloud():
 
 
 @pytest.mark.asyncio
-async def test_other_personas_are_untouched():
+async def test_other_personas_are_untouched(monkeypatch):
     out, seen, _ = await _run("scout", _persona(model="ollama_chat/qwen3:14b"), "my bills")
     assert seen["model"] == "ollama_chat/qwen3:14b" and "route" not in out
-    assert "bills_due" in seen["tools"]
+    # Not routed, but the fixture's chain fails over to a cloud model, so the
+    # run can leave the machine: kernel_cloud_strip_personal_tools (on by
+    # default since 2026-11-25) cuts the personal tools. An all-local chain
+    # keeps them.
+    assert "bills_due" not in seen["tools"]
+    monkeypatch.setattr(settings, "llm_fallback_chain", "ollama_chat/qwen3:4b")
+    out, seen, _ = await _run("scout", _persona(model="ollama_chat/qwen3:14b"), "my bills")
+    assert "route" not in out and "bills_due" in seen["tools"]

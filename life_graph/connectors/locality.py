@@ -6,10 +6,10 @@ Anything that has not set it (an unknown caller, a future code path) gets
 ``CLOUD``: this fails closed.
 
 "Local" is stricter than "the persona's model is local". ``ResilientLLM`` fails
-over through ``llm_fallback_chain`` (and an optional paid model) mid-run, and
-the conversation — including every tool result so far — goes with it. So a
-run is local only when its model *and every model it could fall over to* run
-on this machine.
+over through ``llm_fallback_chain`` (then OmniRoute and an optional paid model)
+mid-run, and the conversation — including every tool result so far — goes with
+it. So a run is local only when its model *and every model it could fall over
+to* run on this machine.
 """
 
 from __future__ import annotations
@@ -47,6 +47,10 @@ def model_is_local(model: str | None) -> bool:
 def run_is_local(model: str | None) -> bool:
     """Whether a run on ``model`` stays local even if the model fails over."""
     chain = [model, *settings.llm_fallback_chain_list]
+    # ResilientLLM._append_last_resorts adds OmniRoute (a hosted router)
+    # after the free chain whenever its key is set.
+    if settings.omniroute_api_key:
+        chain.append(settings.omniroute_model)
     if settings.llm_paid_fallback_model:
         chain.append(settings.llm_paid_fallback_model)
     return all(model_is_local(m) for m in chain)

@@ -712,10 +712,10 @@ class ProcessManager:
         cloud_run = not (pinned_local or run_is_local(orchestrator.model))
         # general on a local model needs no note: nothing was taken away.
         general_cloud = general_cloud and cloud_run
-        # Which runs lose PERSONAL_TOOLS. Off (default): only Jarvis's general
-        # cloud route, as before. On: every cloud run, for every persona, the
-        # rule drivers/local.py applies -- see the setting's docstring
-        # (config/agents.py) for what that costs swe-lead & co.
+        # Which runs lose PERSONAL_TOOLS. On (default): every cloud run, for
+        # every persona, the rule drivers/local.py applies -- see the
+        # setting's docstring (config/agents.py) for what that costs swe-lead
+        # & co. Off: only Jarvis's general cloud route.
         strip_personal = cloud_run if settings.kernel_cloud_strip_personal_tools else general_cloud
         if general_cloud:
             system_prompt = f"{system_prompt or ''}\n\n{lead.GENERAL_NOTE}".strip()
