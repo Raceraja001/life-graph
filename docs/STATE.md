@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-26 07:11 UTC` from `master` @ `2cdad9a`
+Generated `2026-11-26 07:28 UTC` from `master` @ `cd93be3`
 
 ---
 
@@ -22,11 +22,11 @@ Generated `2026-11-26 07:11 UTC` from `master` @ `2cdad9a`
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
-| Scheduled jobs | **35** |
-| Config settings | **332** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5975** in 643 files |
+| Scheduled jobs | **36** |
+| Config settings | **334** (prefix `LIFE_GRAPH_`) |
+| Test functions | **6004** in 648 files |
 | Dashboard pages | **23** |
-| Python | 527 files, 150,923 lines |
+| Python | 529 files, 151,249 lines |
 
 ---
 
@@ -902,7 +902,7 @@ Generated `2026-11-26 07:11 UTC` from `master` @ `2cdad9a`
 
 ## Scheduled jobs
 
-35 ARQ cron jobs (times are UTC).
+36 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -910,6 +910,7 @@ Generated `2026-11-26 07:11 UTC` from `master` @ `2cdad9a`
 | `check_runtime_health` | hourly at :03,:13,:23,:33,:43,:53 | `life_graph.workers.runtime_health.check_runtime_health` |
 | `close_claude_code_sessions` | hourly at :04,:14,:24,:34,:44,:54 | `life_graph.workers.claude_code_sessions.close_claude_code_sessions` |
 | `decay_trust_scores` | 05:00 | `life_graph.workers.tasks.decay_trust_scores` |
+| `deliver_queued_watcher_notifications` | daily at (settings.brief_hour_utc - 1) % 24:40 | `life_graph.workers.watcher_queue.deliver_queued_watcher_notifications` |
 | `distill_idle_conversations` | every 15 min | `life_graph.workers.distill.distill_idle_conversations` |
 | `failure_pattern_mining` | 02:30 | `life_graph.workers.tasks.failure_pattern_mining` |
 | `purge_connector_items` | 04:40 | `life_graph.workers.tasks.purge_connector_items` |
@@ -1040,16 +1041,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 490 | 4952 |
-| `tests/integration/` | 152 | 1011 |
+| `tests/unit/` | 493 | 4976 |
+| `tests/integration/` | 154 | 1016 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **643** | **5975** |
+| **total** | **648** | **6004** |
 
 ---
 
 ## Configuration
 
-332 settings, all overridable by environment variable.
+334 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1355,6 +1356,8 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_WATCHER_DIGEST_SCHEDULE` | `'0 8 * * *'` |
 | `LIFE_GRAPH_WATCHER_WEBHOOK_SECRET` | `''` |
 | `LIFE_GRAPH_WATCHER_MAX_EVENTS_PER_RUN` | `100` |
+| `LIFE_GRAPH_WATCHER_QUEUE_MAX_AGE_HOURS` | `26` |
+| `LIFE_GRAPH_WATCHER_QUEUE_MAX_PER_RUN` | `20` |
 | `LIFE_GRAPH_WATCHER_AUTO_DISABLE_AFTER_FAILURES` | `5` |
 | `LIFE_GRAPH_INTERVIEW_MAX_QUESTIONS_PER_DAY` | `3` |
 | `LIFE_GRAPH_INTERVIEW_QUESTION_TTL_DAYS` | `7` |
