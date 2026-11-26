@@ -183,7 +183,7 @@ def _channel_tenant(channel: str) -> tuple[str | None, bool]:
     return (rest or None), True
 
 
-async def _relay(message: dict) -> None:
+async def _relay(message: dict[str, Any]) -> None:
     """Send one pub/sub message to its tenant's local sockets.
 
     Only the relay's own ``events:{tenant}`` channel is sent on. The bridge's
@@ -240,17 +240,17 @@ async def start_subscriber() -> None:
             with contextlib.suppress(Exception):
                 await pubsub.punsubscribe(f"{_CHANNEL_PREFIX}*")
             with contextlib.suppress(Exception):
-                await pubsub.aclose()
+                await pubsub.aclose()  # type: ignore[no-untyped-call]  # redis-py stub
         await asyncio.sleep(delay)
         delay = min(delay * 2, _RECONNECT_MAX_SECONDS)
 
 
-def start_relay() -> asyncio.Task:
+def start_relay() -> asyncio.Task[None]:
     """Start :func:`start_subscriber` as a background task (API startup)."""
     return asyncio.create_task(start_subscriber(), name="ws-redis-relay")
 
 
-async def stop_relay(task: asyncio.Task | None) -> None:
+async def stop_relay(task: asyncio.Task[None] | None) -> None:
     """Cancel the relay task and wait for it to finish (API shutdown)."""
     if task is None:
         return
