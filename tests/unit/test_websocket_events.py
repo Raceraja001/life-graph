@@ -107,3 +107,28 @@ async def test_with_redis_it_publishes_on_the_tenants_channel(sockets, monkeypat
     await ws.ws_event_handler(_event({"tenant_id": "acme"}))
 
     assert redis.publish.await_args.args[0] == "events:acme"
+
+
+@pytest.mark.asyncio
+async def test_with_redis_it_publishes_even_with_no_sockets_in_this_process(monkeypatch):
+    """The client may be on another process; its relay sends the event on."""
+    monkeypatch.setattr(ws, "ws_manager", ws.ConnectionManager())
+    redis = AsyncMock()
+    monkeypatch.setattr(ws, "get_redis", lambda: redis)
+
+    await ws.ws_event_handler(_event({"tenant_id": "acme"}))
+
+    redis.publish.assert_awaited_once()
+    assert redis.publish.await_args.args[0] == "events:acme"
+
+
+@pytest.mark.asyncio
+async def test_without_redis_and_no_sockets_nothing_is_done(monkeypatch):
+    manager = ws.ConnectionManager()
+    manager.broadcast_to_tenant = AsyncMock()  # type: ignore[method-assign]
+    monkeypatch.setattr(ws, "ws_manager", manager)
+    monkeypatch.setattr(ws, "get_redis", lambda: None)
+
+    await ws.ws_event_handler(_event({"tenant_id": "acme"}))
+
+    manager.broadcast_to_tenant.assert_not_awaited()
