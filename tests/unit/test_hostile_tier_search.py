@@ -160,7 +160,12 @@ async def test_the_dashboard_search_alone_sees_them(monkeypatch):
         and any(isinstance(t, ast.Name) and t.id == "include_hostile" for t in n.targets)
     ]
     assert len(assigns) == 1
-    assert ast.unparse(assigns[0].value) == "bool(body.include_pending)"
+    # The opt-in alone is not enough: the caller must be the owner (see
+    # test_a_service_key_gets_pending_rows_but_never_hostile_ones).
+    assert (
+        ast.unparse(assigns[0].value)
+        == "bool(body.include_pending) and ingress_for(request).owner_verified"
+    )
     calls = [
         n
         for n in ast.walk(tree)

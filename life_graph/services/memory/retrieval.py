@@ -116,6 +116,24 @@ DATED_EPISODE = "dated_episode"  # the day summary of a period the question name
 COLD_TIER = "cold_tier"  # an archived or replaced memory (services/memory/tiers.py)
 
 
+def _agent_safe(memories: list[Any]) -> list[Any]:
+    """*memories* without the ones other people wrote (trust tier ``hostile_possible``).
+
+    Applied to every source retrieve() draws from (search, dated episodes,
+    entity links, neighbours, the cold tier) before the judge sees them and
+    before any ``[:limit]``. They used to be dropped only in :func:`_result`,
+    after the judge and the slice, so a hostile row could take a slot in the
+    limit (leaving fewer answers than asked for), be the "sufficient" top hit
+    of the early exit, and be shown to the judge model.
+    """
+    return [m for m in memories if not _is_hostile(m)]
+
+
+def _is_hostile(memory: Any) -> bool:
+    """Whether *memory* is someone else's words, kept out of every agent packet."""
+    return is_excluded_from_agents(getattr(memory, "trust_tier", None))
+
+
 def _marked(memories: list[Any], reason: str, scores: list[float] | None = None) -> list[Any]:
     """*memories*, each carrying why it was found (``retrieval_reason``).
 
@@ -142,7 +160,7 @@ async def _with_neighbours(tenant_id: str, candidates: list[Any]) -> list[Any]:
         logger.warning("Linked candidates failed; using search only", exc_info=True)
         return candidates
     known = {m.id for m in candidates}
-    return candidates + _marked([m for m in linked if m.id not in known], NEIGHBOUR)
+    return candidates + _marked([m for m in _agent_safe(linked) if m.id not in known], NEIGHBOUR)
 
 
 def provenance_score(m: Any) -> float:
@@ -414,11 +432,11 @@ def _result(
     caller's abstention indicator is about the evidence it was handed.
 
     Memories other people wrote (trust tier ``hostile_possible``) are dropped
-    here. Search already leaves them out in SQL; this catches the ones that
-    arrive another way (a link, a named entity, a dated episode), because
-    what retrieve returns goes in front of an agent.
+    here too, as a last guard: what retrieve returns goes in front of an
+    agent. The real filter is :func:`_agent_safe`, at every source, before
+    the judge and the limit.
     """
-    items = [m for m in items if not is_excluded_from_agents(getattr(m, "trust_tier", None))]
+    items = _agent_safe(items)
     assessment = assess_candidate_evidence(question, items, now=now)
     for memory, per in zip(items, assessment["per_memory"], strict=False):
         # A read-only or mapping row simply does not carry it; the collection's
@@ -707,7 +725,9 @@ async def retrieve(
         dated = _marked(
             [
                 m
-                for m in await episodes.episodes_between(tenant_id, *window, **ep_kwargs)
+                for m in _agent_safe(
+                    await episodes.episodes_between(tenant_id, *window, **ep_kwargs)
+                )
                 if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_ref)
             ][:limit],
             DATED_EPISODE,
@@ -721,6 +741,9 @@ async def retrieve(
         # a fact that ended before now but was true on as_of is still found.
         valid_at=_ensure_utc(as_of) if as_of is not None else None,
     )
+    # Search leaves hostile rows out in SQL already; a store that does not
+    # (or a future leg) must not let one take a candidate slot.
+    hits = [(m, s) for m, s in hits if not _is_hostile(m)]
     if by_strength:
         hits = strength_order(hits)[:CANDIDATES]
     hits = provenance_tiebreak_order(hits)
@@ -751,8 +774,10 @@ async def retrieve(
     try:
         named = [] if early_exit else await entities.known_in_text(tenant_id, question)
         if named:
-            linked = await entities.memories_for(
-                tenant_id, [eid for eid, _ in named], limit=max(ENTITY_CANDIDATES, limit)
+            linked = _agent_safe(
+                await entities.memories_for(
+                    tenant_id, [eid for eid, _ in named], limit=max(ENTITY_CANDIDATES, limit)
+                )
             )
             known_ids = {m.id for m in candidates}
             candidates += _marked([m for m in linked if m.id not in known_ids], ENTITY_LINK)
@@ -833,7 +858,7 @@ async def _cold(embedding: list[float], question: str) -> list[Any]:
     from life_graph.services.memory import tiers as memory_tiers
 
     try:
-        return await memory_tiers.search(embedding, question)
+        return _agent_safe(await memory_tiers.search(embedding, question))
     except Exception:  # noqa: BLE001 — the cold tier is a bonus
         logger.warning("Cold memory search failed", exc_info=True)
         return []

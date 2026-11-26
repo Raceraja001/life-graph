@@ -14,9 +14,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
+from life_graph.api.auth import ingress_for
 from life_graph.api.dependencies import (
     get_memory_manager,
     get_metamemory,
@@ -269,6 +270,7 @@ async def _search_trail(store, body) -> list[TrailPassage]:
 )
 async def semantic_search(
     body: SearchQuery,
+    request: Request,
     store: PostgresMemoryStore = Depends(get_store),
     metamemory: MetamemoryTracker = Depends(get_metamemory),
     manager: MemoryManager = Depends(get_memory_manager),
@@ -318,9 +320,12 @@ async def semantic_search(
     # the core approval-gate invariant. The dashboard sets include_pending=true
     # explicitly so it can still show pending items (badged).
     statuses: tuple[str, ...] = ("active", "pending") if body.include_pending else ("active",)
-    # Text other people wrote (trust tier hostile_possible) follows the same
-    # opt-in: the owner's dashboard sees it, badged; an agent never does.
-    include_hostile = bool(body.include_pending)
+    # Text other people wrote (trust tier hostile_possible) needs the same
+    # opt-in *and* an owner-verified caller (an owner API key, a paired phone,
+    # or a dev stack with auth off; api/auth.ingress_for). It used to follow
+    # include_pending alone, so any service-key caller (MCP, watchers,
+    # integrations) could ask for it. Such a caller still gets pending rows.
+    include_hostile = bool(body.include_pending) and ingress_for(request).owner_verified
 
     if body.status != "active":
         # User explicitly narrowed to a non-default status (e.g. "archived") —
