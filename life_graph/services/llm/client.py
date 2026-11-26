@@ -11,6 +11,7 @@ Falls back to fully local when OpenRouter is unavailable.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from life_graph.config import settings
@@ -22,6 +23,32 @@ from life_graph.services.spend_guardrails import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: How long embeddings skip a local server that has said it cannot serve them
+#: (or cannot be reached) and go straight to Ollama; after that one call
+#: probes it again.
+EMBED_COOLDOWN_S = 600.0
+#: The clock the embeddings breaker reads (a test replaces it).
+_clock = time.monotonic
+#: base_url -> clock time until which that server is skipped for embeddings.
+#: Module-level, so every LMStudioClient for the same URL shares it.
+_embed_skip_until: dict[str, float] = {}
+
+
+def _cannot_embed(exc: BaseException) -> bool:
+    """Whether *exc* says the server will not serve embeddings soon.
+
+    True for a connection failure or timeout, a 404 or 501, or the
+    llama.cpp server's "does not support embeddings" answer (started without
+    --embeddings, 2026-11-26). Any other error is treated as one bad call.
+    """
+    import openai
+
+    if isinstance(exc, openai.APIConnectionError):  # includes APITimeoutError
+        return True
+    if getattr(exc, "status_code", None) in (404, 501):
+        return True
+    return "does not support embeddings" in str(exc).lower()
 
 
 def get_resilient_llm():
@@ -53,6 +80,7 @@ class LMStudioClient:
         self._api_key = api_key or settings.lm_studio_api_key
         self._client = None
         self._async_client = None
+        self._embed_client = None
         self._cloud_client = None
 
     def _get_client(self):
@@ -313,6 +341,53 @@ class LMStudioClient:
         )
         return list(data.get("embeddings") or [])
 
+    # ── Embeddings through LM Studio's /v1, with Ollama behind it ──
+    #
+    # A server that cannot embed used to cost every call ~1.3 s: the SDK
+    # retried the 501 twice with backoff before the Ollama fallback ran
+    # (prod, 2026-11-26). Now the call is tried once, and a server that says
+    # it cannot embed is skipped for EMBED_COOLDOWN_S. Both paths ask for
+    # settings.lm_embedding_model, so the vectors are the same model's.
+
+    def _get_embed_client(self):
+        """The local client with SDK retries off, for embeddings only."""
+        if self._embed_client is None:
+            client = self._get_async_client()
+            with_options = getattr(client, "with_options", None)
+            # A test double without with_options is used as it is.
+            self._embed_client = with_options(max_retries=0) if with_options else client
+        return self._embed_client
+
+    def _embed_skipped(self) -> bool:
+        until = _embed_skip_until.get(self._base_url)
+        return until is not None and _clock() < until
+
+    def _skip_embeddings(self, exc: BaseException) -> None:
+        if not self._embed_skipped():
+            logger.warning(
+                "LM Studio cannot serve embeddings (%s); using Ollama directly for %d s",
+                exc,
+                EMBED_COOLDOWN_S,
+            )
+        _embed_skip_until[self._base_url] = _clock() + EMBED_COOLDOWN_S
+
+    async def _lm_embed(self, input_: str | list[str]) -> list[list[float]] | None:
+        """LM Studio's vectors for *input_*, or None when it failed (one attempt)."""
+        model = settings.lm_embedding_model
+        try:
+            response = await self._get_embed_client().embeddings.create(model=model, input=input_)
+        except Exception as exc:  # best-effort: the caller falls back to Ollama
+            if _cannot_embed(exc):
+                self._skip_embeddings(exc)
+            else:
+                logger.warning(
+                    "LM Studio embedding failed (model=%s): %s; trying Ollama fallback", model, exc
+                )
+            return None
+        if _embed_skip_until.pop(self._base_url, None) is not None:
+            logger.info("LM Studio serves embeddings again")
+        return [item.embedding for item in response.data]
+
     async def embed(self, text: str) -> list[float]:
         """Generate embedding for a single text string (always local)."""
         if self._is_ollama:
@@ -322,25 +397,18 @@ class LMStudioClient:
             except Exception:
                 logger.exception("Ollama embedding failed (model=%s)", settings.lm_embedding_model)
                 return []
-        client = self._get_async_client()
-        model = settings.lm_embedding_model
-
+        if not self._embed_skipped():
+            vectors = await self._lm_embed(text)
+            if vectors:
+                return vectors[0]
         try:
-            response = await client.embeddings.create(
-                model=model,
-                input=text,
+            vectors = await self._ollama_embed([text])
+            return vectors[0] if vectors else []
+        except Exception:
+            logger.exception(
+                "Ollama embedding fallback failed (model=%s)", settings.lm_embedding_model
             )
-            return response.data[0].embedding
-        except Exception as exc:
-            logger.warning(
-                "LM Studio embedding failed (model=%s): %s; trying Ollama fallback", model, exc
-            )
-            try:
-                vectors = await self._ollama_embed([text])
-                return vectors[0] if vectors else []
-            except Exception:
-                logger.exception("Ollama embedding fallback failed (model=%s)", model)
-                return []
+            return []
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for multiple texts (always local)."""
@@ -360,28 +428,19 @@ class LMStudioClient:
                 )
             return [[] for _ in texts]
 
-        client = self._get_async_client()
-        model = settings.lm_embedding_model
-
+        if not self._embed_skipped():
+            vectors = await self._lm_embed(texts)
+            if vectors is not None:
+                return vectors
         try:
-            response = await client.embeddings.create(
-                model=model,
-                input=texts,
+            vectors = await self._ollama_embed(texts)
+            if len(vectors) == len(texts):
+                return vectors
+        except Exception:
+            logger.exception(
+                "Ollama batch embedding fallback failed (model=%s)", settings.lm_embedding_model
             )
-            return [item.embedding for item in response.data]
-        except Exception as exc:
-            logger.warning(
-                "LM Studio batch embedding failed (model=%s): %s; trying Ollama fallback",
-                model,
-                exc,
-            )
-            try:
-                vectors = await self._ollama_embed(texts)
-                if len(vectors) == len(texts):
-                    return vectors
-            except Exception:
-                logger.exception("Ollama batch embedding fallback failed (model=%s)", model)
-            return [[] for _ in texts]
+        return [[] for _ in texts]
 
     def list_models(self) -> list[str]:
         """List available models on the LM Studio server."""
