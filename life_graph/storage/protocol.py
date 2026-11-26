@@ -57,10 +57,13 @@ class MemoryStore(Protocol):
         embedding: list[float],
         limit: int = 10,
         filters: dict | None = None,
+        include_hostile: bool = False,
     ) -> list[Memory]:
         """Return the closest memories by cosine distance to *embedding*.
 
-        *filters* supports the same keys as :meth:`list_memories`.
+        *filters* supports the same keys as :meth:`list_memories`. Memories
+        with trust tier ``hostile_possible`` are left out unless
+        *include_hostile* is True.
         """
         ...
 

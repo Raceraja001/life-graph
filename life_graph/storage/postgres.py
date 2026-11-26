@@ -187,6 +187,13 @@ def _raw_filter_sql(filters: dict | None) -> tuple[str, dict]:
     return "".join(f"\n                  AND {c}" for c in clauses), params
 
 
+#: Trust tier of content other people wrote (core/trust.py). Search and recall
+#: leave these rows out unless a caller asks for them by name
+#: (``include_hostile=True``): an acting agent must never be handed them, and
+#: an approved one is still someone else's words.
+HOSTILE_TIER = TrustTier.HOSTILE_POSSIBLE.value
+
+
 class PostgresMemoryStore:
     """Async PostgreSQL-backed memory store.
 
@@ -443,10 +450,13 @@ class PostgresMemoryStore:
         limit: int = 10,
         filters: dict | None = None,
         include_embedding: bool = True,
+        include_hostile: bool = False,
     ) -> list[Memory]:
         """Find closest memories by cosine distance using pgvector ``<=>``.
 
         Applies the same optional filters as :meth:`list_memories`.
+        Memories with trust tier ``hostile_possible`` are left out unless
+        ``include_hostile`` is True (see :data:`HOSTILE_TIER`).
 
         Args:
             include_embedding: When False, defers loading the ``embedding``
@@ -463,6 +473,8 @@ class PostgresMemoryStore:
         )
         if not include_embedding:
             stmt = stmt.options(defer(Memory.embedding))
+        if not include_hostile:
+            stmt = stmt.where(Memory.trust_tier != HOSTILE_TIER)
         stmt = self._apply_filters(stmt, Memory, filters)
         stmt = stmt.order_by(Memory.embedding.cosine_distance(embedding))
         stmt = stmt.limit(limit)
@@ -483,6 +495,7 @@ class PostgresMemoryStore:
         statuses: tuple[str, ...] = ("active",),
         valid_at: datetime | None = None,
         include_expired: bool = False,
+        include_hostile: bool = False,
     ) -> list[tuple[Memory, float]]:
         """Hybrid search combining vector similarity with BM25 keyword matching.
 
@@ -512,6 +525,11 @@ class PostgresMemoryStore:
                 its own instant; a ``valid_at`` in *filters* wins.
             include_expired: No valid-time condition at all: the cold tier,
                 which holds how things were, and an explicit status browse.
+            include_hostile: Also return memories with trust tier
+                ``hostile_possible`` (text other people wrote). Off by
+                default, so nothing that feeds an agent can get them by
+                forgetting a check; only the owner's own views (dashboard
+                search) and the snapshot's exclusion count ask for them.
 
         Returns:
             List of (Memory, hybrid_score) tuples, sorted by hybrid_score desc.
@@ -526,6 +544,11 @@ class PostgresMemoryStore:
         if filters and "statuses" in filters:
             statuses = tuple(filters["statuses"])
         extra, extra_params = _raw_filter_sql(filters)
+        if not include_hostile:
+            # In every CTE that reads memories, so the keyword IDF counts and
+            # the vector pool are over the same rows that can be returned.
+            extra += "\n                  AND trust_tier <> :hostile_tier"
+            extra_params["hostile_tier"] = HOSTILE_TIER
 
         # Reciprocal rank fusion of the two lists (2026-10-23). The old query
         # added 0.6 x cosine (~0.3-0.8) to 0.4 x ts_rank (~0.01-0.1), so the
@@ -722,8 +745,13 @@ class PostgresMemoryStore:
         self,
         filters: dict | None = None,
         limit: int = 50,
+        include_hostile: bool = False,
     ) -> list[Memory]:
         """Best candidates for proactive recall, ranked in SQL.
+
+        Memories with trust tier ``hostile_possible`` are left out unless
+        ``include_hostile`` is True: recall puts its picks in front of an
+        agent, and those must never reach one (core/trust.py).
 
         Proactive recall used ``list_memories()``, which orders by
         ``created_at DESC``. That made the candidate pool "the newest N
@@ -766,6 +794,8 @@ class PostgresMemoryStore:
         )
 
         stmt = select(Memory).where(Memory.tenant_id == get_current_tenant_id())
+        if not include_hostile:
+            stmt = stmt.where(Memory.trust_tier != HOSTILE_TIER)
         stmt = self._apply_filters(stmt, Memory, filters)
         # created_at/id break ties so the pool is deterministic across calls.
         stmt = stmt.order_by(base_score.desc(), Memory.created_at.desc(), Memory.id.desc())

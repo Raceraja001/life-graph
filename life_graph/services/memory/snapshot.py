@@ -798,6 +798,9 @@ async def _memories(
             limit=EXCLUSION_POOL,
             statuses=POOL_STATUSES,
             include_expired=True,
+            # Search leaves hostile rows out by default; this pool only counts
+            # what was held back, so it asks for them to report "hostile".
+            include_hostile=True,
         )
     for m, _ in pool:
         reason = exclusion_reason(m, ref, recorded_ref, included)

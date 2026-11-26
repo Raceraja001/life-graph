@@ -22,6 +22,8 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+from life_graph.core.trust import is_excluded_from_agents
+
 logger = logging.getLogger(__name__)
 
 CANDIDATES = 10
@@ -410,7 +412,13 @@ def _result(
 
     The assessment reads the memories that are actually being returned, so a
     caller's abstention indicator is about the evidence it was handed.
+
+    Memories other people wrote (trust tier ``hostile_possible``) are dropped
+    here. Search already leaves them out in SQL; this catches the ones that
+    arrive another way (a link, a named entity, a dated episode), because
+    what retrieve returns goes in front of an agent.
     """
+    items = [m for m in items if not is_excluded_from_agents(getattr(m, "trust_tier", None))]
     assessment = assess_candidate_evidence(question, items, now=now)
     for memory, per in zip(items, assessment["per_memory"], strict=False):
         # A read-only or mapping row simply does not carry it; the collection's

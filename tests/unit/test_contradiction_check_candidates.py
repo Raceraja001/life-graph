@@ -13,7 +13,6 @@ import pytest
 
 from life_graph.services.contradiction import ContradictionDetector
 
-
 _EMB = [0.1, 0.2, 0.3]
 
 
@@ -72,7 +71,7 @@ async def test_check_and_check_candidates_agree_given_the_same_pool():
     underlying logic check_candidates() calls directly."""
 
     class FakeStore:
-        async def search_similar(self, embedding, limit, filters):
+        async def search_similar(self, embedding, limit, filters, include_hostile=False):
             return [_memory("I always use MongoDB")]
 
     detector = ContradictionDetector(store=FakeStore())
