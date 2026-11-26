@@ -117,9 +117,10 @@ class AuditService:
         resolved_by: str,
         note: str | None = None,
     ) -> uuid.UUID:
-        """Log an approval decision."""
-        # ck_al_result vocabulary: map the decision to an allowed result.
-        result = "success" if decision == "approve" else "rejected"
+        """Log an approval decision: approve, reject, or stale (nobody answered)."""
+        # ck_al_result vocabulary: map the decision to an allowed result. A
+        # stale entry (ApprovalService.expire_stale) was never decided: expired.
+        result = {"approve": "success", "stale": "expired"}.get(decision, "rejected")
         return await self._append(
             tenant_id=tenant_id,
             action_type="approval_decision",
