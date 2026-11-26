@@ -456,7 +456,38 @@ class ApprovalService:
             )
             await session.commit()
 
+        await self._audit_decisions(
+            [(tenant_id, entry_id) for entry_id in resolved_ids], decision, resolved_by, note
+        )
         return {"resolved_count": len(resolved_ids), "resolved_ids": resolved_ids}
+
+    async def _audit_decisions(
+        self, rows: list[tuple[str, str]], decision: str, resolved_by: str, note: str | None
+    ) -> None:
+        """One audit_log ``approval_decision`` row per ``(tenant, entry id)``.
+
+        For the batch and stale paths, which decide many entries at once.
+        Until 2026-11-26 only :meth:`resolve` wrote these, so a batch reject
+        or the stale sweep left no trace in the audit log. Called after the
+        commit and best effort, as the routers' audit writes are: a failed
+        write is logged and the decisions stand. The linked action is found
+        through ``approval_id``; it is not looked up again here.
+        """
+        if not self._audit_service:
+            return
+        for tenant_id, entry_id in rows:
+            try:
+                await self._audit_service.log_approval(
+                    tenant_id=tenant_id,
+                    approval_id=entry_id,
+                    action_id=None,
+                    decision=decision,
+                    resolved_by=resolved_by,
+                    note=note,
+                )
+            except Exception:
+                logger.error("Approval %s (%s) not written to the audit log", entry_id, decision,
+                             exc_info=True)  # fmt: skip
 
     @staticmethod
     async def _match_pending(session, tenant_id: str, filter_criteria: dict) -> list:
@@ -687,6 +718,9 @@ class ApprovalService:
 
         if stale:
             logger.info("Marked %d approval(s) stale after %d days", len(stale), max_age_days)
+            await self._audit_decisions(
+                [(str(t), str(i)) for i, t in stale], "stale", "system", note
+            )
         return len(stale)
 
     async def reconcile_feed_copies(self) -> int:
