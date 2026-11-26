@@ -656,3 +656,48 @@ Both releases passed health, UI, services, 0 log errors, the dev edition and the
 - shadow only.
 
 Implementation waits for owner approval.
+
+### D32. Prod config switches, M8 Stage 2, independent review fixes (2026-11-26)
+
+**Owner:** "do these in parallel" (the three open items), "can we ask the other agent to review?", "skip ci and merge" (#405; CI had already passed on its head, so nothing was skipped).
+
+**1. Prod config, with `.env` backups in `~/life-graph-backups/`:**
+- **`LIFE_GRAPH_SERVICE_KEY_TENANTS` on** (`env-key-tenants-20261126-0740`).
+  - Service key #2, used by the Claude Code and OpenCode MCP configs, always with `X-Tenant-ID: raja`, may use only `raja`. Owner keys are unrestricted.
+  - Checked: 200 on raja, 403 on dev, owner key 200, MCP initialize 200.
+  - A 10-minute watch logged 38 requests and 0 refusals.
+- **`LIFE_GRAPH_LM_EMBEDDINGS_BACKEND=ollama`** (#404; `env-embed-backend-20261126-0756`).
+  - :11435 is the `llama-speculative` chat server. `--embeddings` there would embed with the chat model, so it was not used.
+  - Since then: no attempts against :11435; embedding health check about 38 ms.
+- **Owner key removed from source** in `~/jarvis/tools/study_copilot.py` (untracked file); it now reads `LIFE_GRAPH_API_KEY` from config. Backup: `jarvis-key-study-20261126-0742.py`.
+
+**2. M8 Stage 2: change detection, shadow only.**
+- #405: `services/memory/changes.py`; the baseline is the earlier turn's trace in the same conversation; no migration or events. The flag `LIFE_GRAPH_CONTEXT_CHANGE_SHADOW` is off and needs the snapshot shadow flag as well.
+- #406 fixes from the independent review:
+  - a failed comparison is never used as a baseline;
+  - a time that has passed is not "approaching";
+  - temporary chats are never a baseline;
+  - the ADR records that "acknowledged" covers memories only.
+- Eval: 41 must-detect, 22 must-stay-silent, 0 misses, 0 false positives.
+
+**3. Independent review of #383–#404, all fixed:**
+- **#409:** personal runs lose `research_web`, the cloud worker. The tool also refuses inside any personal run, including one that becomes personal mid-run.
+- **#407:** the WebSocket relay publishes even when this process has no sockets.
+- **#408:** the embeddings breaker trips on 404/501, or after 3 connection failures in a row, not on one timeout.
+- **#410:**
+  - hostile rows are dropped before the judge and before the limit;
+  - `get_links` fails closed without a tenant;
+  - `/search` gives hostile rows only to owner-verified callers.
+
+**Released:**
+- `prod-20261126-0754` (#404, rollback `4c4028c6`)
+- `prod-20261126-0824` (#405, rollback `43817f15`)
+- `prod-20261126-0848` (#406–#410, rollback `5c0af31a`)
+
+All three passed health, UI, services, 0 log errors, the dev edition and the restore drill. Snapshot about 75–85 ms; `/search` about 65–90 ms.
+
+**For the owner:**
+- The dashboard shows hostile rows (badged) only if the key Caddy injects is in `LIFE_GRAPH_OWNER_API_KEYS`. Until then it fails closed.
+- Turning on either M8 shadow flag in prod is a separate decision.
+
+**Open:** worker-side events still reach no WebSocket. The fix first needs `ws_event_handler` moved below the API layer (import contract).
