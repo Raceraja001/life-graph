@@ -71,6 +71,16 @@ class AssistantSettings(BaseModel):
     watcher_digest_schedule: str = "0 8 * * *"  # Daily 8 AM
     watcher_webhook_secret: str = ""  # HMAC signing key for outgoing webhooks
     watcher_max_events_per_run: int = 100
+    # Important watcher events that were queued instead of sent
+    # (watchers/notification_engine.py route_event) are gathered into one
+    # notification held for the daily brief, once a day just before it
+    # (workers/watcher_queue.py). One queued longer than this is marked
+    # expired and never sent: news that old is noise, and it keeps a backlog
+    # from flooding the brief. A day between runs plus two hours' slack, so
+    # nothing queued just after one run has expired by the next.
+    watcher_queue_max_age_hours: int = 26
+    # At most this many per tenant per run; the rest stay queued.
+    watcher_queue_max_per_run: int = 20
     watcher_auto_disable_after_failures: int = 5
 
     # ── Capture Spine: Interview + Daily Brief ─────────
