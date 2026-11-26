@@ -1,6 +1,6 @@
 # ADR: M8 Stage 2 — context change detection (snapshot comparison)
 
-**Status:** Proposed, 2026-11-26. Design only: no code, migration or config is part of this ADR.
+**Status:** Accepted 2026-11-26 (#397); option (a) built in Stage 2, see Appendix B. The ADR itself is design only.
 **Spec:** [docs/specs/personal-context-intelligence.md](../specs/personal-context-intelligence.md) §4.4, §5, §7, §8, §9 Stage 2
 **Builds on:** Stage 0 report [docs/audits/2026-11-26-m8-stage0-context.html](../audits/2026-11-26-m8-stage0-context.html) (§5, §11); Stage 1 code `life_graph/services/memory/snapshot.py` (#393); operations log D30 in [docs/operations-log/2026-11-19-runtime-rollout.md](../operations-log/2026-11-19-runtime-rollout.md)
 **Baseline:** `origin/master` `da4fe05b`
@@ -369,3 +369,18 @@ No content, no query, no summary columns. Review rule: a PR adding any text colu
 - Alembic `063_context_snapshot_refs`: create the table and the 3 indexes; no backfill; no other table touched.
 - `downgrade()` drops the indexes and the table. Rows are derived and can be lost without losing any fact.
 - Rollout behind a default-off flag. Rollback is flag off, then downgrade.
+
+## Appendix B: as built (Stage 2, 2026-11-26)
+
+Option (a) was built as decided: `life_graph/services/memory/changes.py`, the trace v2 fields in `snapshot.py`, the `context_change_shadow` setting (default off, effective only with `context_snapshot_shadow`), the eval `scripts/eval_context_changes.py` over `evals/context_changes/cases.json` (40 must-detect, 21 must-stay-silent) and its CI step. No migration, no table, no event. Where the build differs from the text above, and why:
+
+1. **What is re-read.** `resolve_refs` reads the refs of both snapshots and of their conflict sides, plus the approvals of both (§5.1 says "every previous reference"). An addition needs the row's review stamp and who saved it; a conflict needs its sides' and its approval's times; a hostile side must be dropped. Still one query per kind.
+2. **Chains.** A supersession chain is followed by up to 3 extra memory reads (`CHAIN_HOPS`), only when a chain exists. The usual case stays at ≤ 4 reads.
+3. **Baseline lookup.** One read of the current turn, one of the conversation's last 30 top-level turns (all statuses, no JSON filter, so a regeneration chain through a failed version is still seen), and the tenant-wide fallback only when the conversation has no usable baseline. §5.6 said "one indexed read".
+4. **Compact v2 also keeps** `sources` (so a failed snapshot, which has none, is never a baseline, while an empty but successful one is) and, per conflict, its sides' `statuses` and `approval` id (needed for `conflict_resolved`: "a side is now rejected/superseded" means "and was not before").
+5. **One kind for an intention's expiry.** The table lists both `expired` (memory `valid_until` or intention `expires_at`) and `intention_expired`. An intention gets only `intention_expired`; `expired` is for memories.
+6. **"Acknowledged" signals.** A `corrections` row names no memory id, and a memory has no `source_session`; `Intention.source_session` points at memory sessions, not conversations. So: a review stamp by the owner (`owner`, `owner:*`, `phone:*`, the api/approval_identity labels); a replacement tagged `correction` (memory_save and the memory page) or with source type `reinforcement` (a /deny replacement); a /deny itself (`valid_until` equal to `superseded_at`, set only by `deny`); a memory whose `properties.task_id` is a turn of this conversation; an approval resolved by the owner. `confirmed` and `reconfirmed` are always the owner's own act and are flagged.
+7. **Duplicates across groups.** A `conflict_appeared` / `conflict_resolved` for a supersession that a `superseded` / `decision_superseded` change already reports is held as `duplicate`, as is the newer memory of the chain appearing as `added`. A conflict seen first through a baseline from another conversation is `newly_relevant`.
+8. **Time box.** The comparison runs in what is left of the snapshot's 1 s box; with nothing left it records `{"error": "TimeoutError"}` without running.
+9. **Defensive insufficient.** A baseline whose reference time is not earlier than this turn's is `insufficient`.
+10. **Eval method.** Snapshots are built from the seeded rows with Stage 1's own item builders, not by `assemble_context`, so the eval measures comparison, not retrieval, and needs no embedder. The option (c) column is the ADR §6 table, per kind, not a run. Latency p95 is gated at 50 ms; the ≤ 150 ms prod measurement is still to do (no prod access in the build).

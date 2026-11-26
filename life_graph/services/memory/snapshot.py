@@ -85,19 +85,28 @@ they are left out of equality, and a determinism check must leave them out too
 The budget (:class:`Budget`, default 40 items / 6000 characters of content,
 300 per item) is hard: what does not fit is counted as ``over_budget``.
 
-What Stage 1 does not do: projects, tasks, connectors, change detection,
-feedback, prompts. The kernel only builds a snapshot in shadow mode
+What Stage 1 does not do: projects, tasks, connectors, feedback, prompts.
+The kernel only builds a snapshot in shadow mode
 (settings.context_snapshot_shadow) and keeps :meth:`ContextSnapshot.compact`
 — references, labels, reasons and counts, no content — in the turn trace.
+
+The compact form is format 2 (``"v": 2``, M8 Stage 2,
+docs/design/adr-m8-context-change-detection.md §5.7): it also keeps the
+snapshot's ``reference_time`` and, per item, ``fp`` (a 16-hex fingerprint of
+the record's normalised text, salted with its id, :func:`fingerprint`) and
+``rec`` (its recorded time). That is what lets the next turn tell an edit
+from no change (services/memory/changes.py). Still no content.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import re
 import time
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -179,6 +188,33 @@ TIMING_STAGES = (
 )
 
 _WORD = re.compile(r"\w+")
+#: Format of :meth:`ContextSnapshot.compact` (2: reference_time, fp, rec).
+COMPACT_FORMAT = 2
+#: Hex characters of a record fingerprint (64 bits).
+FINGERPRINT_HEX = 16
+
+
+def normalise_text(text_: str | None) -> str:
+    """*text_* for fingerprinting: NFKC, lower case, punctuation gone, spaces collapsed.
+
+    A case, spacing or punctuation edit (a trailing full stop included) gives
+    the same text, so it is not an edit. Letters and marks of every script
+    are kept: only Unicode punctuation (category P*) is dropped.
+    """
+    folded = unicodedata.normalize("NFKC", text_ or "").lower()
+    kept = "".join(" " if unicodedata.category(ch).startswith("P") else ch for ch in folded)
+    return " ".join(kept.split())
+
+
+def fingerprint(record_id: object, text_: str | None) -> str:
+    """16 hex characters of sha256(id + newline + normalised text).
+
+    Salted with the record id, so two records with the same words differ and
+    the value says nothing about the text on its own. Tags, importance and
+    access counts are not part of it.
+    """
+    raw = f"{record_id}\n{normalise_text(text_)}".encode()
+    return hashlib.sha256(raw).hexdigest()[:FINGERPRINT_HEX]
 
 
 @dataclass(frozen=True)
@@ -221,6 +257,9 @@ class ContextItem:
     world_time_known: bool
     freshness: str
     content: str
+    #: :func:`fingerprint` of the full record text ("" when not known). Kept
+    #: only in the compact (trace) form, never in to_dict or an API.
+    fingerprint: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -304,8 +343,17 @@ class ContextSnapshot:
         }
 
     def compact(self) -> dict[str, Any]:
-        """References, labels, reasons and counts only: no content, no query."""
+        """References, labels, reasons and counts only: no content, no query.
+
+        Format 2 (``v``) adds ``reference_time``, ``sources`` and, per item,
+        ``fp`` and ``rec``; a conflict keeps its sides' statuses and its
+        approval id. All of it is what the next turn's comparison needs
+        (services/memory/changes.py); none of it is record text.
+        """
         return {
+            "v": COMPACT_FORMAT,
+            "reference_time": self.reference_time,
+            "sources": list(self.sources),
             "items": [
                 {
                     "ref": i.source_ref.key(),
@@ -317,11 +365,18 @@ class ContextSnapshot:
                     "reason": i.reason,
                     "freshness": i.freshness,
                     "world_time_known": i.world_time_known,
+                    "fp": i.fingerprint,
+                    "rec": i.recorded_at,
                 }
                 for i in self.items
             ],
             "conflicts": [
-                {"kind": c.kind, "refs": [s.source_ref.key() for s in c.sides]}
+                {
+                    "kind": c.kind,
+                    "refs": [s.source_ref.key() for s in c.sides],
+                    "statuses": [s.status for s in c.sides],
+                    "approval": c.approval_id,
+                }
                 for c in self.conflicts
             ],
             "exclusions": dict(self.exclusions),
@@ -440,7 +495,13 @@ def memory_item(m: Any, ref: datetime, budget: Budget) -> ContextItem:
         world_time_known=world_time_known(valid_from, recorded),
         freshness=freshness_of(_last_confirmed(recorded, getattr(m, "last_reinforced", None)), ref),
         content=_clip(getattr(m, "content", ""), budget.item_chars),
+        fingerprint=fingerprint(m.id, getattr(m, "content", "")),
     )
+
+
+def decision_text(d: Any) -> str:
+    """The words of a decision that its fingerprint covers: title, then reasoning."""
+    return f"{getattr(d, 'title', '') or ''}\n{getattr(d, 'reasoning', '') or ''}"
 
 
 def decision_item(d: Any, ref: datetime, budget: Budget) -> ContextItem:
@@ -468,6 +529,7 @@ def decision_item(d: Any, ref: datetime, budget: Budget) -> ContextItem:
         world_time_known=world_time_known(decided, recorded),
         freshness=freshness_of(recorded, ref),
         content=_clip(f"{title}. {reasoning}" if reasoning else title, budget.item_chars),
+        fingerprint=fingerprint(d.id, decision_text(d)),
     )
 
 
@@ -499,6 +561,7 @@ def intention_item(i: Any, ref: datetime, budget: Budget) -> ContextItem:
         world_time_known=False,
         freshness=freshness_of(recorded, ref),
         content=_clip(getattr(i, "content", ""), budget.item_chars),
+        fingerprint=fingerprint(i.id, getattr(i, "content", "")),
     )
 
 
@@ -932,6 +995,34 @@ async def assemble_context(
     )
 
 
+async def shadow_snapshot(
+    tenant_id: str,
+    message: str,
+    history: list[dict[str, Any]] | None = None,
+    *,
+    timeout: float | None = None,
+) -> tuple[ContextSnapshot | None, dict[str, Any]]:
+    """(the snapshot or None, its compact form for the trace), time-boxed; never raises.
+
+    A failure or timeout is logged (no content), the snapshot is None and
+    the compact form is ``{"error": <type>}``. Either way it carries ``ms``.
+    """
+    started = time.monotonic()
+    snap: ContextSnapshot | None = None
+    try:
+        with tenant_scope(tenant_id):
+            snap = await asyncio.wait_for(
+                assemble_context(search_text(message, history)), timeout or SHADOW_TIMEOUT_S
+            )
+        out = snap.compact()
+    except Exception as exc:  # noqa: BLE001 — shadow mode must never cost the turn
+        logger.warning("Context snapshot (shadow) failed: %s", type(exc).__name__)
+        snap = None
+        out = {"error": type(exc).__name__}
+    out["ms"] = round((time.monotonic() - started) * 1000)
+    return snap, out
+
+
 async def shadow_compact(
     tenant_id: str,
     message: str,
@@ -941,23 +1032,13 @@ async def shadow_compact(
 ) -> dict[str, Any]:
     """The compact snapshot for a turn's trace, time-boxed; never raises.
 
-    Shadow mode (settings.context_snapshot_shadow): the kernel runs this next
-    to the memory block and keeps the result in the turn trace. The prompt is
-    not changed. A failure or timeout is logged (no content) and recorded as
+    Shadow mode (settings.context_snapshot_shadow): the kernel runs this
+    (through services/memory/changes.py shadow_trace) next to the memory
+    block and keeps the result in the turn trace. The prompt is not changed.
+    A failure or timeout is logged (no content) and recorded as
     ``{"error": <type>}``.
     """
-    started = time.monotonic()
-    try:
-        with tenant_scope(tenant_id):
-            snap = await asyncio.wait_for(
-                assemble_context(search_text(message, history)), timeout or SHADOW_TIMEOUT_S
-            )
-        out = snap.compact()
-    except Exception as exc:  # noqa: BLE001 — shadow mode must never cost the turn
-        logger.warning("Context snapshot (shadow) failed: %s", type(exc).__name__)
-        out = {"error": type(exc).__name__}
-    out["ms"] = round((time.monotonic() - started) * 1000)
-    return out
+    return (await shadow_snapshot(tenant_id, message, history, timeout=timeout))[1]
 
 
 __all__ = [
@@ -967,6 +1048,9 @@ __all__ = [
     "ContextSnapshot",
     "SourceRef",
     "assemble_context",
+    "fingerprint",
+    "normalise_text",
     "shadow_compact",
+    "shadow_snapshot",
     "without_timings",
 ]

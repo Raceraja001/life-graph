@@ -91,6 +91,13 @@ class MemorySettings(BaseModel):
     # its references and labels (no content) in the turn trace. The prompt is
     # unchanged; off means the trace is exactly as before.
     context_snapshot_shadow: bool = False
+    # M8 Stage 2 (services/memory/changes.py): with context_snapshot_shadow
+    # also on, the turn compares its snapshot with the conversation's previous
+    # one and keeps the change list (kinds, references, fixed reasons; no
+    # content) in the trace as context_changes. Plain code, no model call,
+    # inside the same time box. Off, or with the snapshot flag off, nothing
+    # is compared and the trace is exactly as before.
+    context_change_shadow: bool = False
     # The owner's lasting facts, put in front of every local Jarvis answer
     # whether or not search finds them (services/profile_card.py). 0 = off.
     profile_card_max_items: int = 40

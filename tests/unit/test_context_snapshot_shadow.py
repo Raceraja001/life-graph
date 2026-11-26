@@ -122,8 +122,13 @@ async def test_shadow_on_adds_references_only_and_leaves_the_prompt(monkeypatch,
             "reason": "search_hit",
             "freshness": "fresh",
             "world_time_known": False,
+            # Format 2 (M8 Stage 2): a fingerprint ("" here, the item was
+            # built by hand) and the recorded time; still no content.
+            "fp": "",
+            "rec": None,
         }
     ]
+    assert shadow["v"] == 2 and shadow["reference_time"] == "2026-11-20T12:00:00+00:00"
     assert shadow["exclusions"] == {"expired": 2} and shadow["insufficient"] is False
     assert isinstance(shadow["ms"], int)
     assert "SECRET" not in json.dumps(shadow)
