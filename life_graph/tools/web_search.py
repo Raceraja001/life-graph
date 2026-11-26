@@ -27,6 +27,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import httpx
 
 from life_graph.config import settings
+from life_graph.core.personal_run import CLOUD_WORKER_REFUSAL, in_personal_run
 from life_graph.tools.registry import tool
 
 if TYPE_CHECKING:
@@ -198,7 +199,13 @@ async def web_search(query: str) -> str:
     },
 )
 async def research_web(question: str) -> str:
-    """Job 6 as a tool for Jarvis (services/web_research.research)."""
+    """Job 6 as a tool for Jarvis (services/web_research.research).
+
+    Refuses inside a personal run (core/personal_run.py): the question goes
+    to a cloud worker, and the scrub does not catch names or places.
+    """
+    if in_personal_run():
+        return json.dumps({"status": "error", "message": CLOUD_WORKER_REFUSAL})
     from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
     from life_graph.services.web_research import research
     from life_graph.services.workers import WorkerError

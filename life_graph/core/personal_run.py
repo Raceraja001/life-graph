@@ -18,6 +18,13 @@ So the mark travels like the taint does (core/run_taint.py):
   :data:`PERSONAL_INPUT_KEY`;
 * the child's ``_run_agent`` then pins it to local models, or refuses.
 
+A personal run also hands nothing to a cloud worker (services/workers.py, the
+``research_web`` tool): its query could carry a name or a place the scrub does
+not know. ``_run_agent`` leaves those tools out of a run that starts personal
+(lead.resolve_run_tools), and each such tool refuses with
+:data:`CLOUD_WORKER_REFUSAL` while the mark is set, which covers a run that
+becomes personal part-way through.
+
 Per run, never global: a contextvar, so concurrent runs on one event loop each
 see their own.
 """
@@ -36,6 +43,13 @@ if TYPE_CHECKING:
 PERSONAL_INPUT_KEY = "personal_run"
 
 _personal: ContextVar[bool] = ContextVar("run_is_personal", default=False)
+
+#: What a cloud-worker tool tells the model (and, through it, the owner).
+CLOUD_WORKER_REFUSAL = (
+    "Not in this conversation: it uses the owner's own data, and this tool sends"
+    " its question to a cloud worker. Answer from what you have, or ask the user"
+    " to ask again in a new conversation without the personal part."
+)
 
 
 def in_personal_run() -> bool:

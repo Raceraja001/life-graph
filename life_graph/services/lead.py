@@ -263,6 +263,7 @@ def resolve_run_tools(
     *,
     cloud: bool,
     temporary: bool,
+    personal: bool = False,
     registry: Any = None,
 ) -> list[str] | None:
     """The tool names one agent run may use; ``None`` means the whole registry.
@@ -278,6 +279,10 @@ def resolve_run_tools(
       are cut. Neither an override nor "all tools" (None) brings them back.
     * *temporary*: a temporary chat leaves nothing behind, so
       :data:`TEMPORARY_BLOCKED_TOOLS` are cut the same way.
+    * *personal*: the run works on personal data (core/personal_run.py), so
+      :data:`CLOUD_WORKER_TOOLS` are cut the same way: their query goes to a
+      cloud worker. The tools also refuse by themselves inside a personal
+      run, for a run that becomes personal part-way through.
 
     A cut expands "all tools" to every name in *registry* (default: the live
     tool registry; read only then) minus the cut, so the result is then
@@ -289,6 +294,8 @@ def resolve_run_tools(
         blocked |= PERSONAL_TOOLS
     if temporary:
         blocked |= TEMPORARY_BLOCKED_TOOLS
+    if personal:
+        blocked |= CLOUD_WORKER_TOOLS
     if not blocked:
         return None if allow is None else list(allow)
     if allow is None:
