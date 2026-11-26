@@ -73,6 +73,15 @@ whole store.
 ``insufficient`` is True when nothing passed, or memory could not be searched;
 ``explanation`` says which.
 
+``timings_ms`` is how long each stage took, in milliseconds (``time.monotonic``):
+``embed`` (the query embedding), ``retrieve`` (retrieve(): search, entity
+links, neighbours, day summaries), ``exclusions`` (the second search),
+``conflicts`` (supersession and contradiction reads), ``decisions``,
+``intentions`` and ``total``. A stage that did not run is absent. Timings are
+numbers only, never content, and they are not part of the snapshot's identity:
+they are left out of equality, and a determinism check must leave them out too
+(:func:`without_timings`).
+
 The budget (:class:`Budget`, default 40 items / 6000 characters of content,
 300 per item) is hard: what does not fit is counted as ``over_budget``.
 
@@ -85,13 +94,14 @@ feedback, prompts. The kernel only builds a snapshot in shadow mode
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import defer
@@ -104,6 +114,9 @@ from life_graph.models.db import Approval, Decision, Intention, Memory
 from life_graph.services.memory import retrieval
 from life_graph.services.memory.context import search_text
 from life_graph.storage.database import async_session
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +165,18 @@ EXCLUSION_POOL = 20
 POOL_STATUSES = ("active", "pending", "superseded")
 #: Shadow mode's time box (kernel/process_manager.py).
 SHADOW_TIMEOUT_S = 1.0
+#: The clock stage timings read (a test replaces it; the event loop keeps its own).
+_clock = time.monotonic
+#: The stages ``timings_ms`` reports, in this order.
+TIMING_STAGES = (
+    "embed",
+    "retrieve",
+    "exclusions",
+    "conflicts",
+    "decisions",
+    "intentions",
+    "total",
+)
 
 _WORD = re.compile(r"\w+")
 
@@ -254,6 +279,8 @@ class ContextSnapshot:
     explanation: str = ""
     content_chars: int = 0
     sources: tuple[str, ...] = field(default=())
+    #: (stage, milliseconds) in TIMING_STAGES order; not part of equality.
+    timings_ms: tuple[tuple[str, float], ...] = field(default=(), compare=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -273,6 +300,7 @@ class ContextSnapshot:
             "explanation": self.explanation,
             "content_chars": self.content_chars,
             "sources": list(self.sources),
+            "timings_ms": dict(self.timings_ms),
         }
 
     def compact(self) -> dict[str, Any]:
@@ -298,7 +326,13 @@ class ContextSnapshot:
             ],
             "exclusions": dict(self.exclusions),
             "insufficient": self.insufficient,
+            "timings_ms": dict(self.timings_ms),
         }
+
+
+def without_timings(snapshot_dict: dict[str, Any]) -> dict[str, Any]:
+    """*snapshot_dict* (to_dict or compact) without ``timings_ms``: for determinism checks."""
+    return {k: v for k, v in snapshot_dict.items() if k != "timings_ms"}
 
 
 # ── Labels (pure) ─────────────────────────────────────────────
@@ -703,10 +737,27 @@ class _Parts:
     excluded: dict[str, int] = field(default_factory=dict)
     sources: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    timings: dict[str, float] = field(default_factory=dict)
 
     def exclude(self, reason: str, n: int = 1) -> None:
         if n:
             self.excluded[reason] = self.excluded.get(reason, 0) + n
+
+    @contextlib.contextmanager
+    def timed(self, stage: str) -> Iterator[None]:
+        """Record how long the block took as *stage* (also when it raises)."""
+        started = _clock()
+        try:
+            yield
+        finally:
+            self.timings[stage] = _ms_since(started)
+
+    def timings_tuple(self) -> tuple[tuple[str, float], ...]:
+        return tuple((k, self.timings[k]) for k in TIMING_STAGES if k in self.timings)
+
+
+def _ms_since(started: float) -> float:
+    return round((_clock() - started) * 1000, 1)
 
 
 async def _memories(
@@ -718,13 +769,14 @@ async def _memories(
     as_of: datetime | None,
     budget: Budget,
 ) -> None:
-    found = await retrieval.retrieve(
-        query,
-        limit=budget.max_items,
-        as_of=as_of,
-        judge=False,
-        query_embedding=embedding,
-    )
+    with parts.timed("retrieve"):
+        found = await retrieval.retrieve(
+            query,
+            limit=budget.max_items,
+            as_of=as_of,
+            judge=False,
+            query_embedding=embedding,
+        )
     kept: list[Any] = []
     for m in found or []:
         if is_excluded_from_agents(getattr(m, "trust_tier", None)):
@@ -739,18 +791,20 @@ async def _memories(
     # every status with the same embedding (no model call).
     recorded_ref = datetime.now(UTC)
     included = {str(m.id) for m in found or []}
-    pool = await runtime.get_store().hybrid_search(
-        embedding=embedding,
-        query_text=query,
-        limit=EXCLUSION_POOL,
-        statuses=POOL_STATUSES,
-        include_expired=True,
-    )
+    with parts.timed("exclusions"):
+        pool = await runtime.get_store().hybrid_search(
+            embedding=embedding,
+            query_text=query,
+            limit=EXCLUSION_POOL,
+            statuses=POOL_STATUSES,
+            include_expired=True,
+        )
     for m, _ in pool:
         reason = exclusion_reason(m, ref, recorded_ref, included)
         if reason:
             parts.exclude(reason)
-    parts.conflicts += await _memory_conflicts(tenant_id, kept)
+    with parts.timed("conflicts"):
+        parts.conflicts += await _memory_conflicts(tenant_id, kept)
 
 
 async def _decisions(
@@ -817,6 +871,8 @@ async def assemble_context(
     (a test passes it for a byte-identical result). See the module docstring
     for the contract.
     """
+    started = _clock()
+    parts = _Parts()
     ref = retrieval._ensure_utc(as_of or now or datetime.now(UTC))
     base: dict[str, Any] = {
         "query": query,
@@ -828,8 +884,14 @@ async def assemble_context(
     tenant_id = get_current_tenant_id()
     if not query.strip():
         return ContextSnapshot(**base, explanation="Empty query: nothing was searched.")
+
+    def timings() -> tuple[tuple[str, float], ...]:
+        parts.timings["total"] = _ms_since(started)
+        return parts.timings_tuple()
+
     try:
-        embedding = await runtime.get_memory_manager().generate_embedding(query)
+        with parts.timed("embed"):
+            embedding = await runtime.get_memory_manager().generate_embedding(query)
     except Exception as exc:  # noqa: BLE001 — no vector means no memory search, never a fallback
         logger.warning("Context snapshot: embedding failed (%s)", type(exc).__name__)
         embedding = None
@@ -837,17 +899,20 @@ async def assemble_context(
         return ContextSnapshot(
             **base,
             explanation="The query could not be embedded locally, so memory was not searched.",
+            timings_ms=timings(),
         )
-    parts = _Parts()
     try:
         await _memories(parts, tenant_id, query, embedding, ref, as_of, budget)
-        await _decisions(parts, tenant_id, query, ref, as_of, budget)
-        await _intentions(parts, tenant_id, query, ref, as_of, budget)
+        with parts.timed("decisions"):
+            await _decisions(parts, tenant_id, query, ref, as_of, budget)
+        with parts.timed("intentions"):
+            await _intentions(parts, tenant_id, query, ref, as_of, budget)
     except Exception as exc:  # noqa: BLE001 — a partial view must not pass as context
         logger.warning("Context snapshot: a read failed (%s)", type(exc).__name__)
         return ContextSnapshot(
             **base,
             explanation="Reading the records failed, so no context was assembled.",
+            timings_ms=timings(),
         )
     kept, used, over = apply_budget(parts.items, budget)
     parts.exclude("over_budget", over)
@@ -860,6 +925,7 @@ async def assemble_context(
         explanation=_explain(kept, parts),
         content_chars=used,
         sources=tuple(parts.sources),
+        timings_ms=timings(),
     )
 
 
@@ -899,4 +965,5 @@ __all__ = [
     "SourceRef",
     "assemble_context",
     "shadow_compact",
+    "without_timings",
 ]

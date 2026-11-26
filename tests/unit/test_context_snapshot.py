@@ -112,7 +112,8 @@ def wired(monkeypatch):
 
 
 def _dump(snap) -> str:
-    return json.dumps(snap.to_dict(), sort_keys=True)
+    # Stage timings are wall-clock numbers, not part of what the snapshot says.
+    return json.dumps(snapshot.without_timings(snap.to_dict()), sort_keys=True)
 
 
 async def test_same_input_gives_a_byte_identical_snapshot_whatever_the_read_order(wired):
@@ -388,3 +389,93 @@ async def test_retrieve_uses_a_given_embedding_instead_of_making_one(retrieve_wi
     calls, _ = retrieve_wired
     await retrieval.retrieve("which note?", judge=False, query_embedding=[0.3])
     assert calls["embed"] == 0
+
+
+# ── Stage timings ─────────────────────────────────────────────
+
+
+async def test_timings_cover_every_stage_in_order_as_numbers(wired):
+    wired["found"] = [_mem("backups go to the NAS")]
+    wired["decisions"] = [_decision()]
+    snap = await assemble_context("backups", now=NOW)
+    timings = snap.to_dict()["timings_ms"]
+    assert list(timings) == list(snapshot.TIMING_STAGES)
+    assert all(isinstance(v, float) and v >= 0 for v in timings.values())
+    assert timings["total"] >= max(v for k, v in timings.items() if k != "total")
+    compact = snap.compact()
+    assert compact["timings_ms"] == timings
+    assert "backups" not in json.dumps(compact["timings_ms"])
+
+
+async def test_timings_are_not_part_of_equality_or_determinism(wired):
+    wired["found"] = [_mem("backups go to the NAS")]
+    first = await assemble_context("backups", now=NOW)
+    second = await assemble_context("backups", now=NOW)
+    assert first.timings_ms and second.timings_ms
+    slower = snapshot.ContextSnapshot(
+        **{
+            **{f: getattr(first, f) for f in first.__dataclass_fields__},
+            "timings_ms": (("total", 9999.0),),
+        }
+    )
+    assert slower == first == second
+    assert "timings_ms" not in snapshot.without_timings(first.to_dict())
+    assert "timings_ms" not in snapshot.without_timings(first.compact())
+
+
+async def test_a_slow_stage_shows_in_its_own_timing(wired, monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr(snapshot, "_clock", lambda: clock[0])
+
+    async def slow_intentions(tenant_id, query, ref, as_of):
+        clock[0] += 0.25  # 250 ms
+        return []
+
+    monkeypatch.setattr(snapshot, "_open_intentions", slow_intentions)
+    snap = await assemble_context("backups", now=NOW)
+    timings = dict(snap.timings_ms)
+    assert timings["intentions"] == 250.0
+    assert timings["total"] == 250.0
+    assert timings["retrieve"] == timings["exclusions"] == 0.0
+
+
+async def test_the_query_is_embedded_once_and_timed(wired, monkeypatch):
+    calls = []
+
+    class _Manager:
+        async def generate_embedding(self, text_):
+            calls.append(text_)
+            return [0.1, 0.2]
+
+    monkeypatch.setattr(runtime, "get_memory_manager", lambda: _Manager())
+    snap = await assemble_context("backups", now=NOW)
+    assert calls == ["backups"]
+    assert "embed" in dict(snap.timings_ms)
+
+
+async def test_timings_when_the_embedding_fails(wired, monkeypatch):
+    class _Manager:
+        async def generate_embedding(self, text_):
+            raise RuntimeError("no model")
+
+    monkeypatch.setattr(runtime, "get_memory_manager", lambda: _Manager())
+    snap = await assemble_context("backups", now=NOW)
+    assert snap.insufficient
+    assert list(dict(snap.timings_ms)) == ["embed", "total"]
+
+
+async def test_timings_when_a_read_fails(wired, monkeypatch):
+    async def broken(tenant_id, query, ref, as_of):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(snapshot, "_matching_decisions", broken)
+    snap = await assemble_context("backups", now=NOW)
+    assert snap.insufficient and not snap.items
+    assert list(dict(snap.timings_ms)) == [
+        "embed",
+        "retrieve",
+        "exclusions",
+        "conflicts",
+        "decisions",
+        "total",
+    ]
