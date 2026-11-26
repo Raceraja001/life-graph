@@ -19,6 +19,7 @@ from sqlalchemy.orm import defer
 
 from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
+from life_graph.core.personal_run import PERSONAL_INPUT_KEY, personal_run_scope
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import AgentTask
 
@@ -692,6 +693,18 @@ class ProcessManager:
             max_tokens=persona.get("max_tokens"),
         )
 
+        # A task delegate_to_persona started from a personal run arrives
+        # marked (core/personal_run.py) and stays on local models, as the
+        # conversation did: Jarvis takes its personal route (lead.route), any
+        # other persona is pinned to its own local model -- or, when it has
+        # none, refused here, before its model sees a word.
+        inherited_personal = bool(input_data.get(PERSONAL_INPUT_KEY))
+        pinned = lead_route.pinned if lead_route is not None else None
+        if inherited_personal and lead_route is None:
+            pinned = lead.personal_pin(agent_name, orchestrator.model)
+        # Marks this run's own delegations (tools/delegate.py).
+        personal = inherited_personal or (lead_route is not None and lead_route.kind == "personal")
+
         # Earlier turns of this conversation, oldest first, as the caller
         # assembled them. Every chat turn used to be a single-message run, so a
         # persona could not answer "what did I just say?" — the UI showed a
@@ -708,7 +721,7 @@ class ProcessManager:
         # Where this run's conversation can end up: off the machine unless a
         # personal route pinned it to local models (only_models below), or
         # its model and every model it may fail over to are local.
-        pinned_local = bool(lead_route is not None and lead_route.pinned)
+        pinned_local = bool(pinned)
         cloud_run = not (pinned_local or run_is_local(orchestrator.model))
         # general on a local model needs no note: nothing was taken away.
         general_cloud = general_cloud and cloud_run
@@ -865,14 +878,11 @@ class ProcessManager:
 
         from life_graph.services.llm.resilient import only_models
 
-        # A personal request may fail over only to local models.
-        pin: Any = (
-            only_models(lead_route.pinned)
-            if lead_route is not None and lead_route.pinned
-            else nullcontext()
-        )
+        # A personal request, or a task delegated from one, may fail over
+        # only to local models.
+        pin: Any = only_models(pinned) if pinned else nullcontext()
         timing["prepare_s"] = round(time.monotonic() - run_started, 2)
-        with confinement, pin:
+        with confinement, pin, personal_run_scope(personal):
             async for event_str in orchestrator.run(
                 messages,
                 system_prompt=system_prompt,

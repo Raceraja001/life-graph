@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from life_graph.config import settings
+from life_graph.connectors.locality import model_is_local
+from life_graph.core.personal_run import PERSONAL_INPUT_KEY
 
 LEAD = "jarvis"
 
@@ -84,6 +86,8 @@ TEMPORARY_BLOCKED_TOOLS = frozenset(
     }
 )
 TEMPORARY_REASON = "temporary chat: stays on your PC"
+# A task delegate_to_persona started from a personal run (core/personal_run.py).
+DELEGATED_REASON = "handed on from a personal conversation: stays on your PC"
 
 # Tools that send work to a cloud worker (services/workers.py): fine for
 # general work, not from a personal conversation, whose query could carry
@@ -175,6 +179,9 @@ def route(persona: dict[str, Any], input_data: dict[str, Any]) -> Route:
     if input_data.get("temporary"):
         # Local whatever the message says: "cloud:" does not lift it.
         reason = TEMPORARY_REASON
+    elif input_data.get(PERSONAL_INPUT_KEY):
+        # Nor here: the brief came out of a personal conversation.
+        reason = DELEGATED_REASON
     elif wanted in ("personal", "private", "local"):
         reason = "you asked for local"
     elif wanted == "cloud":
@@ -210,6 +217,35 @@ def route(persona: dict[str, Any], input_data: dict[str, Any]) -> Route:
         scrub(message),
         clean,
     )
+
+
+class LocalOnlyRefusedError(RuntimeError):
+    """A personal task would have to run on a model that leaves the machine."""
+
+
+def local_only_refusal(agent_name: str, model: str | None) -> str:
+    """What the delegating persona (and, through it, the owner) is told."""
+    return (
+        f"{agent_name} runs on {model or 'an unknown model'}, which is not a local"
+        " model, and this task comes from a personal conversation, which stays on"
+        f" your PC. Do it without {agent_name}, or put {agent_name} on a local model."
+    )
+
+
+def personal_pin(agent_name: str, model: str | None) -> list[str]:
+    """The models a non-Jarvis task delegated from a personal run may use.
+
+    The persona's own model, if it is local, then the local models of the
+    fallback chain -- the same pin as Jarvis's personal route (route()), so a
+    failure cannot fail over to a cloud model. Raises
+    :class:`LocalOnlyRefusedError` when the persona's model is not local:
+    the task fails with that message rather than running on the cloud.
+    Jarvis itself needs none of this: route() sends it to its local model.
+    """
+    if not model or not model_is_local(model):
+        raise LocalOnlyRefusedError(local_only_refusal(agent_name, model))
+    chain = settings.llm_fallback_chain_list
+    return [model, *(m for m in chain if model_is_local(m) and m != model)]
 
 
 # Said to the model when it runs without the personal tools.
