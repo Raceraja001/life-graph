@@ -1,0 +1,74 @@
+{
+  "by_category": {
+    "budget_latency": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    },
+    "compatible_vs_contradiction": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    },
+    "current_state": {
+      "precision": 0.75,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    },
+    "expiry": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    },
+    "historical_vs_current": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    },
+    "inferred_vs_confirmed": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    },
+    "prompt_injection": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    },
+    "stale_missing": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    },
+    "supersession_correction": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    },
+    "tenant_isolation": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "insufficient_accuracy": 1.0
+    }
+  }
+}

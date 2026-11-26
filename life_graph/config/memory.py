@@ -86,6 +86,11 @@ class MemorySettings(BaseModel):
     memory_strength_rank: bool = False
     # Nightly: active memories without a form slot get one (services/form_fill.py).
     memory_form_fill: bool = True
+    # M8 Stage 1 (services/memory/snapshot.py): a personal, local Jarvis turn
+    # also builds a read-only context snapshot, time-boxed to 1 s, and keeps
+    # its references and labels (no content) in the turn trace. The prompt is
+    # unchanged; off means the trace is exactly as before.
+    context_snapshot_shadow: bool = False
     # The owner's lasting facts, put in front of every local Jarvis answer
     # whether or not search finds them (services/profile_card.py). 0 = off.
     profile_card_max_items: int = 40

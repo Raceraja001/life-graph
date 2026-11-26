@@ -104,6 +104,29 @@ def strength_order(hits: list[tuple[Any, float]]) -> list[tuple[Any, float]]:
     return sorted(hits, key=lambda h: -h[1] * (0.85 + 0.3 * strength(h[0])))
 
 
+#: Why a memory became a candidate, kept on it as ``retrieval_reason`` (with
+#: ``retrieval_score`` for a search hit). Read by the context snapshot
+#: (services/memory/snapshot.py); nothing in retrieve itself depends on it.
+SEARCH_HIT = "search_hit"  # vector or keyword match, rank-fused by hybrid_search
+ENTITY_LINK = "entity_link"  # linked to a person/project/thing the question names
+NEIGHBOUR = "neighbour"  # linked to one of the best search hits (associations)
+DATED_EPISODE = "dated_episode"  # the day summary of a period the question names
+COLD_TIER = "cold_tier"  # an archived or replaced memory (services/memory/tiers.py)
+
+
+def _marked(memories: list[Any], reason: str, scores: list[float] | None = None) -> list[Any]:
+    """*memories*, each carrying why it was found (``retrieval_reason``).
+
+    A read-only or mapping row simply does not carry it, as with
+    ``retrieval_evidence`` below.
+    """
+    for i, m in enumerate(memories):
+        with contextlib.suppress(AttributeError, TypeError):
+            m.retrieval_reason = reason
+            m.retrieval_score = scores[i] if scores is not None else None
+    return memories
+
+
 async def _with_neighbours(tenant_id: str, candidates: list[Any]) -> list[Any]:
     """*candidates* plus the active memories most strongly linked to the best of
     them (services/memory/associations.py): said or used together with a match."""
@@ -117,7 +140,7 @@ async def _with_neighbours(tenant_id: str, candidates: list[Any]) -> list[Any]:
         logger.warning("Linked candidates failed; using search only", exc_info=True)
         return candidates
     known = {m.id for m in candidates}
-    return candidates + [m for m in linked if m.id not in known]
+    return candidates + _marked([m for m in linked if m.id not in known], NEIGHBOUR)
 
 
 def provenance_score(m: Any) -> float:
@@ -590,6 +613,8 @@ async def retrieve(
     cold: bool = False,
     as_of: datetime | None = None,
     recorded_as_of: datetime | None = None,
+    judge: bool = True,
+    query_embedding: list[float] | None = None,
 ) -> RetrievalResult | None:
     """Memories of the current tenant that help answer *question*, best first.
 
@@ -607,6 +632,14 @@ async def retrieve(
     working — carrying what retrieval learned about the evidence it found:
     whether it stopped early on a sufficient top hit, and whether the evidence
     is contradictory or too thin to answer from (§3.C).
+
+    ``judge=False`` skips the local relevance judge: the result is the search
+    order, exactly as when the judge gives no answer (and so, like that path,
+    no unjudged cold-tier fallback). No model is called, so the same question
+    over the same memories gives the same answer: the context snapshot
+    (services/memory/snapshot.py) needs that. ``query_embedding`` is the
+    question's vector when the caller already made it (the snapshot embeds once
+    for two searches); ``None`` embeds *question* here as before.
     """
     from life_graph.config import settings
     from life_graph.core.tenant import get_current_tenant_id
@@ -614,7 +647,7 @@ async def retrieve(
     from life_graph.services import episodes
     from life_graph.services.memory import tiers as memory_tiers
 
-    embedding = await get_memory_manager().generate_embedding(question)
+    embedding = query_embedding or await get_memory_manager().generate_embedding(question)
     if not embedding:
         return None
     tenant_id = get_current_tenant_id()
@@ -663,11 +696,14 @@ async def retrieve(
         ep_kwargs: dict[str, Any] = {"limit": limit}
         if "statuses" in inspect.signature(episodes.episodes_between).parameters:
             ep_kwargs["statuses"] = search_statuses
-        dated = [
-            m
-            for m in await episodes.episodes_between(tenant_id, *window, **ep_kwargs)
-            if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_ref)
-        ][:limit]
+        dated = _marked(
+            [
+                m
+                for m in await episodes.episodes_between(tenant_id, *window, **ep_kwargs)
+                if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_ref)
+            ][:limit],
+            DATED_EPISODE,
+        )
     hits = await get_store().hybrid_search(
         embedding=embedding,
         query_text=question,
@@ -680,7 +716,7 @@ async def retrieve(
     if by_strength:
         hits = strength_order(hits)[:CANDIDATES]
     hits = provenance_tiebreak_order(hits)
-    candidates = [m for m, _ in hits]
+    candidates = _marked([m for m, _ in hits], SEARCH_HIT, [float(s) for _, s in hits])
     ref_time = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
     # §3.C — stop when the evidence is already sufficient. The best hit's own
     # calibrated confidence and entailment, not its search score, decide: when
@@ -711,7 +747,7 @@ async def retrieve(
                 tenant_id, [eid for eid, _ in named], limit=max(ENTITY_CANDIDATES, limit)
             )
             known_ids = {m.id for m in candidates}
-            candidates += [m for m in linked if m.id not in known_ids]
+            candidates += _marked([m for m in linked if m.id not in known_ids], ENTITY_LINK)
             # "When is Maha's birthday?" against "Mahalakshmi's birthday is …":
             # the judge is told they are one person (migration 057), else it
             # may drop the note as about someone else.
@@ -749,15 +785,23 @@ async def retrieve(
     if past:
         # "Where did I work before?": how things were is in the cold tier.
         known = {m.id for m in memories} | seen
-        memories += [
-            m
-            for m in await _cold(embedding, question)
-            if m.id not in known
-            and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)
-        ]
-    picked = await _judged(asked, memories) if memories else []
+        memories += _marked(
+            [
+                m
+                for m in await _cold(embedding, question)
+                if m.id not in known
+                and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)
+            ],
+            COLD_TIER,
+        )
+    if not judge:
+        # Asked to leave the judge out: the same path as a judge with no answer.
+        picked = None
+    else:
+        picked = await _judged(asked, memories) if memories else []
+        if picked is None:
+            logger.warning("Memory relevance judge gave no answer; using the search order")
     if picked is None:
-        logger.warning("Memory relevance judge gave no answer; using the search order")
         # Unjudged, so active ones only: an unjudged cold hit is a guess, and
         # being returned would reawaken it (services/memory/tiers.py).
         warm = (
