@@ -240,7 +240,7 @@ async def start_subscriber() -> None:
             with contextlib.suppress(Exception):
                 await pubsub.punsubscribe(f"{_CHANNEL_PREFIX}*")
             with contextlib.suppress(Exception):
-                await pubsub.aclose()  # type: ignore[no-untyped-call]  # redis-py stub
+                await pubsub.aclose()  # type: ignore[no-untyped-call, unused-ignore]  # strict only
         await asyncio.sleep(delay)
         delay = min(delay * 2, _RECONNECT_MAX_SECONDS)
 
