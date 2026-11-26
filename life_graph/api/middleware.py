@@ -19,7 +19,12 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from life_graph.api.approval_identity import resolver
-from life_graph.api.auth import is_exempt_path, verify_service_key
+from life_graph.api.auth import (
+    SERVICE_KEY_TENANT_FORBIDDEN,
+    is_exempt_path,
+    key_may_use_tenant,
+    verify_service_key,
+)
 from life_graph.api.device_access import device_may_call, route_path
 from life_graph.api.responses import http_error_body
 from life_graph.config import settings
@@ -95,7 +100,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         try:
-            verify_service_key(request)
+            # Kept for TenantMiddleware's key -> tenant binding check.
+            request.state.service_key = verify_service_key(request)
         except Exception as e:
             # A paired phone's own token (services/devices.py) — accepted on
             # the Jarvis endpoints and the device allowlist only, never as a
@@ -164,6 +170,21 @@ class TenantMiddleware(BaseHTTPMiddleware):
                         code="MISSING_TENANT",
                     ),
                 )
+
+        # A service key bound to some tenants (settings.service_key_tenants)
+        # may not name another. A device's tenant comes from its pairing.
+        if not device_tenant and not key_may_use_tenant(
+            getattr(request.state, "service_key", None), tenant_id
+        ):
+            return JSONResponse(
+                status_code=403,
+                content=http_error_body(
+                    403,
+                    SERVICE_KEY_TENANT_FORBIDDEN,
+                    getattr(request.state, "request_id", ""),
+                    code="TENANT_FORBIDDEN",
+                ),
+            )
 
         # Set context vars for this request
         set_tenant_context(tenant_id, user_id)

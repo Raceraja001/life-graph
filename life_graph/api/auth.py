@@ -7,6 +7,7 @@ Tenant identity comes from `X-Tenant-ID` header (set by the SaaS app).
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from secrets import compare_digest
 from typing import Any
@@ -152,6 +153,36 @@ def verify_service_key(request: Request) -> str | None:
         )
 
     return api_key
+
+
+# ── Which tenants a service key may use ───────────────────────────────────
+
+SERVICE_KEY_TENANT_FORBIDDEN = (
+    "This API key may not use this tenant (LIFE_GRAPH_SERVICE_KEY_TENANTS)."
+)
+
+
+def key_digest(api_key: str) -> str:
+    """SHA-256 hex digest of *api_key*: how keys are named in settings."""
+    return hashlib.sha256(api_key.encode()).hexdigest()
+
+
+def key_may_use_tenant(api_key: str | None, tenant_id: str) -> bool:
+    """Whether *api_key* may act as *tenant_id* (``settings.service_key_tenants``).
+
+    True whenever the binding is unset, so a deployment without it behaves as
+    before. When set: owner keys may use any tenant; any other key only the
+    tenants listed under its digest, and a key with no entry none at all.
+    ``api_key`` None means no key was checked for this request (an exempt path,
+    or a dev stack with no keys configured), so there is nothing to bind.
+    """
+    bindings = settings.service_key_tenants_map
+    if bindings is None or api_key is None:
+        return True
+    if _is_owner_key(api_key):
+        return True
+    allowed = bindings.get(key_digest(api_key))
+    return allowed is not None and tenant_id in allowed
 
 
 # ── Who is calling, as the server sees it ─────────────────────────────────
