@@ -218,6 +218,9 @@ class MicroConsolidator:
                     embedding=embedding,
                     limit=6,
                     filters={"status": "active"},
+                    # Dedup compares rows with each other; it hands nothing
+                    # to an agent, so it keeps seeing every active memory.
+                    include_hostile=True,
                 )
             except Exception:
                 logger.warning("Dedup search failed for %s", mem.id, exc_info=True)

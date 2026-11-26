@@ -318,6 +318,9 @@ async def semantic_search(
     # the core approval-gate invariant. The dashboard sets include_pending=true
     # explicitly so it can still show pending items (badged).
     statuses: tuple[str, ...] = ("active", "pending") if body.include_pending else ("active",)
+    # Text other people wrote (trust tier hostile_possible) follows the same
+    # opt-in: the owner's dashboard sees it, badged; an agent never does.
+    include_hostile = bool(body.include_pending)
 
     if body.status != "active":
         # User explicitly narrowed to a non-default status (e.g. "archived") —
@@ -353,6 +356,7 @@ async def semantic_search(
                 query=body.query,
                 limit=body.limit,
                 statuses=statuses,
+                include_hostile=include_hostile,
             )
             hits = [
                 (mem_dict, float(mem_dict.get("final_score", 0.0) or 0.0))
@@ -378,6 +382,7 @@ async def semantic_search(
                 filters=filters or None,
                 statuses=statuses,
                 include_expired=not current_only,
+                include_hostile=include_hostile,
             )
             picked = await judge(body.query, [m.content for m, _ in candidates])
             if picked is None:
@@ -403,6 +408,7 @@ async def semantic_search(
                 filters=filters or None,
                 statuses=statuses,
                 include_expired=not current_only,
+                include_hostile=include_hostile,
             )
             hits = [(mem, float(score or 0.0)) for mem, score in hybrid_results]
         except Exception:
@@ -416,6 +422,7 @@ async def semantic_search(
             limit=body.limit,
             filters=filters or None,
             include_embedding=False,  # MemoryResponse never serializes it
+            include_hostile=include_hostile,
         )
         # search_similar returns rows without a score; 0.0 is the honest value.
         hits = [(r, 0.0) for r in rows]

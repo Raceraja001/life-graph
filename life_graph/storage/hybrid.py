@@ -206,6 +206,7 @@ class HybridQueryEngine:
         bm25_weight: float = 0.30,
         graph_weight: float = 0.20,
         statuses: tuple[str, ...] = ("active",),
+        include_hostile: bool = False,
     ) -> dict[str, Any]:
         """Three-signal hybrid search: Vector + BM25 + Graph Proximity.
 
@@ -228,6 +229,8 @@ class HybridQueryEngine:
             statuses: Memory statuses to include. Defaults to active-only for
                 automation callers; the dashboard search route widens this to
                 include ``"pending"`` so the user can see and approve new memories.
+            include_hostile: Passed to ``hybrid_search``: also return memories
+                other people wrote (``hostile_possible``). The dashboard only.
 
         Returns:
             Dict with ``memories`` (scored and ranked), ``entities`` (graph hits),
@@ -250,6 +253,7 @@ class HybridQueryEngine:
                     vector_weight=vector_weight / (vector_weight + bm25_weight),
                     bm25_weight=bm25_weight / (vector_weight + bm25_weight),
                     statuses=statuses,
+                    include_hostile=include_hostile,
                 )
 
                 for memory, base_score in hybrid_results:

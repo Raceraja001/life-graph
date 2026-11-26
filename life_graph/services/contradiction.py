@@ -204,6 +204,9 @@ class ContradictionDetector:
             embedding=new_embedding,
             limit=_MAX_CANDIDATES,
             filters={"status": "active"},
+            # A clash with any active memory, whoever wrote it: this checks
+            # new content, it does not build a packet for an agent.
+            include_hostile=True,
         )
 
         return self._check_candidates(new_content, similar_memories, new_embedding, new_properties)
