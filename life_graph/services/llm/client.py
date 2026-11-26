@@ -68,7 +68,8 @@ class LMStudioClient:
 
     When ``settings.use_hybrid_llm`` is True and an OpenRouter API key
     is configured, chat completions are routed to OpenRouter for speed.
-    Embeddings always stay local via LM Studio.
+    Embeddings always stay local: LM Studio with Ollama behind it, or
+    Ollama only when ``settings.lm_embeddings_backend`` is ``"ollama"``.
     """
 
     def __init__(
@@ -282,6 +283,16 @@ class LMStudioClient:
 
         return is_ollama(self._base_url)
 
+    @property
+    def _embeds_with_ollama(self) -> bool:
+        """Whether embeddings skip ``self._base_url`` and go to Ollama directly.
+
+        True when the base URL is Ollama itself, or when
+        ``settings.lm_embeddings_backend`` is ``"ollama"`` (the base URL is
+        then a chat-only server and is never asked for embeddings).
+        """
+        return settings.lm_embeddings_backend == "ollama" or self._is_ollama
+
     async def _ollama_post(self, path: str, body: dict[str, Any], timeout: float) -> dict:
         import httpx
 
@@ -389,8 +400,12 @@ class LMStudioClient:
         return [item.embedding for item in response.data]
 
     async def embed(self, text: str) -> list[float]:
-        """Generate embedding for a single text string (always local)."""
-        if self._is_ollama:
+        """Generate embedding for a single text string (always local).
+
+        Goes straight to Ollama when :attr:`_embeds_with_ollama`; otherwise
+        LM Studio first, with Ollama behind it. ``[]`` when nothing answered.
+        """
+        if self._embeds_with_ollama:
             try:
                 vectors = await self._ollama_embed([text])
                 return vectors[0] if vectors else []
@@ -411,10 +426,13 @@ class LMStudioClient:
             return []
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings for multiple texts (always local)."""
+        """Generate embeddings for multiple texts (always local).
+
+        Routed like :meth:`embed`. A failed batch gives one ``[]`` per text.
+        """
         if not texts:
             return []
-        if self._is_ollama:
+        if self._embeds_with_ollama:
             try:
                 vectors = await self._ollama_embed(texts)
                 if len(vectors) == len(texts):
