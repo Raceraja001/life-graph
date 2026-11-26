@@ -117,6 +117,7 @@ async def test_create_link_classifies_integrity_errors_by_sqlstate(monkeypatch, 
     # those words and would have let this through as a 500.
     error = IntegrityError("INSERT INTO memory_links ...", {}, PgError("constraint violated"))
     monkeypatch.setattr(links, "async_session", _session_whose_commit_raises(error))
+    monkeypatch.setattr(links, "_both_in_tenant", AsyncMock(return_value=True))
 
     with pytest.raises(expected):
         await links.create_link(uuid.uuid4(), uuid.uuid4(), "RELATED_TO", tenant_id=TENANT)
@@ -130,6 +131,7 @@ async def test_create_link_reraises_other_integrity_errors(monkeypatch):
 
     error = IntegrityError("INSERT", {}, PgError("check"))
     monkeypatch.setattr(links, "async_session", _session_whose_commit_raises(error))
+    monkeypatch.setattr(links, "_both_in_tenant", AsyncMock(return_value=True))
 
     with pytest.raises(IntegrityError):
         await links.create_link(uuid.uuid4(), uuid.uuid4(), "RELATED_TO", tenant_id=TENANT)
