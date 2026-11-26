@@ -158,11 +158,18 @@ async def get_links(
         memory_id: The memory to query links for.
         direction: 'outgoing', 'incoming', or 'both'.
         link_type: Optional filter by link type.
-        tenant_id: Optional tenant filter.
+        tenant_id: Tenant whose links to list. Defaults to the current tenant
+            context. ``None`` used to mean "no tenant filter": every tenant's
+            links to that memory id.
 
     Returns:
         List of MemoryLink instances.
+
+    Raises:
+        RuntimeError: No ``tenant_id`` was given and no tenant context is set.
     """
+    if tenant_id is None:
+        tenant_id = get_current_tenant_id()
     async with async_session() as session:
         conditions = []
 
@@ -180,8 +187,7 @@ async def get_links(
 
         if link_type is not None:
             conditions.append(MemoryLink.link_type == link_type)
-        if tenant_id is not None:
-            conditions.append(MemoryLink.tenant_id == tenant_id)
+        conditions.append(MemoryLink.tenant_id == tenant_id)
 
         stmt = select(MemoryLink).where(and_(*conditions))
         result = await session.execute(stmt)

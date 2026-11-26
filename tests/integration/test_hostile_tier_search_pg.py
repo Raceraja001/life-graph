@@ -104,3 +104,45 @@ async def test_search_endpoint_shows_them_to_the_dashboard_only(seeded, monkeypa
     # The owner's dashboard.
     dashboard = await ask(True)
     assert OWN in dashboard and OTHER in dashboard
+
+
+SERVICE_KEY = "svc-hostile-key-0123456789"
+OWNER_KEY = "owner-hostile-key-0123456789"
+PENDING = f"{WORD} owner's note awaiting approval"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_service_key_gets_pending_rows_but_never_hostile_ones(seeded, monkeypatch):
+    """include_pending alone used to give any service-key caller the hostile rows."""
+    from httpx import ASGITransport, AsyncClient
+
+    from life_graph.config import settings
+    from life_graph.core.memory_manager import MemoryManager
+    from life_graph.main import app
+
+    await _seed(PENDING, "self", status="pending")
+    monkeypatch.setattr(settings, "api_key", "")
+    monkeypatch.setattr(settings, "service_api_keys", f"{SERVICE_KEY},{OWNER_KEY}")
+    monkeypatch.setattr(settings, "owner_api_keys", OWNER_KEY)
+
+    async def fixed(self, text):
+        return [0.0] * 1024
+
+    monkeypatch.setattr(MemoryManager, "_generate_embedding", fixed)
+
+    async def ask(key: str) -> str:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                "/api/v1/search/",
+                json={"query": WORD, "limit": 20, "search_mode": "hybrid", "include_pending": True},
+                headers={"X-Tenant-ID": TENANT, "Authorization": f"Bearer {key}"},
+            )
+        assert resp.status_code == 200, resp.text
+        return str(resp.json())
+
+    service = await ask(SERVICE_KEY)
+    assert OWN in service and PENDING in service
+    assert OTHER not in service
+    owner = await ask(OWNER_KEY)
+    assert OWN in owner and PENDING in owner and OTHER in owner
