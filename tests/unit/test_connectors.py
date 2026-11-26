@@ -158,6 +158,18 @@ def test_a_cloud_fallback_makes_a_local_run_cloud(monkeypatch):
     assert not locality.run_is_local("ollama_chat/qwen3:14b")
 
 
+def test_omniroute_makes_a_local_run_cloud(monkeypatch):
+    """ResilientLLM fails over to OmniRoute (a hosted router) once the chain
+    is spent, whenever its key is set (_append_last_resorts)."""
+    monkeypatch.setattr(settings, "llm_fallback_chain", "ollama_chat/qwen3:4b")
+    monkeypatch.setattr(settings, "llm_paid_fallback_model", None)
+    monkeypatch.setattr(settings, "omniroute_api_key", "")
+    assert locality.run_is_local("ollama_chat/qwen3:14b")
+    monkeypatch.setattr(settings, "omniroute_api_key", "k")
+    monkeypatch.setattr(settings, "omniroute_model", "openai/auto")
+    assert not locality.run_is_local("ollama_chat/qwen3:14b")
+
+
 def test_audience_defaults_to_cloud_and_never_widens(monkeypatch):
     monkeypatch.setattr(settings, "llm_fallback_chain", "ollama_chat/qwen3:4b")
     monkeypatch.setattr(settings, "llm_paid_fallback_model", None)

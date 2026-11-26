@@ -1,13 +1,12 @@
 """Kernel runs and the personal tools, under kernel_cloud_strip_personal_tools.
 
-``kernel/process_manager.py::_run_agent`` cuts ``PERSONAL_TOOLS`` only on
-Jarvis's general cloud route; every other persona -- admin, assistant, scout,
-tutor, rex, scribe, swe-lead, seeded on the configured (cloud by default) agent
-model -- keeps them on a cloud model. With
-``kernel_cloud_strip_personal_tools`` on, the kernel applies drivers/local.py's
-rule (#304) instead: every run that can leave the machine, counting the
-fail-over chain, loses them. Off (the default) must be the previous behaviour
-exactly; every case below runs under both.
+With ``kernel_cloud_strip_personal_tools`` on (the default since 2026-11-25),
+``kernel/process_manager.py::_run_agent`` applies drivers/local.py's rule
+(#304): every run that can leave the machine, counting the fail-over chain,
+loses ``PERSONAL_TOOLS``, for every persona -- admin, assistant, scout, tutor,
+rex, scribe, swe-lead, seeded on the configured (cloud by default) agent model.
+Off must be the old behaviour exactly (only Jarvis's general cloud route loses
+them); every case below runs under both.
 """
 
 from __future__ import annotations
@@ -78,13 +77,44 @@ def local_fallbacks(monkeypatch):
 
     monkeypatch.setattr(settings, "llm_fallback_chain", "")
     monkeypatch.setattr(settings, "llm_paid_fallback_model", None)
+    monkeypatch.setattr(settings, "omniroute_api_key", "")
     monkeypatch.setattr(settings, "lead_local_model", LOCAL)
 
 
-def test_the_setting_is_off_by_default():
+def test_the_setting_is_on_by_default():
+    # Was off; turned on 2026-11-25 (charter: personal data stays local).
     from life_graph.config import Settings
 
-    assert Settings.model_fields["kernel_cloud_strip_personal_tools"].default is False
+    assert Settings.model_fields["kernel_cloud_strip_personal_tools"].default is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("agent", "model", "cloud"),
+    [
+        ("admin", CLOUD, True),
+        ("swe-lead", CLOUD, True),
+        ("assistant", LOCAL, False),
+    ],
+)
+async def test_by_default_a_cloud_run_loses_the_personal_tools(
+    local_fallbacks, monkeypatch, agent, model, cloud
+):
+    """With the setting at its default, no persona hands a cloud model the
+    personal tools; a local run keeps them."""
+    from life_graph.config import Settings, settings
+
+    name = "kernel_cloud_strip_personal_tools"
+    monkeypatch.setattr(settings, name, Settings.model_fields[name].default)
+
+    tools = await _run(agent, model)
+
+    assert seen["model"] == model
+    assert {"git_status", "web_get"} <= tools
+    if cloud:
+        assert not tools & PERSONAL
+    else:
+        assert tools >= PERSONAL
 
 
 # (persona, model, cloud run?)
@@ -122,6 +152,21 @@ async def test_a_cloud_fallback_makes_a_local_persona_a_cloud_run(strip, monkeyp
 
     monkeypatch.setattr(settings, "llm_fallback_chain", "gemini/gemini-3.5-flash-lite")
     monkeypatch.setattr(settings, "llm_paid_fallback_model", None)
+
+    tools = await _run("admin", LOCAL)
+
+    assert (not tools & PERSONAL) if strip else tools >= PERSONAL
+
+
+@pytest.mark.asyncio
+async def test_an_omniroute_last_resort_makes_a_local_persona_a_cloud_run(strip, monkeypatch):
+    """ResilientLLM appends OmniRoute (hosted) after the chain when its key
+    is set, so a local model with an all-local chain is still a cloud run."""
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "llm_fallback_chain", "")
+    monkeypatch.setattr(settings, "llm_paid_fallback_model", None)
+    monkeypatch.setattr(settings, "omniroute_api_key", "k")
 
     tools = await _run("admin", LOCAL)
 

@@ -108,10 +108,18 @@ class TestAllowedToolsEnforcement:
         assert tool_names == {"get_current_datetime"}
 
     @pytest.mark.asyncio
-    async def test_run_agent_passes_none_when_allowed_tools_unset(self):
+    async def test_run_agent_passes_none_when_allowed_tools_unset(self, monkeypatch):
+        from life_graph.config import settings
+
+        # A local run: a cloud one loses the personal tools
+        # (kernel_cloud_strip_personal_tools, on by default), so "all tools"
+        # becomes a list there (tests/unit/test_kernel_cloud_tools.py).
+        monkeypatch.setattr(settings, "llm_fallback_chain", "")
+        monkeypatch.setattr(settings, "llm_paid_fallback_model", None)
+        monkeypatch.setattr(settings, "omniroute_api_key", "")
         pm = ProcessManager(session_factory=None, persona_service=None)
         persona = {
-            "model": "gemini/gemini-2.5-flash",
+            "model": "ollama_chat/qwen3:14b",
             "temperature": 0.5,
             "max_tokens": 1024,
             "system_prompt": "You are chief.",
