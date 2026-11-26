@@ -16,12 +16,21 @@ from typing import Any
 from sqlalchemy import func, select, update
 
 from life_graph.storage.database import async_session
+from life_graph.watchers.models import WatcherNotification
 
 logger = logging.getLogger(__name__)
 
 # Watchers whose IMPORTANT events are pushed to the phone at once rather than
 # queued: an app down, a certificate about to lapse, a failing backup (Job 7).
 URGENT_WATCHERS: frozenset[str] = frozenset({"app_uptime", "server_health"})
+
+#: ``watcher_notifications.status`` once a queued row has been handed to the
+#: daily brief (:meth:`NotificationEngine.hold_queued_for_brief`).
+HELD_FOR_BRIEF = "held_for_brief"
+#: ``watcher_notifications.status`` of a queued row that was too old to send.
+EXPIRED = "expired"
+#: ``notifications.source_type`` of what this engine holds for the brief.
+WATCHER_SOURCE = "watcher"
 
 
 def _as_text(value: Any) -> str:
@@ -40,6 +49,22 @@ def _as_text(value: Any) -> str:
         return json.dumps(value, default=str)
     except (TypeError, ValueError):
         return str(value)
+
+
+def _summary(times: dict[str, int], left: int) -> tuple[str, str]:
+    """Title and body of the one notification that gathers queued findings.
+
+    *times* maps each queued title to how often it was queued, oldest first.
+    """
+    n = sum(times.values())
+    first = next(iter(times))
+    title = f"{n} watcher finding{'s' if n != 1 else ''}: {first}"
+    if len(times) > 1:
+        title += f" and {len(times) - 1} more"
+    lines = [f"- {t}" + (f" (x{k})" if k > 1 else "") for t, k in times.items()]
+    if left:
+        lines.append(f"{left} more still queued.")
+    return title[:500], "\n".join(lines)
 
 
 class NotificationEngine:
@@ -329,8 +354,137 @@ class NotificationEngine:
         # already loaded channels.  We default to 'terminal'.
         return "terminal"
 
+    async def queued_tenants(self) -> list[str]:
+        """Tenants with at least one ``queued`` watcher notification."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(WatcherNotification.tenant_id)
+                .where(WatcherNotification.status == "queued")
+                .distinct()
+            )
+            return sorted(row[0] for row in result.fetchall())
+
+    async def hold_queued_for_brief(
+        self,
+        tenant_id: str,
+        notifications: Any,
+        *,
+        max_age_hours: int,
+        limit: int,
+        now: datetime | None = None,
+    ) -> dict[str, int]:
+        """Gather a tenant's ``queued`` watcher notifications into the daily brief.
+
+        ``route_event`` queues an important event from a non-urgent watcher,
+        and nothing ever sent the queue. Now the fresh ones become **one**
+        kernel notification flagged ``deliver_at_brief`` (*notifications* is
+        the kernel ``NotificationEngine``), which the next daily brief lists
+        under "Needs attention" (services/brief.py
+        ``_collect_held_notifications``). That is the path the findings
+        bridge and the money reminders use for news that can wait. One row,
+        not one per event, because the phone posts every new notifications
+        row (api/jarvis.py ``GET /notifications``).
+
+        To keep a backlog from flooding the brief:
+
+        - a row older than *max_age_hours* is marked ``expired`` and never
+          sent;
+        - at most *limit* rows are gathered per call, oldest first; the rest
+          stay queued, and the summary says how many;
+        - the same title queued several times (a watcher raising one finding
+          every hour) is one line with a count.
+
+        The gathered rows are marked ``held_for_brief`` with ``digest_id``
+        set to the summary's id, only after the summary was written; if
+        writing fails they stay queued and are tried again.
+
+        Returns:
+            Counts: ``held`` (rows gathered), ``lines`` (distinct titles),
+            ``expired``, ``left`` (still queued, over *limit*), ``failed``
+            (rows left queued because the summary could not be written).
+        """
+        now = now or datetime.now(UTC)
+        cutoff = now - timedelta(hours=max_age_hours)
+        queued = (
+            WatcherNotification.tenant_id == tenant_id,
+            WatcherNotification.status == "queued",
+        )
+        async with self._session_factory() as session:
+            expired = await session.execute(
+                update(WatcherNotification)
+                .where(*queued, WatcherNotification.created_at < cutoff)
+                .values(
+                    status=EXPIRED,
+                    error_message=f"Queued over {max_age_hours} h; not sent.",
+                )
+            )
+            rows = (
+                (
+                    await session.execute(
+                        select(WatcherNotification)
+                        .where(*queued)
+                        .order_by(WatcherNotification.created_at, WatcherNotification.id)
+                        .limit(max(0, limit))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            total = await session.scalar(
+                select(func.count()).select_from(WatcherNotification).where(*queued)
+            )
+            await session.commit()
+
+        counts = {
+            "held": 0,
+            "lines": 0,
+            "expired": int(expired.rowcount or 0),
+            "left": max(0, int(total or 0) - len(rows)),
+            "failed": 0,
+        }
+        if not rows:
+            return counts
+        times: dict[str, int] = {}
+        for row in rows:
+            title = row.subject or "Watcher alert"
+            times[title] = times.get(title, 0) + 1
+        title, body = _summary(times, counts["left"])
+        try:
+            created = await notifications.create(
+                tenant_id,
+                title,
+                body=body,
+                priority="important",
+                source_type=WATCHER_SOURCE,
+                metadata={"watcher_notification_ids": [str(r.id) for r in rows]},
+                deliver_at_brief=True,
+            )
+        except Exception:
+            logger.warning(
+                "Could not hold %d watcher notifications for the brief (tenant %s)",
+                len(rows),
+                tenant_id,
+                exc_info=True,
+            )
+            counts["failed"] = len(rows)
+            return counts
+        async with self._session_factory() as session:
+            await session.execute(
+                update(WatcherNotification)
+                .where(WatcherNotification.id.in_([r.id for r in rows]))
+                .values(status=HELD_FOR_BRIEF, digest_id=uuid.UUID(str(created["id"])))
+            )
+            await session.commit()
+        counts["held"] = len(rows)
+        counts["lines"] = len(times)
+        return counts
+
     async def process_pending(self, tenant_id: str) -> int:
         """Send all queued (non-digest) notifications for a tenant.
+
+        Not scheduled: every queued row's channel is ``terminal`` (see
+        ``_get_primary_channel_type``), so this would only log them. The
+        daily job (workers/watcher_queue.py) uses :meth:`hold_queued_for_brief`.
 
         Returns:
             Number of notifications successfully sent.

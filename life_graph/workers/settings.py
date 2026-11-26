@@ -212,9 +212,19 @@ class WorkerSettings:
         "life_graph.workers.nudges.send_nudges",
         "life_graph.workers.memory_check.send_memory_check",
         "life_graph.workers.study_nudge.send_study_nudge",
+        "life_graph.workers.watcher_queue.deliver_queued_watcher_notifications",
     ]
 
     cron_jobs = [
+        # Important watcher events that were queued, gathered into one
+        # notification held for the daily brief (workers/watcher_queue.py),
+        # after that hour's run_watchers (:00) and before the brief.
+        cron(
+            "life_graph.workers.watcher_queue.deliver_queued_watcher_notifications",
+            hour=(settings.brief_hour_utc - 1) % 24,
+            minute=40,
+            run_at_startup=False,
+        ),
         # What the owner said they would do, at the right time (services/nudges.py).
         cron(
             "life_graph.workers.nudges.send_nudges",
