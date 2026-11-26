@@ -507,6 +507,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: python scripts/eval_context_snapshot.py --verify
 
+      # M8 change detection (services/memory/changes.py) over synthetic cases
+      # (evals/context_changes/cases.json): an earlier turn's trace is the
+      # baseline, the rows change, this turn compares. 0 missed on the
+      # must-detect set, 0 false positives on the must-stay-silent set, 0
+      # repeats, 0 cross-tenant, 0 model calls, p95 <= 50 ms.
+      - name: Verify Context Change Gates
+        if: ${{ !cancelled() }}
+        run: python scripts/eval_context_changes.py --verify
+
       - name: Upload integration coverage
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
