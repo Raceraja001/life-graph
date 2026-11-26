@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-26 05:20 UTC` from `master` @ `2b93223`
+Generated `2026-11-26 06:03 UTC` from `master` @ `d916455`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-26 05:20 UTC` from `master` @ `2b93223`
 
 | | |
 |---|---|
-| HTTP operations | **397** across 344 paths, 46 tags |
+| HTTP operations | **398** across 345 paths, 47 tags |
 | Database tables | **89** |
 | Migrations | **62** (head: `062_telegram_capture_idempotency`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **35** |
-| Config settings | **330** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5830** in 624 files |
+| Config settings | **332** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5942** in 639 files |
 | Dashboard pages | **23** |
-| Python | 524 files, 149,261 lines |
+| Python | 527 files, 150,751 lines |
 
 ---
 
 ## HTTP API
 
-397 operations, grouped by OpenAPI tag.
+398 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -649,6 +649,12 @@ Generated `2026-11-26 05:20 UTC` from `master` @ `2b93223`
 | GET | `/api/v1/llm-offers` | Free LLM models, tiers and credits found, with their evaluation |
 | POST | `/api/v1/llm-offers/{offer_id}/evaluate` | Queue an offer for evaluation |
 
+### `context` — 1
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/context/snapshot` | Read-only context snapshot for a query (references and labels) |
+
 ### `ingest` — 1
 
 | Method | Path | Summary |
@@ -1034,16 +1040,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 476 | 4827 |
-| `tests/integration/` | 147 | 991 |
+| `tests/unit/` | 487 | 4921 |
+| `tests/integration/` | 151 | 1009 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **624** | **5830** |
+| **total** | **639** | **5942** |
 
 ---
 
 ## Configuration
 
-330 settings, all overridable by environment variable.
+332 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1061,6 +1067,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_OWNER_API_KEYS` | `''` |
 | `LIFE_GRAPH_APPROVALS_REQUIRE_OWNER` | `False` |
 | `LIFE_GRAPH_ADMIN_REQUIRE_OWNER` | `False` |
+| `LIFE_GRAPH_SERVICE_KEY_TENANTS` | `''` |
 | `LIFE_GRAPH_DEVICE_TOKEN_IDLE_DAYS` | `60` |
 | `LIFE_GRAPH_APP_RELEASE_DIR` | `''` |
 | `LIFE_GRAPH_DEFAULT_PLAN` | `'free'` |
@@ -1105,6 +1112,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_MEMORY_LINKS` | `True` |
 | `LIFE_GRAPH_MEMORY_STRENGTH_RANK` | `False` |
 | `LIFE_GRAPH_MEMORY_FORM_FILL` | `True` |
+| `LIFE_GRAPH_CONTEXT_SNAPSHOT_SHADOW` | `False` |
 | `LIFE_GRAPH_PROFILE_CARD_MAX_ITEMS` | `40` |
 | `LIFE_GRAPH_DECAY_DEFAULT_LAMBDA` | `0.1` |
 | `LIFE_GRAPH_DEDUP_ENABLED` | `True` |
@@ -1283,7 +1291,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_AGENT_CONTEXT_TOKENS` | `32768` |
 | `LIFE_GRAPH_AGENT_CONTEXT_TOKENS_BY_MODEL` | `'{}'` |
 | `LIFE_GRAPH_AGENT_STUCK_DETECTION` | `True` |
-| `LIFE_GRAPH_KERNEL_CLOUD_STRIP_PERSONAL_TOOLS` | `False` |
+| `LIFE_GRAPH_KERNEL_CLOUD_STRIP_PERSONAL_TOOLS` | `True` |
 | `LIFE_GRAPH_KERNEL_MAX_CONCURRENT_TASKS` | `8` |
 | `LIFE_GRAPH_KERNEL_DEFAULT_TIMEOUT` | `300` |
 | `LIFE_GRAPH_KERNEL_DEFAULT_MAX_RETRIES` | `2` |
