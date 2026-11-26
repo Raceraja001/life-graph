@@ -126,8 +126,19 @@ async def test_same_input_gives_a_byte_identical_snapshot_whatever_the_read_orde
 
 
 async def test_items_are_ordered_by_score_then_recorded_time_then_id(wired):
-    old = _mem("older", retrieval_score=0.7, created_at=NOW - timedelta(days=9))
-    new = _mem("newer", retrieval_score=0.7, created_at=NOW - timedelta(days=1))
+    # Ids chosen so that id order alone would put the older one first.
+    old = _mem(
+        "older",
+        id=uuid.UUID(int=1),
+        retrieval_score=0.7,
+        created_at=NOW - timedelta(days=9),
+    )
+    new = _mem(
+        "newer",
+        id=uuid.UUID(int=2**128 - 1),
+        retrieval_score=0.7,
+        created_at=NOW - timedelta(days=1),
+    )
     best = _mem("best", retrieval_score=0.95, created_at=NOW - timedelta(days=30))
     linked = _mem("linked", retrieval_reason=retrieval.ENTITY_LINK, retrieval_score=None)
     wired["found"] = [linked, old, best, new]
