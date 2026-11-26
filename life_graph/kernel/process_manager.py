@@ -748,12 +748,16 @@ class ProcessManager:
 
         # An override never brings the personal tools back to a cloud run;
         # neither does "all tools" (None). A temporary chat leaves nothing
-        # behind. One rule for this and drivers/local.py (services/lead.py).
+        # behind, and a personal run hands nothing to a cloud worker (a
+        # marked child, or Jarvis's personal route on a local model, which
+        # lead.route does not cut). One rule for this and drivers/local.py
+        # (services/lead.py).
         allow = lead.resolve_run_tools(
             persona,
             tool_override,
             cloud=strip_personal,
             temporary=bool(input_data.get("temporary")),
+            personal=personal,
             registry=tool_registry,
         )
         if allow is not None:
