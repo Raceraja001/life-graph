@@ -289,13 +289,20 @@ def _event_tenant(event: Event) -> str | None:
 async def ws_event_handler(event: Event) -> None:
     """Convert an EventBus event to JSON and send it to its tenant's clients.
 
-    Subscribed to the global event_bus via ``event_bus.subscribe_all()``.
-    Silently skips if no clients are connected. An event whose tenant cannot
-    be told is dropped: it used to be broadcast to every socket, so one
-    tenant saw another's events from background jobs, which run with no
-    tenant context.
+    Subscribed to the global event_bus via ``event_bus.subscribe_all()`` in
+    the API (main.py); the ARQ worker does not subscribe it. With Redis
+    up the event is always published, even when this process has no sockets:
+    the client may be connected to another process, whose relay sends it on.
+    It used to return early whenever *this* process had no sockets, so an
+    event raised in a socket-less API process never reached a client
+    connected to another one. Only when Redis is absent, and the event can go to
+    local sockets alone, does "no sockets here" mean there is nothing to do.
+
+    An event whose tenant cannot be told is dropped: it used to be broadcast
+    to every socket, so one tenant saw another's events from background jobs,
+    which run with no tenant context.
     """
-    if ws_manager.active_count == 0:
+    if get_redis() is None and ws_manager.active_count == 0:
         return
 
     message: dict[str, Any] = {
