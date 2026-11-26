@@ -25,30 +25,39 @@ from life_graph.services.spend_guardrails import (
 logger = logging.getLogger(__name__)
 
 #: How long embeddings skip a local server that has said it cannot serve them
-#: (or cannot be reached) and go straight to Ollama; after that one call
-#: probes it again.
+#: (or could not be reached EMBED_TRIP_AFTER times in a row) and go straight
+#: to Ollama; after that one call probes it again.
 EMBED_COOLDOWN_S = 600.0
+#: Connection failures or timeouts in a row that trip the breaker. One slow
+#: or dropped call used to skip the server for the whole cooldown.
+EMBED_TRIP_AFTER = 3
 #: The clock the embeddings breaker reads (a test replaces it).
 _clock = time.monotonic
 #: base_url -> clock time until which that server is skipped for embeddings.
 #: Module-level, so every LMStudioClient for the same URL shares it.
 _embed_skip_until: dict[str, float] = {}
+#: base_url -> connection failures or timeouts in a row (any other outcome resets it).
+_embed_conn_failures: dict[str, int] = {}
 
 
 def _cannot_embed(exc: BaseException) -> bool:
-    """Whether *exc* says the server will not serve embeddings soon.
+    """Whether *exc* says the server will not serve embeddings at all.
 
-    True for a connection failure or timeout, a 404 or 501, or the
-    llama.cpp server's "does not support embeddings" answer (started without
-    --embeddings, 2026-11-26). Any other error is treated as one bad call.
+    True for a 404 or 501, or the llama.cpp server's "does not support
+    embeddings" answer (started without --embeddings, 2026-11-26): one such
+    answer trips the breaker. A connection failure or timeout is not one of
+    these (see :func:`_is_connection_error`); any other error is one bad call.
     """
-    import openai
-
-    if isinstance(exc, openai.APIConnectionError):  # includes APITimeoutError
-        return True
     if getattr(exc, "status_code", None) in (404, 501):
         return True
     return "does not support embeddings" in str(exc).lower()
+
+
+def _is_connection_error(exc: BaseException) -> bool:
+    """A connection failure or timeout: the breaker trips after EMBED_TRIP_AFTER in a row."""
+    import openai
+
+    return isinstance(exc, openai.APIConnectionError)  # includes APITimeoutError
 
 
 def get_resilient_llm():
@@ -357,7 +366,8 @@ class LMStudioClient:
     # A server that cannot embed used to cost every call ~1.3 s: the SDK
     # retried the 501 twice with backoff before the Ollama fallback ran
     # (prod, 2026-11-26). Now the call is tried once, and a server that says
-    # it cannot embed is skipped for EMBED_COOLDOWN_S. Both paths ask for
+    # it cannot embed (or cannot be reached EMBED_TRIP_AFTER times in a row)
+    # is skipped for EMBED_COOLDOWN_S. Both paths ask for
     # settings.lm_embedding_model, so the vectors are the same model's.
 
     def _get_embed_client(self):
@@ -388,13 +398,20 @@ class LMStudioClient:
         try:
             response = await self._get_embed_client().embeddings.create(model=model, input=input_)
         except Exception as exc:  # best-effort: the caller falls back to Ollama
-            if _cannot_embed(exc):
+            failures = 0
+            if _is_connection_error(exc):
+                failures = _embed_conn_failures.get(self._base_url, 0) + 1
+                _embed_conn_failures[self._base_url] = failures
+            if _cannot_embed(exc) or failures >= EMBED_TRIP_AFTER:
                 self._skip_embeddings(exc)
-            else:
+            if not failures or failures >= EMBED_TRIP_AFTER:
+                _embed_conn_failures.pop(self._base_url, None)
+            if not self._embed_skipped():
                 logger.warning(
                     "LM Studio embedding failed (model=%s): %s; trying Ollama fallback", model, exc
                 )
             return None
+        _embed_conn_failures.pop(self._base_url, None)
         if _embed_skip_until.pop(self._base_url, None) is not None:
             logger.info("LM Studio serves embeddings again")
         return [item.embedding for item in response.data]
