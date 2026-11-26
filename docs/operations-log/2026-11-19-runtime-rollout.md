@@ -581,3 +581,47 @@ There were no migrations and no package changes. CI was green at `65cd1eb`.
 - Sign the web UI in as `raja`; the `dev` sign-in now shows an empty tenant.
 - The jarvis app has a Life Graph API key hard-coded in `~/jarvis/server/routes.py`. Move it to its env.
 - Off-site backup: the laptop rest-server is still down.
+
+### D30. M8 Stage 1 and the Stage 0 follow-ups (2026-11-26)
+
+**Owner:** "you decide on these and proceed", after the M8 Stage 0 report (`docs/audits/2026-11-26-m8-stage0-context.html`, #382).
+
+**Decisions:**
+1. **Stage 1 approved as proposed.**
+   - #393: a read-only, deterministic context snapshot (`services/memory/snapshot.py`, `GET /api/v1/context/snapshot`).
+   - Shadow mode in Jarvis turns sits behind `LIFE_GRAPH_CONTEXT_SNAPSHOT_SHADOW`, which is off and **not set in prod**.
+   - No migration, table, cache or prompt change.
+2. **Cloud-egress code defaults fixed in code, not only by prod config:**
+   - #383: personal tools are stripped on every cloud run, and OmniRoute now counts as cloud.
+   - #389: work handed off from a personal run is pinned to local models or refused.
+   - #392: the skill distiller and session summary are local-only.
+   - #395: a run becomes personal for its hand-offs once it uses a personal tool. This includes `delegate_to_persona` itself: fail-closed, deliberately strict.
+3. **Tenant boundary:**
+   - #385: raw Cypher needs an owner key, and graph calls without a tenant raise.
+   - #386: two-tenant search isolation tests.
+   - #387: `create_link` tenant check.
+   - #394: defence-in-depth filters on the link graph and the hybrid fetch.
+   - #391: service-key → tenant binding is built **opt-in and left off**, because enabling it means editing secrets, which is the owner's call.
+4. **Watchers, events and audit:**
+   - #384: watchers skip a paused tenant.
+   - #388: the WebSocket Redis relay was never started; now it is, and it parses both channel formats. WebSocket clients now receive events.
+   - #390: batch and stale approval decisions now write audit rows.
+   - Prod `auto_actions` = 0, so the empty `audit_log` meant "no autonomous action ever ran". The 14 rejected and 34 stale queue entries are the unaudited gap #390 closes.
+
+**Released:**
+- `prod-20261126-0607` (rollback `6fa3039a`)
+- `prod-20261126-0618` (rollback `61eb3af6`)
+
+Both passed health, UI, services, 0 log errors, the dev edition and the restore drill.
+- **Graph gate:** a non-owner service key gets 403 on `/graph/query`. Two of the three prod service keys are also owner keys, and those pass, as intended.
+- **Snapshot on `raja`:** 200, 13 items, 15 held back as pending-only, 0 conflicts.
+
+**Missed target:** prod snapshot latency was 1.3–1.6 s, against p95 ≤ 1 s. Synthetic CI measures p50 16 ms, so the cost is in the real-tenant embedding and search. This must be explained before shadow mode is turned on.
+
+**For the owner:** decide whether to enable `LIFE_GRAPH_SERVICE_KEY_TENANTS` (the binding stays off until then).
+
+**Open, not done:**
+- Queued watcher notifications are never delivered (`process_pending` has no caller).
+- Connectors treat a pinned personal run as a cloud audience (over-strict).
+- New tables land in schema `life_graph` because of `"$user"` in the search_path.
+- `hybrid_search` itself does not drop hostile-tier rows; only the snapshot does.
