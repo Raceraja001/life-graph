@@ -516,6 +516,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: python scripts/eval_context_changes.py --verify
 
+      # M8 context quality (scripts/eval_context_quality.py): one invented
+      # person's whole life (evals/context_quality/), the owner's ten
+      # questions plus categories A-G, hashing embedder. Gates only the
+      # zero-tolerance counts (cross-tenant leaks, cloud model calls,
+      # superseded/expired/pending/hostile shown as current, rows left) and
+      # regressions below evals/context_quality/baseline.json, which records
+      # today's weak categories as they are.
+      - name: Verify Context Quality Gates
+        if: ${{ !cancelled() }}
+        run: python scripts/eval_context_quality.py --verify
+
       - name: Upload integration coverage
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
