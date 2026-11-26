@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M8 Stage 0 Report</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#5f5e58;--line:#dedbd2;--card:#fff;--accent:#2f5d8a;--ok:#2e7d4f;--warn:#a0670b;--bad:#b23b3b;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17181a;--fg:#e9e7e1;--muted:#a3a19a;--line:#33342f;--card:#1f2022;--accent:#7fb0e0;--ok:#6cc08f;--warn:#e0b15c;--bad:#e57d7d;--code:#26272a}}
+:root[data-theme="dark"]{--bg:#17181a;--fg:#e9e7e1;--muted:#a3a19a;--line:#33342f;--card:#1f2022;--accent:#7fb0e0;--ok:#6cc08f;--warn:#e0b15c;--bad:#e57d7d;--code:#26272a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:1.7rem;margin:.2em 0}
+h2{font-size:1.25rem;margin-top:2.2em;padding-top:.6em;border-top:1px solid var(--line)}
+h3{font-size:1.05rem;margin-top:1.6em}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:.88em;word-break:break-word}
+pre{background:var(--code);padding:12px;border-radius:8px;overflow-x:auto;font-size:.82em;line-height:1.45}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.9em;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{background:var(--card)}
+.meta{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:12px 0}
+.tag{display:inline-block;font-size:.75em;font-weight:600;padding:1px 7px;border-radius:10px;border:1px solid currentColor;white-space:nowrap}
+.I{color:var(--accent)}.T{color:var(--ok)}.D{color:var(--ok)}.O{color:var(--ok)}.U{color:var(--warn)}
+.sev-h{color:var(--bad);font-weight:700}.sev-m{color:var(--warn);font-weight:700}.sev-l{color:var(--muted);font-weight:700}
+li{margin:.25em 0}
+</style>
+</head>
+<body>
+<main>
+<h1>M8 Personal Context Intelligence — Stage 0 report</h1>
+<p class="meta">2026-11-26 · read-only architecture investigation · no code, config, schema or production changes were made</p>
+
+<div class="card">
+<p><b>Baseline.</b> <code>origin/master</code> = <code>762a79a58933683fcfe89670ec0350b1b1a89aad</code> (“docs(state): regenerate the inventory”, after #381). Spec = <code>spec/personal-context-intelligence</code> @ <code>71314b65</code> (one commit on top of master, adds only the spec). Production = <code>life-graph-prod</code> @ tag <code>prod-20261125-1328</code>, which contains #381. Production DB facts below were read with <code>SET TRANSACTION READ ONLY</code>; secrets were not printed.</p>
+<p><b>Labels.</b>
+<span class="tag I">Implemented</span> code exists on master ·
+<span class="tag T">Tested</span> a test pins it ·
+<span class="tag D">Deployed</span> in the prod checkout ·
+<span class="tag O">Operationally verified</span> observed in prod data/logs ·
+<span class="tag U">Unverified</span> not confirmed / blocked.</p>
+</div>
+
+<h2>Summary</h2>
+<ul>
+<li><b>Most building blocks already exist.</b> Bitemporal helpers (<code>is_valid_at</code>, <code>recorded_time_of</code>, <code>is_bitemporally_valid</code>), an <code>as_of</code>/<code>recorded_as_of</code> retrieval path, non-destructive supersession with undo, evidence/trust labels, entity linking, decisions with supersession, intentions, a local-only relevance judge, and a non-executing proposal path into the approval queue.</li>
+<li><b>There is no assembler.</b> Jarvis context is stitched inline in <code>ProcessManager._run_agent</code> and flattened to text; memory ids survive only in the turn trace. Decisions, intentions, projects and tasks never reach Jarvis chat context. The daily brief is the closest thing to a multi-source state view.</li>
+<li><b>Production data is thin for M8.</b> On every active memory <code>valid_from</code> equals <code>created_at</code> (world time is not actually captured); <code>valid_until</code> is never set; 1 superseded row; 11 decisions, all <code>candidate</code>; 0 predictions; 1 intention; 0 connector items; 180 links, all <code>ASSOCIATED</code>; AGE graph has 24 vertices. A context layer built now will mostly surface memories, and should say so rather than imply richer state.</li>
+<li><b>No goal / commitment / constraint record exists</b> anywhere. Per the Charter (no domain enums in the core) these must stay flexible labels on derived items, marked <i>inferred</i> unless a user-stated source exists.</li>
+<li><b>Stage 1 needs no migration.</b> A snapshot is a computed, ephemeral read model; the existing turn trace (<code>agent_tasks.result</code> JSONB) can hold its references. Stage 2 (comparison) and Stage 3 (usefulness feedback) probably do need persistence — that decision is deferred to an ADR at that stage.</li>
+<li><b>Pre-existing security/privacy findings</b> (independent of M8, but M8 must not build on them): service API keys are not bound to a tenant; raw Cypher “admin” is a header check; several cloud-egress paths exist in <i>code defaults</i> (closed in prod by configuration today); watchers ignore the kill switch; <code>audit_log</code> is empty for every tenant. See §6–§7.</li>
+</ul>
+
+<h2>1. Files inspected</h2>
+<p class="meta">Primary sources read (line references throughout). Five parallel read-only traces plus direct spot checks of every high-severity claim.</p>
+<p><code>CHARTER.md</code>, the spec, <code>docs/plans/2026-11-25-phase-2-…md</code> §5, <code>life_graph/api/{memories,search,jarvis,graph,auth,middleware,websocket,memory_links,agent_context}.py</code>, <code>core/{memory_manager,events,evidence,trust,run_taint,tenant,startup_guards}.py</code>, <code>storage/{postgres,graph,hybrid}.py</code>, <code>models/{memory,judgment,agents,assistant}.py</code>, <code>services/memory/{retrieval,context,recall,associations,links,transitions,metamemory}.py</code>, <code>services/{contradiction,entities,judgment,intentions,commitments,lead,brief,profile_card,persona_context,shared_context,context,approvals,scrub,skill_distiller,session_lifecycle,findings_bridge,compute_router}.py</code>, <code>services/llm/{resilient,client}.py</code>, <code>services/jarvis/today.py</code>, <code>kernel/{process_manager,notification_engine,personas,project_registry,scheduler}.py</code>, <code>tools/{delegate,memory_search}.py</code>, <code>connectors/{chat_context,brief,assist,store,locality}.py</code>, <code>watchers/{base,framework,origination,notification_engine}.py</code>, <code>workers/{tasks,settings}.py</code>, <code>autonomy/{kill_switch,pipeline/service,approvals/service,audit/service,models}.py</code>, <code>jobs/consolidation.py</code>, <code>scoring/decay.py</code>, <code>config/{agents,llm,memory,storage}.py</code>, <code>evals/</code>, <code>scripts/eval_*.py</code>, <code>alembic/versions/{018,020,026,042}</code>.</p>
+
+<h2>2. Source-of-truth map</h2>
+<table>
+<tr><th>Context concept</th><th>Existing source of truth</th><th>Time / status semantics</th><th>Status</th><th>Prod rows (raja)</th></tr>
+<tr><td>Fact, preference, belief</td><td><code>memories</code> (<code>models/memory.py:36</code>); JSONB <code>properties</code>, <code>tags</code></td><td>world: <code>valid_from</code>/<code>valid_until</code> (:81,:84); recorded: <code>properties.recorded_at</code> → <code>created_at</code> (<code>retrieval.py:531</code>); <code>properties.superseded_at</code>; status free string (:159) — active/pending/rejected/archived/superseded/…</td><td><span class="tag I">I</span><span class="tag T">T</span><span class="tag D">D</span><span class="tag O">O</span></td><td>5829 (255 active, 1266 pending, 845 archived, 3462 rejected, 1 superseded)</td></tr>
+<tr><td>Provenance / origin</td><td><code>source_type</code>, <code>source</code>, <code>trust_tier</code>, <code>extraction_tier</code>, <code>capture_event_id</code>, <code>properties.evidence</code>/<code>lineage</code> (<code>models/memory.py:61-72,118-153</code>; <code>postgres.py:199-281</code>); labels in <code>core/evidence.py:268-275</code></td><td>trust tiers self/verified/external/hostile_possible</td><td><span class="tag I">I</span><span class="tag T">T</span><span class="tag D">D</span></td><td>top source_type: self_evolution 916, developer_assistance 225, developer_activity 196, jarvis 84</td></tr>
+<tr><td>Supersession / correction</td><td><code>supersedes</code>/<code>superseded_by</code> FKs; <code>memory_manager.py:228-299</code>; <code>/deny</code> (<code>postgres.py:1200-1273</code>); undo (<code>approvals.py:1182-1206</code>); <code>corrections</code> table</td><td>non-destructive: old row kept, status superseded</td><td><span class="tag I">I</span><span class="tag T">T</span> (<code>test_superseded_at_pg.py</code>, 8)</td><td>1 superseded, 15 corrections</td></tr>
+<tr><td>Entity / person / org</td><td><code>life_graph.entities</code> + <code>memory_entities</code> (<code>models/assistant.py:428-476</code>); <code>services/entities.py</code> (<code>link</code> :161, <code>memories_for</code> :414, <code>about</code> :444)</td><td><code>canonical_id</code> alias, created/updated only</td><td><span class="tag I">I</span><span class="tag D">D</span><span class="tag O">O</span></td><td>59 entities, 74 memory links</td></tr>
+<tr><td>Relationship (memory↔memory)</td><td><code>memory_links</code> (<code>models/memory.py:376-409</code>); learned links <code>associations.py:98-179</code> (180-day half-life, 1-hop)</td><td>free-string <code>link_type</code></td><td><span class="tag I">I</span><span class="tag D">D</span></td><td>180, all ASSOCIATED</td></tr>
+<tr><td>Graph (AGE)</td><td><code>storage/graph.py:588-672</code>; <code>hybrid.py:201</code> tri_search boost</td><td>—</td><td><span class="tag I">I</span>; <code>entities.py:3-7</code> says it served almost no retrieval</td><td>24 vertices, 1 edge</td></tr>
+<tr><td>Project</td><td><code>projects</code> (<code>models/agents.py:386-496</code>); <code>kernel/project_registry.py</code></td><td><code>is_active</code>, <code>last_scanned_at</code>; <b>no link to memories or entities</b></td><td><span class="tag I">I</span><span class="tag D">D</span></td><td>3</td></tr>
+<tr><td>Task (agent/dev)</td><td><code>agent_tasks</code> (<code>agents.py:160-255</code>); dev tasks via <code>properties.kind</code> (<code>services/dev/tasks.py:63</code>); readiness ready/wait/blocked (:1014-1041)</td><td><code>deadline</code>, <code>status_history</code>; status Literal (<code>schemas.py:558</code>)</td><td><span class="tag I">I</span><span class="tag T">T</span><span class="tag D">D</span></td><td>1389</td></tr>
+<tr><td>Task (personal, Google)</td><td><code>connector_items</code> kind task (<code>plugins/tasks/google_source.py:103-133</code>)</td><td>due → <code>starts_at</code></td><td><span class="tag I">I</span>; <span class="tag U">not configured in prod</span></td><td>0</td></tr>
+<tr><td>Commitment / promise</td><td>chat: <code>services/commitments.py:106</code> (regex) → <code>intentions</code>; mail: <code>connector_items.flags.commitment</code> (<code>connectors/store.py:268-312</code>)</td><td>intention status pending/completed/dismissed/expired/nudged; <code>expires_at</code></td><td><span class="tag I">I</span><span class="tag T">T</span></td><td>1 intention</td></tr>
+<tr><td>Decision</td><td><code>life_graph.decisions</code> (<code>models/judgment.py:236-312</code>); <code>services/judgment.py:400,517-539</code></td><td>candidate/decided/reviewed/superseded/discarded; <code>superseded_by</code>; <code>decided_at</code>, <code>review_at</code></td><td><span class="tag I">I</span><span class="tag D">D</span></td><td>11, all candidate</td></tr>
+<tr><td>Goal / constraint / milestone / risk</td><td><b>none</b> — only extraction-prompt text (<code>extraction/llm.py:137</code>) mapping goals to the intention fact type</td><td>—</td><td><span class="tag U">missing</span></td><td>—</td></tr>
+<tr><td>Calendar / mail / contacts / bills</td><td><code>connector_items</code> (<code>connectors/models.py:27-116</code>); bodies never stored (:68)</td><td>world <code>starts_at</code>/<code>occurred_at</code> vs recorded <code>fetched_at</code></td><td><span class="tag I">I</span><span class="tag T">T</span>; <span class="tag U">no prod data</span></td><td>0</td></tr>
+<tr><td>Knowledge gap (“don’t know”)</td><td><code>knowledge_gaps</code> (<code>models/memory.py:301</code>; <code>metamemory.py:40-66</code>)</td><td>—</td><td><span class="tag I">I</span></td><td>0</td></tr>
+<tr><td>Approval / proposal</td><td><code>approvals</code> feed (<code>agents.py:866-905</code>), <code>approval_queue</code> (<code>autonomy/models.py:235</code>)</td><td>CHECK constraints (alembic 026, 018)</td><td><span class="tag I">I</span><span class="tag T">T</span><span class="tag D">D</span><span class="tag O">O</span></td><td>476 / 70</td></tr>
+<tr><td>Audit</td><td><code>audit_log</code> (<code>autonomy/models.py:305-310</code>; writer <code>autonomy/audit/service.py:32</code>)</td><td>write-once</td><td><span class="tag I">I</span>; <span class="tag U">0 rows for every tenant</span></td><td>0</td></tr>
+<tr><td>Agent-shared context</td><td><code>shared_context</code> (<code>agents.py:816</code>; <code>services/shared_context.py</code>)</td><td>its own embedding, dedup, decay</td><td><span class="tag I">I</span></td><td>—</td></tr>
+</table>
+<p><b>Note on <code>shared_context</code>:</b> it is an agent scratchpad keyed by project, with its own embeddings and dedup. M8 must <i>not</i> use it as a context store — doing so would create exactly the competing fact store the spec forbids. It is a source the assembler can read for project-task purposes later, nothing more.</p>
+
+<h2>3. Current data flow (one personal Jarvis turn)</h2>
+<pre>
+POST /jarvis/chat  api/jarvis.py:320   tenant ← contextvar (middleware.py:146-169)
+  │  _own_conversation :147  (tenant + routed_to==LEAD)
+  ├─ _capture_chat :357 ──► capture_events ──► MemoryManager.ingest (memory_manager.py:96)
+  │                            extract → dedup → embed → contradiction → store(pending|active)
+  └─ prepare_turn / stream_turn (services/chat_turn.py:312,392)
+       history: load_chat_history :187 (≤10 turns, tenant+session)
+       pm.spawn (process_manager.py:87) → _execute_task → _run_agent :629
+         lead.route (services/lead.py:160)  personal? ─► pinned local model, only_models()
+         system prompt: persona md + (connector block only if claude-cli & not general)
+         volatile msg:  today_line + memory_block (services/memory/context.py:148)
+                          WHO → profile_card (cache 60s, tenant key)
+                              → retrieve() (retrieval.py:586):
+                                  episodes → hybrid_search(tenant,status,valid_until) →
+                                  strength/provenance order → entities.memories_for →
+                                  neighbours → bitemporal filter → cold tier → judge (local)
+                              → render() flattened "- (date · label) text"
+         orchestrator loop (tools filtered by route; results capped 12k)
+       _complete_task :493  result={response, trace{used memory ids}, route}
+       "done" event after save :501
+NOT in chat context today: decisions, intentions, projects, dev tasks, connector data on local runs
+(only via tools), knowledge gaps, change since last turn.
+</pre>
+<p>Other assemblers that combine sources: daily brief <code>services/brief.py:182-342</code>; Today screen <code>services/jarvis/today.py:335,569</code>; connector brief sections <code>connectors/brief.py:27-63</code>; meeting prep <code>connectors/assist.py:108</code> (raw cosine &lt; 0.45, no judge); MCP/agent session-start recall <code>services/memory/recall.py:209</code>, <code>api/agent.py:66-87</code>. Jarvis chat itself has no session-start recall (<code>chat_turn.py:137-159</code>).</p>
+
+<h2>4. Reusable components</h2>
+<table>
+<tr><th>Need in spec</th><th>Reuse</th><th>Status</th></tr>
+<tr><td>Bitemporal filtering (§4.2)</td><td><code>retrieval.is_valid_at</code> :501, <code>is_known_at</code> :542, <code>is_bitemporally_valid</code> :562; SQL <code>valid_until</code> filter <code>postgres.py:177,522</code></td><td><span class="tag I">I</span><span class="tag T">T</span> <code>test_bitemporal_abstention.py</code> (15), <code>test_current_state_search_pg.py</code> (7)</td></tr>
+<tr><td>Retrieval + graph expansion (§4.1)</td><td><code>retrieve(question, as_of, recorded_as_of)</code> :586; <code>entities.memories_for</code>; <code>associations.neighbours</code></td><td><span class="tag I">I</span><span class="tag T">T</span><span class="tag D">D</span></td></tr>
+<tr><td>Origin / uncertainty labels (§2.7)</td><td><code>core/evidence.py:268-275</code>, <code>trust_tier</code>, <code>extraction_tier</code>, <code>source_type</code></td><td><span class="tag I">I</span><span class="tag D">D</span></td></tr>
+<tr><td>Conflicts represented (§8)</td><td>pending contradiction approvals (<code>memory_manager.py:622-627,676</code>), <code>supersedes</code> chain, <code>merged_observations</code></td><td><span class="tag I">I</span><span class="tag T">T</span></td></tr>
+<tr><td>Correction wins, audit kept (§2.9)</td><td><code>/deny</code>, supersede/undo, <code>corrections</code></td><td><span class="tag I">I</span><span class="tag T">T</span></td></tr>
+<tr><td>Decisions with supersession</td><td><code>services/judgment.py</code>; <code>DECISION_SUPERSEDED</code> event</td><td><span class="tag I">I</span></td></tr>
+<tr><td>Open commitments</td><td><code>services/intentions.py</code>, <code>connectors/store.open_promises</code></td><td><span class="tag I">I</span><span class="tag T">T</span></td></tr>
+<tr><td>Local-only model calls</td><td><code>LMStudioClient.chat_local_only</code> (<code>services/llm/client.py:131-145</code>, returns "" on failure), <code>ResilientLLM.local_only</code> (<code>resilient.py:146-167</code>, raises)</td><td><span class="tag I">I</span><span class="tag T">T</span><span class="tag D">D</span></td></tr>
+<tr><td>Non-executing proposal (§6, Stage 4)</td><td><code>ApprovalQueueService.create</code> (<code>autonomy/approvals/service.py:212</code>) or <code>AutoFixService.process(kind="agent_task")</code> (always queued, <code>pipeline/service.py:322</code>), as <code>action_proposal_bridge.py:88-110</code> does</td><td><span class="tag I">I</span><span class="tag T">T</span></td></tr>
+<tr><td>Rate-limit / dedup patterns (§4.5)</td><td><code>notifications/due.py</code> (dedup_key, cap 20, snooze), <code>nudge_pick.py</code> (quiet hours, 3/day), <code>topic_findings</code> statuses</td><td><span class="tag I">I</span><span class="tag T">T</span></td></tr>
+<tr><td>Eval harness (§8)</td><td><code>life_graph/evals/production_retrieval_arm.py</code> (throwaway tenant over real <code>retrieve()</code>), <code>scripts/eval_memory_structures.py</code> (compares context builders), synthetic <code>evals/memory_structures/test_life*.json</code>; CI <code>--verify</code> gates</td><td><span class="tag I">I</span><span class="tag T">T</span></td></tr>
+<tr><td>Provenance into UI</td><td>turn trace <code>used</code> ids (<code>process_manager.py:923-930</code>), <code>/jarvis/turns/{id}/trace</code>, <code>memory_was_wrong</code> (<code>jarvis.py:1881,1906</code>)</td><td><span class="tag I">I</span><span class="tag D">D</span></td></tr>
+</table>
+
+<h2>5. Missing capabilities and gaps</h2>
+<ol>
+<li><b>No single assembler / structured snapshot.</b> Context is flattened text; no item list with source refs, inclusion reason, exclusions or an explicit “insufficient context” result. <span class="tag U">missing</span></li>
+<li><b>World time is not captured in practice.</b> 0 active memories have <code>valid_from ≠ created_at</code>; <code>valid_until</code> never set. Supersession is the only working temporal signal. The assembler must label validity as “since recorded” rather than claim world time. <span class="tag O">O</span></li>
+<li><b><code>valid_from</code> and <code>superseded_at</code> are filtered in Python only</b> (<code>retrieve()</code> :743); <code>/search</code> never checks <code>valid_from</code>; <code>superseded_at</code> lives in JSONB, not a column. Fine for a read model; note for performance.</li>
+<li><b>No goal / constraint / milestone records.</b> Must be derived, flexibly labelled, and marked inferred.</li>
+<li><b>Projects are not linked to memories or entities</b> (no column; <code>agent_tasks.project_id</code> has no FK). Project context can only be matched by entity key/name — heuristic, must be labelled.</li>
+<li><b>No memory-change events.</b> <code>MEMORY_UPDATED/DELETED/RETRIEVED</code> defined but never emitted; no <code>memory:superseded</code>, no <code>entity.*</code>; <code>MEMORY_CREATED</code> only for shared-context (<code>events.py:39-148</code>, <code>shared_context.py:145</code>). Event payloads need not carry <code>tenant_id</code>. → a cache or change detector cannot subscribe today. Stage 1 therefore uses <b>no cache</b>.</li>
+<li><b>Redis bridge is publish-only</b>; nothing re-emits across processes (<code>events.py:323-366</code>). Likely bug: WS subscriber splits <code>events:{tenant}:{type}</code> as <code>split(":",1)[1]</code> → <code>"tenant:type"</code>, so bridge events never reach a socket (<code>websocket.py:169</code>, verified by reading; not run).</li>
+<li><b>No feedback store</b> for briefs/recall/findings (<code>MemorySession.was_useful</code> has no writer). Stage 3 needs one.</li>
+<li><b>Hard delete:</b> <code>DELETE /memories/{id}</code> is a hard delete (<code>postgres.py:416-436</code>); the MCP <code>forget</code> docstring claims soft delete (<code>mcp_server.py:370-377</code>). Conflicts with “correction without destroying provenance”.</li>
+<li><b>Retrieved memory not fenced</b> as untrusted in Jarvis’s memory block (only “unverified” label), while <code>drivers/context.py:45-52</code> does fence. Tool and child results return raw (<code>orchestrator.py:427-433</code>).</li>
+<li><b>Determinism:</b> <code>retrieve()</code> ends with an LLM judge (<code>retrieval.py:62</code>). A reproducible snapshot needs a judge-off path.</li>
+<li><b>No two-tenant search isolation test.</b> <code>test_progressive_disclosure.py:236</code> only greps source for “tenant”.</li>
+</ol>
+
+<h2>6. Personal-data locality (success, failure, retry)</h2>
+<p><b>Memory-path model calls are local and fail closed:</b> judge (<code>retrieval.py:68</code>), extraction tier 3 (<code>extraction/llm.py:457,607-614</code>), transcript extraction (<code>transcript_extract.py:114</code>), distill (<code>consolidation.py:573</code>), <code>/search/ask</code> synthesis (<code>synthesis.py:226</code>), embeddings (Ollama/LM Studio/sentence-transformers; failure → <code>[]</code>, <code>client.py:316-384</code>). Contradiction and entity code make no LLM calls. <code>chat_local_only</code> returns "" on error; <code>local_only</code> raises — neither fails over. No per-model retry exists in ResilientLLM; failure benches the model (<code>resilient.py:381-409</code>). <span class="tag I">I</span><span class="tag T">T</span><span class="tag D">D</span></p>
+<p><b>Jarvis personal turns</b> pin to local models via <code>only_models</code> (<code>lead.py:197-201</code>, <code>process_manager.py:866</code>); memories are injected only when pinned or local (:816-832). In prod Jarvis is <code>claude-cli</code>, so the pin is what keeps personal turns local. <span class="tag T">T</span> <code>test_lead.py</code>.</p>
+<table>
+<tr><th>Possible egress path (code)</th><th>Severity in code defaults</th><th>Prod today</th></tr>
+<tr><td>Non-Jarvis personas keep <code>PERSONAL_TOOLS</code> on cloud models — <code>kernel_cloud_strip_personal_tools=False</code> (<code>config/agents.py:77</code>, <code>process_manager.py:719</code>)</td><td class="sev-h">High</td><td>Closed by config: every active persona is <code>ollama_chat/*</code> except <code>code-fixer-cloud</code> (code persona) and Jarvis (pinned when personal). <span class="tag O">O</span></td></tr>
+<tr><td>Delegation from a pinned personal run spawns an unpinned child on its own model (<code>tools/delegate.py:156</code>); brief text may carry personal context</td><td class="sev-h">High</td><td>Children are local except <code>code-fixer-cloud</code>. Residual risk if Jarvis delegates personal context to it. <span class="tag U">U</span></td></tr>
+<tr><td>Skill distiller → <code>ResilientLLM.chat(model=None)</code> → cheap model + chain (<code>skill_distiller.py:340-347,433</code>)</td><td class="sev-m">Med-High</td><td>Agent-transcripts watcher not enabled (only <code>page_monitor</code> runs); prod chain is <code>ollama_chat/qwen3:4b</code>; cheap model is an <code>openai/</code> model via <code>OPENAI_API_BASE</code> whose destination was not checked. <span class="tag U">U</span></td></tr>
+<tr><td>Session summary via <code>lm_client.chat</code> when <code>use_hybrid_llm</code> (<code>session_lifecycle.py:181-189</code>)</td><td class="sev-m">Med</td><td><code>USE_HYBRID_LLM=false</code> → local. <span class="tag O">O</span></td></tr>
+<tr><td>OmniRoute appended to chain but not checked by <code>run_is_local</code> (<code>locality.py:47-52</code> vs <code>resilient.py:303</code>)</td><td class="sev-m">Med</td><td>OmniRoute key unset. <span class="tag O">O</span></td></tr>
+<tr><td><code>allow_cloud_preference_models</code> opt-in (<code>multi_model_advisor.py:363</code>)</td><td class="sev-l">Low</td><td>off (default)</td></tr>
+<tr><td>General-route scrub misses names/places (<code>scrub.py:12</code>)</td><td class="sev-l">Low (by design)</td><td>—</td></tr>
+</table>
+<p><b>Rule for M8:</b> the Stage 1 assembler makes <b>no model call at all</b> (deterministic SQL + rules, judge off). The only model touch is the query embedding, which is local-only. That removes the assembler from every row above. If a later stage adds an LLM step, it must use <code>chat_local_only</code> and a test must prove a cloud model is never constructed on failure.</p>
+
+<h2>7. Tenant isolation</h2>
+<ul>
+<li><b>Header → contextvar</b> (<code>api/middleware.py:146-169</code>, <code>core/tenant.py</code>); production mode returns 400 on a missing header. <span class="tag D">D</span><span class="tag O">O</span> (switched 2026-11-25).</li>
+<li><b>Applied at the storage layer:</b> <code>storage/postgres.py</code> reads <code>get_current_tenant_id()</code> on every memory query (e.g. :339, :462, :521/558, :764); graph walks scope every vertex (<code>graph.py:152-169</code>); entities filter both tables (<code>entities.py:234,414-441</code>). <span class="tag I">I</span><span class="tag T">T</span></li>
+<li><b>No Postgres RLS</b> on any table/schema (verified in prod catalog). <span class="tag O">O</span></li>
+<li class="sev-h">High — API keys are not tenant-bound. <code>verify_service_key</code> only checks list membership (<code>api/auth.py:106-154</code>); any key holder picks any <code>X-Tenant-ID</code>. Raw Cypher <code>/graph/query</code> is “admin” only when the tenant header equals <code>default</code> (<code>api/graph.py:226-231</code>), and the graph falls back to <code>default</code> with no context (<code>graph.py:40,102-106</code>). Single-owner deployment limits the blast radius today, but it is a real boundary gap. Not an M8 change — reported for a separate decision.</li>
+<li class="sev-m">Low-Med — <code>create_link</code> does not check that both memories belong to the tenant (<code>services/memory/links.py:85-108</code>).</li>
+<li><b>Personas:</b> a delegated child inherits the tenant; spawn only re-checks the persona exists for that tenant (<code>process_manager.py:157</code>). There is no per-persona data authorization, so M8 “re-check per consumer” has nothing to re-check against yet; Stage 1 enforces tenant + consumer-route (personal/local) only.</li>
+<li><b>Lore tables</b> (<code>lore_nodes</code>/<code>lore_edges</code>) have no <code>tenant_id</code>; they hold public Tamil-knowledge data, not personal records — out of M8 scope; the assembler must not read them.</li>
+</ul>
+
+<h2>8. Proposed smallest slice (Stage 1)</h2>
+<div class="card">
+<p><b>Consumer: a Jarvis personal turn, in shadow mode.</b> Jarvis is the only consumer that already has a local-only route, a provenance trace and a correction button (“memory was wrong”). A project-task consumer would need project↔memory linkage that does not exist.</p>
+<p><b>What it does:</b> a read-only, deterministic <code>assemble_context(tenant, query, purpose, as_of, budget)</code> that returns a typed snapshot:</p>
+<ul>
+<li><b>items</b> — each with <code>source_ref</code> (kind + id: memory / decision / intention), <code>dimension</code> (free-string label from tags or source kind, never an enum), <code>origin</code> (user-stated / imported / extracted / model-proposed, mapped from <code>source_type</code>, <code>trust_tier</code>, <code>extraction_tier</code>, status pending), <code>evidence</code> label, <code>valid_from</code>/<code>recorded_at</code> with a flag when world time is unknown, <code>freshness</code> class, <code>reason</code> included (vector hit, keyword hit, entity link, neighbour, open intention, decision).</li>
+<li><b>conflicts</b> — pending contradiction pairs and superseded-by chains shown side by side, never merged.</li>
+<li><b>exclusions</b> — counts and reasons (expired, superseded, pending-only, over budget).</li>
+<li><b>insufficient</b> — explicit flag when nothing passes the evidence bar.</li>
+<li>deterministic ordering (score, then recorded time, then id) and a hard character/item budget.</li>
+</ul>
+<p><b>Sources in Stage 1:</b> memories (via existing <code>hybrid_search</code> + bitemporal helpers + <code>entities.memories_for</code>, judge off), decisions (<code>candidate</code> labelled “proposed, not decided”), pending intentions. No projects, tasks, connectors yet.</p>
+<p><b>Wiring:</b> behind a new flag <code>LIFE_GRAPH_CONTEXT_SNAPSHOT_SHADOW</code> (default <b>off</b>). When on, a personal local Jarvis turn also builds the snapshot and stores its compact form (refs, labels, reasons — no content) in the existing turn trace. The prompt is <b>unchanged</b> in Stage 1. A read-only <code>GET /api/v1/context/snapshot?q=…</code> returns the snapshot for inspection and eval.</p>
+<p><b>Not in Stage 1:</b> prompt changes, caching, change detection, feedback, proactive output, new tables, any model call beyond the local query embedding.</p>
+</div>
+
+<h3>Prerequisite PRs (small, test-first, no behaviour change)</h3>
+<ol>
+<li>Two-tenant isolation integration test for <code>hybrid_search</code>, <code>retrieve()</code>, <code>entities.memories_for</code> and <code>/search</code> (seeds tenants A and B, asserts zero cross-reads).</li>
+<li>Judge-off switch on <code>retrieve()</code> (parameter, default unchanged) so a snapshot is reproducible.</li>
+</ol>
+
+<h2>9. Files likely to change and tests</h2>
+<table>
+<tr><th>File</th><th>Change</th></tr>
+<tr><td><code>life_graph/services/memory/snapshot.py</code> (new)</td><td>assembler + snapshot dataclasses; reuses <code>retrieval</code>, <code>evidence</code>, <code>entities</code>, <code>judgment</code>, <code>intentions</code>. Placed under <code>services/memory/</code> to avoid a clash with the existing <code>services/context.py</code>.</td></tr>
+<tr><td><code>life_graph/services/memory/retrieval.py</code></td><td><code>judge</code> parameter on <code>retrieve()</code> (default keeps today’s behaviour)</td></tr>
+<tr><td><code>life_graph/api/context.py</code> (new) + router registration in <code>main.py</code></td><td>read-only GET, tenant from contextvar, same auth as <code>/search</code></td></tr>
+<tr><td><code>life_graph/kernel/process_manager.py</code> (~10 lines near :816-832)</td><td>shadow call when flag on; failures logged, never fail the turn</td></tr>
+<tr><td><code>life_graph/config/memory.py</code></td><td><code>context_snapshot_shadow: bool = False</code></td></tr>
+<tr><td><code>evals/context/cases.json</code> (new, synthetic) + <code>scripts/eval_context_snapshot.py</code> (new) + CI <code>--verify</code> step</td><td>spec §8 categories 1-4, 6-11 on synthetic data</td></tr>
+</table>
+<p><b>Tests:</b> <code>tests/unit/test_context_snapshot.py</code> (ordering determinism, budget, insufficient result, origin mapping, inferred never shown as confirmed, candidate decision labelled, conflict both sides present, prompt-injection text kept as data), <code>tests/integration/test_context_snapshot_pg.py</code> (expired/superseded excluded as current, <code>as_of</code> history, two-tenant negative test, hostile-tier handling), <code>tests/unit/test_context_snapshot_locality.py</code> (no LLM client constructed; embedding failure → insufficient, not cloud), <code>tests/unit/test_lead.py</code> addition (shadow off → trace unchanged; on → refs only, no content). Mutation check for each.</p>
+
+<h2>10. API compatibility and performance</h2>
+<ul>
+<li><b>Compatibility:</b> purely additive — one new GET, one optional trace field, one default-off flag. No existing response shape changes; phone and web clients unaffected.</li>
+<li><b>Performance:</b> current prod <code>/search</code> ≈ 1.4 s, most of it embedding + local judge. Snapshot (judge off) = 1 local embedding + 1 <code>hybrid_search</code> + 2 indexed lookups (decisions, intentions) + entity lookup. Budget: <b>p50 ≤ 400 ms, p95 ≤ 1 s</b> on the prod tenant, measured by the eval script; shadow mode runs it concurrently with the existing memory block so turn latency should not grow (to be measured, not assumed). Snapshot size cap: 40 items / 6 000 chars.</li>
+</ul>
+
+<h2>11. Is persistence or a migration needed?</h2>
+<ul>
+<li><b>Stage 1: no.</b> The snapshot is computed on demand from existing rows; its reference list fits in <code>agent_tasks.result</code> JSONB, which already stores the trace. No cache is added (and no invalidation events exist to support one safely — §5.6).</li>
+<li><b>Stage 2 (comparison): probably.</b> Comparing “since last interaction” needs the previous snapshot’s refs; the turn trace can serve for Jarvis, but cross-consumer comparison would need a small table. Decide by ADR then.</li>
+<li><b>Stage 3 (feedback): likely yes.</b> No existing table records useful/not-useful/already-handled for derived items; <code>corrections</code> covers only “incorrect”. ADR + migration + retention rules at that stage.</li>
+</ul>
+
+<h2>12. Risks, rollback, acceptance</h2>
+<table>
+<tr><th>Risk</th><th>Mitigation</th></tr>
+<tr><td>Snapshot looks authoritative while prod data is thin (no world time, 11 candidate decisions)</td><td>Freshness and “world time unknown” labels; <code>insufficient</code> flag; shadow-only in Stage 1</td></tr>
+<tr><td>Inferred item read as user intent</td><td>origin field mandatory; unit test that model-proposed / pending items never carry a confirmed label</td></tr>
+<tr><td>Tenant leak via new endpoint</td><td>storage-layer scoping reused, two-tenant negative tests; endpoint inherits the existing (unbound) key model — §7 gap stays open until fixed separately</td></tr>
+<tr><td>Cloud egress</td><td>no model call in assembler; locality test; shadow runs only on pinned/local personal turns</td></tr>
+<tr><td>Turn latency</td><td>concurrent, time-boxed (1 s), failure-swallowed; measured p50/p95</td></tr>
+<tr><td>Scope creep into a second fact store</td><td>no new table; review rule: snapshot holds refs and labels, never facts</td></tr>
+</table>
+<p><b>Rollback:</b> flag off restores current behaviour exactly; endpoint is read-only; no data written beyond an optional trace field; revert the PR(s) with no migration to undo.</p>
+<p><b>Measurable Stage 1 acceptance (synthetic eval + tests):</b></p>
+<ul>
+<li>Provenance coverage = 100% (every item has a resolvable <code>source_ref</code>).</li>
+<li>Expired or superseded presented as current = 0 on the temporal cases.</li>
+<li>Conflict cases: both sides present in 100%; none merged.</li>
+<li>Inferred/pending labelled as confirmed = 0.</li>
+<li>Cross-tenant items = 0 in negative tests; cloud model constructions = 0 in locality tests, including embedding/DB failure.</li>
+<li>Same input → byte-identical snapshot (determinism test).</li>
+<li>Evidence-supported precision / recall reported per category (baseline first; no aggregate hides a weak category).</li>
+<li>Latency p50 ≤ 400 ms, p95 ≤ 1 s on prod tenant (read-only measurement); turn latency unchanged within noise with shadow on.</li>
+</ul>
+
+<h2>13. Findings outside M8 (for separate owner decisions)</h2>
+<ol>
+<li class="sev-h">Service keys not tenant-bound; <code>/graph/query</code> admin by header (<code>auth.py:106-154</code>, <code>graph.py:226-231</code>).</li>
+<li class="sev-h">Cloud-egress code defaults (§6 rows 1-3): flip <code>kernel_cloud_strip_personal_tools</code> default; pin delegated children of a personal run; give the skill distiller <code>local_only</code>.</li>
+<li class="sev-m">Watchers run and notify while autonomy is paused — kill switch is checked only before origination spawns a task (<code>origination.py:185-189</code>; none in <code>workers/tasks.py</code>).</li>
+<li class="sev-m"><code>audit_log</code> has 0 rows for every tenant in prod despite writers existing — needs a check of whether autonomy actions ever reach <code>_run_action</code>. <span class="tag U">U</span></li>
+<li class="sev-m">WS bridge channel parsing (<code>websocket.py:169</code>); <code>watcher_notifications</code> queue never drained (<code>process_pending</code> uncalled).</li>
+<li class="sev-l">Hard-delete vs “soft delete” docstring on MCP <code>forget</code>; <code>create_link</code> tenant check; ASSOCIATED missing from schema regex (<code>schemas.py:194</code>); possible <code>superseded_by=None</code> in <code>identity.respond_to_challenge</code> (<code>identity.py:269-287</code>, untested).</li>
+</ol>
+
+<h2>Unverified / blocked</h2>
+<ul>
+<li>Destination of the prod cheap model (<code>openai/…</code> via <code>OPENAI_API_BASE</code>) — not inspected to avoid reading endpoint values.</li>
+<li>Whether Jarvis has ever delegated personal context to <code>code-fixer-cloud</code> — would need reading prod turn traces.</li>
+<li>WS channel bug and RedisBridge behaviour at runtime (read, not executed).</li>
+<li>Why <code>audit_log</code> is empty.</li>
+<li>Whether hostile-tier memories are excluded by <code>hybrid_search</code>.</li>
+</ul>
+
+<p class="meta">Stops here. Stage 1 requires explicit owner approval.</p>
+</main>
+</body>
+</html>
