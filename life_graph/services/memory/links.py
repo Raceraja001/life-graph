@@ -74,7 +74,7 @@ async def create_link(
     link_type: str,
     strength: float = 0.5,
     properties: dict[str, Any] | None = None,
-    tenant_id: str = "legacy",
+    tenant_id: str | None = None,
 ) -> MemoryLink:
     """Create a link between two memories in DB and optionally in the AGE graph.
 
@@ -84,7 +84,9 @@ async def create_link(
         link_type: Relationship type (must be in VALID_LINK_TYPES).
         strength: Confidence/strength of the link (0.0–1.0).
         properties: Optional JSONB properties.
-        tenant_id: Tenant identifier.
+        tenant_id: Owning tenant. Defaults to the current tenant context. (It
+            used to default to "legacy", so a caller that forgot it wrote the
+            link into a tenant nobody owns.)
 
     Returns:
         The created MemoryLink ORM instance.
@@ -96,7 +98,10 @@ async def create_link(
             tenant. The two cases are reported the same way, so this is not a
             way to learn whether another tenant's memory id exists.
         (All three are ValueErrors — core/errors.py.)
+        RuntimeError: No ``tenant_id`` was given and no tenant context is set.
     """
+    if tenant_id is None:
+        tenant_id = get_current_tenant_id()
     if link_type not in VALID_LINK_TYPES:
         raise InvalidInputError(
             f"Invalid link_type '{link_type}'. Must be one of {sorted(VALID_LINK_TYPES)}"
@@ -206,14 +211,24 @@ async def get_link_graph(
 ) -> list[dict[str, Any]]:
     """Get linked memories for context expansion via BFS traversal.
 
+    Both the links and the memories they lead to must be the tenant's. A link
+    row of this tenant that points at another tenant's memory (possible for
+    rows written before create_link checked both ends) is skipped: neither its
+    id nor its content is returned, and the walk does not go through it.
+
     Args:
         memory_id: Starting memory.
         depth: Maximum traversal depth (1–5).
-        tenant_id: Optional tenant filter.
+        tenant_id: Tenant to walk. Defaults to the current tenant context.
 
     Returns:
         List of dicts with memory data, link_type, strength, and depth.
+
+    Raises:
+        RuntimeError: No ``tenant_id`` was given and no tenant context is set.
     """
+    if tenant_id is None:
+        tenant_id = get_current_tenant_id()
     depth = min(max(depth, 1), 5)
     visited: set[uuid.UUID] = {memory_id}
     results: list[dict[str, Any]] = []
@@ -231,13 +246,12 @@ async def get_link_graph(
                     MemoryLink.target_memory_id.in_(current_frontier),
                 )
             )
-            if tenant_id is not None:
-                stmt = stmt.where(MemoryLink.tenant_id == tenant_id)
+            stmt = stmt.where(MemoryLink.tenant_id == tenant_id)
 
             result = await session.execute(stmt)
             links = result.scalars().all()
 
-            next_frontier: set[uuid.UUID] = set()
+            found: list[dict[str, Any]] = []
             neighbor_ids: set[uuid.UUID] = set()
 
             for link in links:
@@ -251,10 +265,9 @@ async def get_link_graph(
                     continue
 
                 visited.add(neighbor_id)
-                next_frontier.add(neighbor_id)
                 neighbor_ids.add(neighbor_id)
 
-                results.append(
+                found.append(
                     {
                         "memory_id": str(neighbor_id),
                         "link_type": link.link_type,
@@ -264,20 +277,26 @@ async def get_link_graph(
                     }
                 )
 
-            # Fetch actual memory data for neighbors found at this depth
+            # Fetch the neighbours found at this depth: this tenant's only.
+            mem_map: dict[uuid.UUID, Memory] = {}
             if neighbor_ids:
-                mem_stmt = select(Memory).where(Memory.id.in_(neighbor_ids))
+                mem_stmt = select(Memory).where(
+                    Memory.id.in_(neighbor_ids), Memory.tenant_id == tenant_id
+                )
                 mem_result = await session.execute(mem_stmt)
                 mem_map = {m.id: m for m in mem_result.scalars().all()}
 
-                for item in results:
-                    if item["depth"] == current_depth:
-                        mem = mem_map.get(uuid.UUID(item["memory_id"]))
-                        if mem:
-                            item["content"] = mem.content
-                            item["importance"] = mem.importance
-                            item["tags"] = mem.tags or []
-                            item["status"] = mem.status
+            next_frontier: set[uuid.UUID] = set()
+            for item in found:
+                mem = mem_map.get(uuid.UUID(item["memory_id"]))
+                if mem is None:
+                    continue  # another tenant's memory (the FK rules out "missing")
+                item["content"] = mem.content
+                item["importance"] = mem.importance
+                item["tags"] = mem.tags or []
+                item["status"] = mem.status
+                results.append(item)
+                next_frontier.add(mem.id)
 
             current_frontier = next_frontier
 
@@ -287,7 +306,7 @@ async def get_link_graph(
 async def auto_link_memories(
     memories: list[Memory],
     threshold: float = 0.80,
-    tenant_id: str = "legacy",
+    tenant_id: str | None = None,
 ) -> int:
     """Auto-detect RELATED_TO links via embedding cosine similarity.
 
@@ -297,13 +316,16 @@ async def auto_link_memories(
     Args:
         memories: List of Memory ORM instances with embeddings.
         threshold: Minimum cosine similarity to create a link.
-        tenant_id: Tenant identifier.
+        tenant_id: Owning tenant. Defaults to the current tenant context
+            (it used to default to "legacy").
 
     Returns:
         Number of links created.
     """
     import numpy as np
 
+    if tenant_id is None:
+        tenant_id = get_current_tenant_id()
     # Filter to memories that have embeddings
     embedded = [m for m in memories if m.embedding is not None]
     if len(embedded) < 2:

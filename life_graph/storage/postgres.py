@@ -652,8 +652,12 @@ class PostgresMemoryStore:
             id_list = [sid for sid, _ in scored_ids]
             score_map = {sid: score for sid, score in scored_ids}
 
+            # Tenant-scoped again, though the CTEs already are: one forgotten
+            # filter in that SQL must not turn into another tenant's rows here.
             orm_result = await session.execute(
-                select(Memory).where(Memory.id.in_(id_list)).options(defer(Memory.embedding))
+                select(Memory)
+                .where(Memory.id.in_(id_list), Memory.tenant_id == tenant_id)
+                .options(defer(Memory.embedding))
             )
             rows = {r.id: r for r in orm_result.scalars().all()}
 
