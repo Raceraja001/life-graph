@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
+from life_graph.autonomy.kill_switch import autonomy_stopped
 from life_graph.connectors.locality import CLOUD, audience
 from life_graph.core.tenant import set_tenant_context
 from life_graph.kernel.ambient import (
@@ -379,6 +380,14 @@ async def run_watchers(ctx: dict) -> dict:
 
     Iterates distinct tenants from watcher configs, runs each
     enabled watcher, stores events, and routes notifications.
+
+    A tenant whose owner pulled the kill switch (``autonomy_stopped``) is
+    skipped whole: none of its watchers run, so nothing is stored, notified
+    or turned into a task until autonomy is resumed. That includes the
+    read-only health checks, because every watcher here routes notifications
+    and feeds origination; pausing means "stay quiet and start nothing". If
+    the pause flag cannot be read, the tenant is skipped too (fail closed,
+    as the kill switch does everywhere).
     """
     logger.info("Starting hourly watcher run for all tenants")
 
@@ -447,6 +456,11 @@ async def run_watchers(ctx: dict) -> dict:
 
     for tid in tenant_ids:
         set_tenant_context(tid, "system")
+
+        if await autonomy_stopped(tid):
+            logger.warning("Watchers skipped for tenant %s: autonomy is paused (kill switch)", tid)
+            results[tid] = {"events": 0, "skipped": "autonomy_paused"}
+            continue
 
         async with async_session() as session:
             result = await session.execute(
