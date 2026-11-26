@@ -18,7 +18,11 @@ import logging
 import uuid
 
 from life_graph.autonomy.kill_switch import PAUSED_REFUSAL, autonomy_stopped
+from life_graph.config import settings
+from life_graph.connectors.locality import model_is_local
+from life_graph.core.personal_run import PERSONAL_INPUT_KEY, in_personal_run
 from life_graph.core.run_taint import TAINT_INPUT_KEY, TAINTED_REFUSAL, outside_content_seen
+from life_graph.services import lead
 from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
@@ -27,21 +31,55 @@ _POLL_INTERVAL_SECONDS = 2
 _TERMINAL_STATUSES = {"completed", "failed", "timeout", "cancelled"}
 
 
+class _LookupFailedError(Exception):
+    """The persona row could not be read."""
+
+
+async def _persona_row(tenant_id: str, persona: str) -> dict | None:
+    """The persona's row, or None when there is none. Raises
+    _LookupFailedError when it cannot be read."""
+    from life_graph.runtime import get_persona_service
+
+    try:
+        return await get_persona_service().get_by_name(tenant_id, persona)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("delegate_to_persona could not read persona %s", persona, exc_info=True)
+        raise _LookupFailedError from exc
+
+
 async def _holds_host_tools(tenant_id: str, persona: str) -> bool:
     """Whether *persona* can touch files, code or the shell. A failed lookup
     counts as yes: this decides a refusal."""
     from life_graph.kernel.personas import HOST_TOOLS
-    from life_graph.runtime import get_persona_service
 
     try:
-        row = await get_persona_service().get_by_name(tenant_id, persona)
-    except Exception:  # noqa: BLE001
-        logger.warning("delegate_to_persona could not read persona %s", persona, exc_info=True)
+        row = await _persona_row(tenant_id, persona)
+    except _LookupFailedError:
         return True
     if row is None:
         return False  # spawn() refuses an unknown persona with its own message
     tools = row.get("allowed_tools")
     return tools is None or bool(HOST_TOOLS & set(tools))
+
+
+async def _local_only_refusal(tenant_id: str, persona: str) -> str | None:
+    """Why *persona* may not take a task from a personal run, or None.
+
+    It may when its model is local (the child's run is then pinned to local
+    models, kernel/process_manager._run_agent) or when it is Jarvis, whose
+    personal route picks its local model. A failed lookup refuses. The
+    child's run checks again; this only says no before a task is created.
+    """
+    if persona == lead.LEAD:
+        return None
+    try:
+        row = await _persona_row(tenant_id, persona)
+    except _LookupFailedError:
+        return lead.local_only_refusal(persona, None)
+    if row is None:
+        return None  # spawn() refuses an unknown persona with its own message
+    model = row.get("model") or settings.agent_llm_model
+    return None if model_is_local(model) else lead.local_only_refusal(persona, model)
 
 
 @tool(
@@ -128,6 +166,11 @@ async def delegate_to_persona(
         # through a worker (core/run_taint.py, review 2026-10-24).
         return json.dumps({"error": f"{persona}: {TAINTED_REFUSAL}"})
 
+    # A personal run's worker stays on local models (core/personal_run.py).
+    personal = in_personal_run()
+    if personal and (refusal := await _local_only_refusal(ctx.tenant_id, persona)):
+        return json.dumps({"error": refusal})
+
     pm = get_process_manager()
 
     parent_task = await pm.get_task(ctx.tenant_id, str(ctx.task_id))
@@ -158,7 +201,12 @@ async def delegate_to_persona(
             agent_name=persona,
             # A tainted run's child starts tainted: its brief came after the
             # outside text (core/run_taint.py TAINT_INPUT_KEY).
-            input_data={"message": subtask, **({TAINT_INPUT_KEY: True} if tainted else {})},
+            # A personal run's child is personal: pinned to local models.
+            input_data={
+                "message": subtask,
+                **({TAINT_INPUT_KEY: True} if tainted else {}),
+                **({PERSONAL_INPUT_KEY: True} if personal else {}),
+            },
             task_name=f"delegated:{persona}",
             parent_task_id=ctx.task_id,
             root_task_id=child_root_task_id,
