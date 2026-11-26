@@ -10,6 +10,10 @@ So the mark travels like the taint does (core/run_taint.py):
 
 * ``ProcessManager._run_agent`` sets the contextvar around a run that is
   personal -- Jarvis's personal route, or a task that arrived marked;
+* ``AgentOrchestrator.run`` also marks a run from its first call to a personal
+  tool (services/lead.PERSONAL_TOOLS: memories, mail, calendar, money, ...)
+  to its end, whatever its route: a general run that read a memory can put it
+  in a brief. Only its delegations change; its own model does not;
 * ``delegate_to_persona`` reads it and marks the child's input with
   :data:`PERSONAL_INPUT_KEY`;
 * the child's ``_run_agent`` then pins it to local models, or refuses.
