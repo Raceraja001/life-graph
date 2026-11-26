@@ -10,6 +10,12 @@ over through ``llm_fallback_chain`` (then OmniRoute and an optional paid model)
 mid-run, and the conversation — including every tool result so far — goes with
 it. So a run is local only when its model *and every model it could fall over
 to* run on this machine.
+
+Inside ``only_models()`` (services/llm/resilient.py) the models it could fall
+over to are the pinned ones and nothing else: a personal Jarvis route
+(services/lead.py ``route``) and a task delegated from one
+(kernel/process_manager.py) run pinned to local models, so they are LOCAL even
+when the global chain has cloud models in it.
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 from life_graph.config import settings
+from life_graph.services.llm.fallback_pin import pinned_models
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -45,7 +52,16 @@ def model_is_local(model: str | None) -> bool:
 
 
 def run_is_local(model: str | None) -> bool:
-    """Whether a run on ``model`` stays local even if the model fails over."""
+    """Whether a run on ``model`` stays local even if the model fails over.
+
+    Under an ``only_models()`` pin, ResilientLLM tries ``model`` and then the
+    pinned models only, so those are the whole chain: local when every one of
+    them is local, and CLOUD as soon as one is not. Without a pin, the global
+    chain counts, with OmniRoute and the paid model when they are set.
+    """
+    pinned = pinned_models()
+    if pinned is not None:
+        return all(model_is_local(m) for m in (model, *pinned))
     chain = [model, *settings.llm_fallback_chain_list]
     # ResilientLLM._append_last_resorts adds OmniRoute (a hosted router)
     # after the free chain whenever its key is set.

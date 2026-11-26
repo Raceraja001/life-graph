@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterator
 
 from life_graph.config import settings
+from life_graph.services.llm.fallback_pin import _allowed_fallbacks
 from life_graph.services.llm.health import LLMHealth
 
 logger = logging.getLogger(__name__)
@@ -34,10 +35,8 @@ class ResilientLLMExhaustedError(Exception):
     """Raised when every model in the chain failed or is unavailable."""
 
 
-# When set, the only models a completion may fail over to (see only_models).
-_allowed_fallbacks: contextvars.ContextVar[tuple[str, ...] | None] = contextvars.ContextVar(
-    "resilient_llm_allowed_fallbacks", default=None
-)
+# _allowed_fallbacks (imported above) is the pin only_models() sets; it lives
+# in fallback_pin.py so connectors/locality.py can read it without litellm.
 
 
 _reasoning_off: contextvars.ContextVar[bool] = contextvars.ContextVar(
