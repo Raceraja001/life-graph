@@ -12,11 +12,12 @@ import json
 import logging
 
 import httpx
+import openai
 import pytest
 from openai import AsyncOpenAI
 
 from life_graph.services.llm import client as client_mod
-from life_graph.services.llm.client import EMBED_COOLDOWN_S, LMStudioClient
+from life_graph.services.llm.client import EMBED_COOLDOWN_S, EMBED_TRIP_AFTER, LMStudioClient
 
 BASE = "http://lmstudio.test:1234/v1"
 LM_VECTOR = [0.1, 0.2, 0.3]
@@ -26,10 +27,12 @@ OLLAMA_VECTOR = [0.9, 0.8, 0.7]
 @pytest.fixture(autouse=True)
 def fresh_breaker(monkeypatch):
     client_mod._embed_skip_until.clear()
+    client_mod._embed_conn_failures.clear()
     now = [1000.0]
     monkeypatch.setattr(client_mod, "_clock", lambda: now[0])
     yield now
     client_mod._embed_skip_until.clear()
+    client_mod._embed_conn_failures.clear()
 
 
 class Server:
@@ -57,6 +60,10 @@ class Server:
             return httpx.Response(500, json={"error": {"message": "boom"}})
         if self.mode == "down":
             raise httpx.ConnectError("connection refused", request=request)
+        if self.mode == "slow":
+            raise httpx.ReadTimeout("timed out", request=request)
+        if self.mode == "404":
+            return httpx.Response(404, json={"error": {"message": "not found"}})
         raw = json.loads(request.content)["input"]
         n = 1 if isinstance(raw, str) else len(raw)
         data = [{"object": "embedding", "index": i, "embedding": LM_VECTOR} for i in range(n)]
@@ -102,14 +109,52 @@ async def test_501_is_tried_once_then_ollama_directly(monkeypatch, caplog):
     assert len(tripped) == 1  # logged once per trip, not per call
 
 
-async def test_connection_error_is_tried_once_then_ollama_directly(monkeypatch):
-    server = Server("down")
+@pytest.mark.parametrize("mode", ["down", "slow"])
+async def test_connection_errors_trip_only_after_three_in_a_row(monkeypatch, mode):
+    """One timeout or dropped connection is one bad call, not a 10-minute skip."""
+    server = Server(mode)
+    lm, ollama = _client(server, monkeypatch)
+    for i in range(EMBED_TRIP_AFTER):
+        assert await lm.embed(f"t{i}") == OLLAMA_VECTOR
+        assert server.calls == i + 1  # tried once each (no SDK retries), not skipped yet
+    assert BASE in client_mod._embed_skip_until  # the third in a row tripped it
+    assert await lm.embed("after") == OLLAMA_VECTOR
+    assert server.calls == EMBED_TRIP_AFTER  # breaker open: straight to Ollama
+    assert len(ollama) == EMBED_TRIP_AFTER + 1
+
+
+async def test_one_timeout_falls_back_for_that_call_only(monkeypatch):
+    server = Server("slow")
     lm, ollama = _client(server, monkeypatch)
     assert await lm.embed("one") == OLLAMA_VECTOR
+    server.mode = "ok"
+    assert await lm.embed("two") == LM_VECTOR  # not skipped
+    assert server.calls == 2
+    assert ollama == [["one"]]
+    assert client_mod._embed_skip_until == {}
+
+
+async def test_a_success_resets_the_connection_failure_count(monkeypatch):
+    server = Server("down")
+    lm, _ = _client(server, monkeypatch)
+    for _ in range(EMBED_TRIP_AFTER - 1):
+        await lm.embed("x")
+    server.mode = "ok"
+    assert await lm.embed("ok") == LM_VECTOR
+    server.mode = "down"
+    for _ in range(EMBED_TRIP_AFTER - 1):
+        await lm.embed("y")
+    assert client_mod._embed_skip_until == {}  # never three in a row
+    assert server.calls == 2 * (EMBED_TRIP_AFTER - 1) + 1
+
+
+async def test_404_trips_the_breaker_at_once(monkeypatch):
+    server = Server("404")
+    lm, _ = _client(server, monkeypatch)
+    await lm.embed("one")
+    await lm.embed("two")
     assert server.calls == 1
-    assert await lm.embed("two") == OLLAMA_VECTOR
-    assert server.calls == 1
-    assert len(ollama) == 2
+    assert BASE in client_mod._embed_skip_until
 
 
 async def test_breaker_is_shared_by_clients_of_the_same_url(monkeypatch):
@@ -198,6 +243,8 @@ async def test_ollama_failure_with_breaker_open_gives_empty(monkeypatch):
     [
         (RuntimeError("This server does not support embeddings."), True),
         (RuntimeError("boom"), False),
+        (openai.APIConnectionError(request=httpx.Request("POST", BASE)), False),
+        (openai.APITimeoutError(request=httpx.Request("POST", BASE)), False),
     ],
 )
 def test_cannot_embed_classification(exc, expected):
