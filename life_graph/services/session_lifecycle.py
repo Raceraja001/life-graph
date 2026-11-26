@@ -170,10 +170,13 @@ async def run_micro_consolidation(session_id: uuid.UUID) -> None:
 
 
 async def generate_summary(sess: Session, memory_count: int) -> str:
-    """Generate a session summary via the LLM.
+    """Generate a session summary via the local LLM.
 
-    Falls back to a simple template string if the LLM is
-    unavailable or returns an empty response.
+    The session's context is the owner's own (what they were working on), so
+    it goes to the local runtime only (``chat_local_only``), never to the
+    cloud chain that ``chat()`` uses when ``use_hybrid_llm`` is on. Falls
+    back to a simple template string if the LLM is unavailable or returns an
+    empty response.
     """
     fallback = f"Session with {memory_count} memories created"
 
@@ -186,8 +189,9 @@ async def generate_summary(sess: Session, memory_count: int) -> str:
             f"Memories created: {memory_count}\n"
             f"Summary:"
         )
-        summary = await lm_client.chat(
+        summary = await lm_client.chat_local_only(
             messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,  # chat()'s default, as before
             max_tokens=128,
         )
         return summary.strip() if summary.strip() else fallback

@@ -18,6 +18,10 @@ Two gates keep the corpus from filling with noise:
    skills already stored and is allowed — encouraged — to answer ``NOOP``.
    A near-duplicate becomes a ``PATCH_EXISTING`` note on the skill that
    already covers it rather than a second, slightly different recipe.
+
+The slice is the owner's own session (prompts, paths, errors), so the model is
+a local one only (``ResilientLLM.local_only``): no cloud model, and no fail-over
+to one. With no local model, or the local model down, nothing is distilled.
 """
 
 from __future__ import annotations
@@ -34,6 +38,8 @@ from sqlalchemy import or_, select
 
 from life_graph.core.tenant import tenant_scope
 from life_graph.models.db import Memory
+from life_graph.services.lead import local_model as default_local_model
+from life_graph.services.llm.resilient import local_only
 
 if TYPE_CHECKING:
     from life_graph.watchers.agent_transcripts.normalizer import NormalizedSessionSlice
@@ -325,6 +331,8 @@ class SkillDistillationEngine:
         self._llm = resilient_llm
         self._query_engine = query_engine
         self._embedding_service = embedding_service
+        # The local model to distil with (default: lead.local_model()). A
+        # model that is not local is never called: distillation is skipped.
         self.model = model
 
     # ── Lazy collaborators ────────────────────────────────────
@@ -427,15 +435,23 @@ class SkillDistillationEngine:
                 action="NOOP", reasoning="Rejected by the candidate gate", dry_run=dry_run
             )
 
-        with tenant_scope(self.tenant_id):
+        with tenant_scope(self.tenant_id), local_only(self.model or default_local_model()) as model:
+            if model is None:
+                # The session is the owner's: never sent to a cloud model.
+                logger.info("Skill distillation skipped: %s is not a local model", self.model)
+                return DistillationResult(
+                    action="NOOP", reasoning="No local model to distil with", dry_run=dry_run
+                )
             existing = await self._related_skills(session_slice)
             try:
+                # Pinned to this one local model: a failure gives up here
+                # instead of failing over to the cloud chain.
                 raw = await self.llm.chat(
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": self.build_prompt(session_slice, existing)},
                     ],
-                    model=self.model,
+                    model=model,
                     temperature=0.2,
                     max_tokens=1200,
                     response_format={"type": "json_object"},
