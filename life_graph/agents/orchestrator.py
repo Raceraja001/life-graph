@@ -15,7 +15,9 @@ from typing import TYPE_CHECKING, Any
 
 from life_graph.config import Settings
 from life_graph.connectors.locality import audience_for_model
+from life_graph.core.personal_run import in_personal_run, personal_run_scope
 from life_graph.core.run_taint import returns_outside_content, tool_call_scope
+from life_graph.services.lead import PERSONAL_TOOLS
 from life_graph.services.llm.claude_cli_reply import run_claude_cli
 from life_graph.services.llm.resilient import ResilientLLMExhaustedError
 from life_graph.tools.registry import registry
@@ -184,6 +186,13 @@ class AgentOrchestrator:
         # the memory and delegation tools read it. A local, so per run; a
         # delegated child of a tainted run starts with it set.
         outside_seen = outside_content_seen
+        # Set once a tool has read or changed the owner's own data
+        # (services/lead.PERSONAL_TOOLS), or from the start when the run is
+        # already personal (kernel/process_manager._run_agent sets the mark).
+        # From then on this run's delegations are personal: delegate_to_persona
+        # marks the child, which is pinned to local models or refused
+        # (core/personal_run.py). The run's own model does not change.
+        personal_seen = in_personal_run()
 
         for iteration in range(self.MAX_ITERATIONS):
             logger.debug("Agent iteration %d/%d", iteration + 1, self.MAX_ITERATIONS)
@@ -402,7 +411,11 @@ class AgentOrchestrator:
                             # this to decide what the model may see: local
                             # only if this model and every fallback it could
                             # fail over to mid-run are on this machine.
-                            with audience_for_model(self.model), tool_call_scope(outside_seen):
+                            with (
+                                audience_for_model(self.model),
+                                tool_call_scope(outside_seen),
+                                personal_run_scope(personal_seen),
+                            ):
                                 result = await registry.execute(tool_name, tool_args)
                         except KeyError:
                             result = json.dumps(
@@ -412,6 +425,9 @@ class AgentOrchestrator:
                             )
                         # Even a failed call may carry the page or mail it hit.
                         outside_seen = outside_seen or returns_outside_content(tool_name)
+                        # Likewise a failed call to a personal tool: it may
+                        # have returned part of what it read.
+                        personal_seen = personal_seen or tool_name in PERSONAL_TOOLS
 
                     # Signal tool execution result.
                     yield _sse(
