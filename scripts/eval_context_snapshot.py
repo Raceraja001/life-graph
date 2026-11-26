@@ -19,7 +19,8 @@ Reported per category, never as one score (spec section 8):
 * cross_tenant_items: an id of the other tenant anywhere in the snapshot;
 * provenance_coverage: items whose source_ref resolves to a seeded record;
 * insufficient_correct, budget_violations, determinism_failures;
-* latency p50/p95 (ms) of assemble_context, over --repeat runs per case.
+* latency p50/p95 (ms) of assemble_context, over --repeat runs per case, and
+  the p50 of each stage (the snapshot's own ``timings_ms``).
 
 `--verify` exits non-zero when a zero-target count is not zero, or when a
 rate is more than 0.05 below the committed baseline
@@ -288,10 +289,17 @@ def _pct(values: list[float], q: float) -> float:
 # ── Run ───────────────────────────────────────────────────────
 
 
-async def _run_case(case: dict, repeat: int) -> tuple[dict, list[float]]:
+async def _run_case(
+    case: dict, repeat: int, stages: dict[str, list[float]]
+) -> tuple[dict, list[float]]:
     from life_graph.core.tenant import tenant_scope
     from life_graph.evals import production_retrieval_arm as arm
-    from life_graph.services.memory.snapshot import DEFAULT_BUDGET, Budget, assemble_context
+    from life_graph.services.memory.snapshot import (
+        DEFAULT_BUDGET,
+        Budget,
+        assemble_context,
+        without_timings,
+    )
 
     now = datetime.now(UTC)
     tenant, other = arm.new_tenant(), arm.new_tenant()
@@ -308,7 +316,10 @@ async def _run_case(case: dict, repeat: int) -> tuple[dict, list[float]]:
                 t0 = time.perf_counter()
                 snap = await assemble_context(case["query"], as_of=as_of, budget=budget, now=now)
                 latencies.append((time.perf_counter() - t0) * 1000.0)
-                dumps.append(json.dumps(snap.to_dict(), sort_keys=True))
+                for stage, ms in snap.timings_ms:
+                    stages.setdefault(stage, []).append(ms)
+                # Timings are wall-clock numbers, not part of the snapshot's identity.
+                dumps.append(json.dumps(without_timings(snap.to_dict()), sort_keys=True))
         row = _score_case(case, snap, ids, other_ids)
         row["determinism_failures"] = int(len(set(dumps)) != 1)
     finally:
@@ -322,8 +333,9 @@ async def run(cases_path: Path, repeat: int) -> dict:
     by_cat: dict[str, list[dict]] = {}
     per_case: dict[str, dict] = {}
     latencies: list[float] = []
+    stages: dict[str, list[float]] = {}
     for case in data["cases"]:
-        row, lat = await _run_case(case, repeat)
+        row, lat = await _run_case(case, repeat, stages)
         latencies += lat
         by_cat.setdefault(case["category"], []).append(row)
         per_case[case["id"]] = {
@@ -342,6 +354,7 @@ async def run(cases_path: Path, repeat: int) -> dict:
             "p50": _pct(latencies, 0.5),
             "p95": _pct(latencies, 0.95),
             "max": round(max(latencies), 2) if latencies else 0.0,
+            "stage_p50": {k: _pct(v, 0.5) for k, v in stages.items()},
         },
         "rows_left_after_cleanup": sum(r["rows_left"] for rows in by_cat.values() for r in rows),
         "cases": per_case,
@@ -394,6 +407,7 @@ def _print(report: dict) -> None:
     print(
         f"latency over {lat['runs']} runs: p50 {lat['p50']} ms, p95 {lat['p95']} ms, max {lat['max']} ms"
     )
+    print("stage p50 (ms): " + ", ".join(f"{k} {v}" for k, v in lat["stage_p50"].items()))
     for cid, c in report["cases"].items():
         if c["mismatches"]:
             print(f"  {cid}: {'; '.join(c['mismatches'])}")
