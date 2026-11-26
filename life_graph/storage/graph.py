@@ -25,7 +25,7 @@ from typing import Any
 import asyncpg
 
 from life_graph.config import settings
-from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
+from life_graph.core.tenant import get_current_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,9 @@ GRAPH_NAME = "life_graph"
 # ag_catalog.
 AGE_SEARCH_PATH = 'ag_catalog, "$user", public'
 
-# Tenant used when a caller passes none and no tenant context is set.
+# The administrative tenant: raw Cypher (api/graph.py execute_cypher) runs only
+# under it. It is NOT a fallback: a graph call with no tenant raises (see
+# _resolve_tenant).
 DEFAULT_GRAPH_TENANT = "default"
 
 # Labels are spliced into the Cypher text, because AGE cannot parameterise them.
@@ -100,10 +102,21 @@ def _parse_agtype(raw: str) -> Any:
 
 
 def _resolve_tenant(tenant_id: str | None) -> str:
-    """The given tenant, else the current context's, else the default."""
+    """The given tenant, else the current context's.
+
+    Fails closed. This used to fall back to ``DEFAULT_GRAPH_TENANT`` when no
+    tenant context was set, so a background job that forgot ``tenant_scope``
+    wrote its vertices into, and read its answers from, the "default" tenant's
+    graph. Nothing relies on that: every caller outside a request passes
+    ``tenant_id`` or runs inside ``tenant_scope`` (graph_migration,
+    micro_consolidation, memory links, preference nodes, skill distiller).
+
+    Raises:
+        RuntimeError: No ``tenant_id`` was given and no tenant context is set.
+    """
     if tenant_id is not None:
         return tenant_id
-    return get_current_tenant_id() if has_tenant_context() else DEFAULT_GRAPH_TENANT
+    return get_current_tenant_id()
 
 
 def _safe_label(label: str) -> str:

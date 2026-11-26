@@ -210,3 +210,27 @@ def ingress_for(request: Request) -> Ingress:
     if _auth_is_off():
         return Ingress(actor="owner:local", owner_verified=True)
     return UNVERIFIED
+
+
+OWNER_KEY_REQUIRED = (
+    "This route reads every tenant's data, so it needs an owner API key"
+    " (LIFE_GRAPH_OWNER_API_KEYS)."
+)
+
+
+def require_owner_key(request: Request) -> None:
+    """FastAPI dependency: 403 unless the caller holds an owner API key.
+
+    For routes that reach across every tenant. A service key is not enough:
+    the same keys are handed to MCP servers, watchers and integrations, and
+    any of them can send whatever ``X-Tenant-ID`` it likes. A paired phone is
+    owner-verified too, but its pairing binds it to one tenant, so it does not
+    pass either. A local dev stack with no key configured at all counts as the
+    owner (:func:`_auth_is_off`), as everywhere else.
+
+    Raises:
+        HTTPException: 403 for any other caller.
+    """
+    ingress = ingress_for(request)
+    if not ingress.owner_verified or ingress.device_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=OWNER_KEY_REQUIRED)

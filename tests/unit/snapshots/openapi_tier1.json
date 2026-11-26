@@ -194,7 +194,7 @@
   },
   "/api/v1/graph/query": {
    "post": {
-    "description": "Execute a raw Cypher query against the knowledge graph.\n\n**Admin-level endpoint** \u2014 allows arbitrary read queries.\nWrite operations (CREATE, SET, DELETE, MERGE, REMOVE, DROP) are blocked.\n\nReturns an empty list with ``meta.graph_enabled = false`` when Apache AGE\nis not installed. A malformed query against a working install is still 400.",
+    "description": "Execute a raw Cypher query against the knowledge graph.\n\n**Admin-level endpoint** \u2014 allows arbitrary read queries, across every\ntenant's graph. Two things are required: an owner API key\n(``require_owner_key``; 403 otherwise) and ``X-Tenant-ID: default``. The\nheader alone is not enough, because any service-key holder can send it.\nWrite operations (CREATE, SET, DELETE, MERGE, REMOVE, DROP) are blocked.\n\nReturns an empty list with ``meta.graph_enabled = false`` when Apache AGE\nis not installed. A malformed query against a working install is still 400.",
     "operationId": "execute_cypher_api_v1_graph_query_post",
     "requestBody": {
      "content": {

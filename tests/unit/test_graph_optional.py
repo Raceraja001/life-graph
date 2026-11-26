@@ -32,6 +32,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from life_graph.config import settings
+from life_graph.core.tenant import tenant_scope
 from life_graph.storage.hybrid import HybridQueryEngine
 
 _MIGRATION = (
@@ -185,13 +186,16 @@ class TestGraphStoreShortCircuit:
 
         store = fresh_graph_module.GraphStore()
 
-        assert await store.execute_cypher("MATCH (n) RETURN n") == []
-        assert await store.get_vertex("Entity", "FastAPI") is None
-        assert await store.get_neighbors("FastAPI") == []
-        assert await store.find_path("Entity", "a", "Entity", "b") == []
-        assert await store.search_entities("fastapi") == []
-        assert await store.get_all_entities() == []
-        assert await store.create_vertex("Entity", {"name": "x"}) == ""
+        # Under a tenant: a graph call with no tenant at all now raises before
+        # it gets this far (storage/graph.py _resolve_tenant).
+        with tenant_scope("t-disabled"):
+            assert await store.execute_cypher("MATCH (n) RETURN n") == []
+            assert await store.get_vertex("Entity", "FastAPI") is None
+            assert await store.get_neighbors("FastAPI") == []
+            assert await store.find_path("Entity", "a", "Entity", "b") == []
+            assert await store.search_entities("fastapi") == []
+            assert await store.get_all_entities() == []
+            assert await store.create_vertex("Entity", {"name": "x"}) == ""
         assert await store.get_preference_graph("acme", "p1") == {
             "preference": None,
             "connections": [],
