@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-25 13:26 UTC` from `master` @ `9ad1034`
+Generated `2026-11-26 05:20 UTC` from `master` @ `2b93223`
 
 ---
 
@@ -1006,6 +1006,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `night-shift-report` | Unclassified | — |
 | `notifications` | Unclassified | — |
 | `os-kernel` | Built | `life_graph/kernel/process_manager.py` |
+| `personal-context-intelligence` | Unclassified | — |
 | `personal-model-tuning` | Spec'd, not built | — |
 | `personal-roles` | Built | `life_graph/kernel/ambient.py` |
 | `prompt-registry` | Built | `life_graph/self_improving/prompt_version_service.py` |
