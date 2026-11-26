@@ -10,6 +10,9 @@ Supported link types:
 - CONTRADICTS — conflicting information
 - SUPERSEDES — updated version
 - LEADS_TO — temporal sequence
+- ASSOCIATED — learned "said/used together" links. Written only by
+  services/memory/associations.py (one row per pair, lower id as source), so
+  the public API does not accept it (models/schemas.py MemoryLinkCreate).
 """
 
 from __future__ import annotations
@@ -48,6 +51,22 @@ VALID_LINK_TYPES = frozenset(
     }
 )
 
+#: The one message for a missing memory and another tenant's memory alike.
+MEMORY_NOT_FOUND = "Memory not found"
+
+
+async def _both_in_tenant(
+    session: Any, source_id: uuid.UUID, target_id: uuid.UUID, tenant_id: str
+) -> bool:
+    """True when both memories exist and belong to *tenant_id*."""
+    found = await session.scalars(
+        select(Memory.id).where(
+            Memory.id.in_([source_id, target_id]),
+            Memory.tenant_id == tenant_id,
+        )
+    )
+    return set(found.all()) == {source_id, target_id}
+
 
 async def create_link(
     source_id: uuid.UUID,
@@ -73,7 +92,9 @@ async def create_link(
     Raises:
         InvalidInputError: If link_type is invalid or source_id == target_id.
         ConflictError: If this exact link (source, target, type) already exists.
-        NotFoundError: If either memory does not exist.
+        NotFoundError: If either memory does not exist or belongs to another
+            tenant. The two cases are reported the same way, so this is not a
+            way to learn whether another tenant's memory id exists.
         (All three are ValueErrors — core/errors.py.)
     """
     if link_type not in VALID_LINK_TYPES:
@@ -84,6 +105,11 @@ async def create_link(
         raise InvalidInputError("Cannot link a memory to itself")
 
     async with async_session() as session:
+        # The foreign keys only prove the memories exist, in any tenant. Both
+        # ends must be this tenant's, or one tenant could link (and, through
+        # the link graph, reach) another tenant's memories.
+        if not await _both_in_tenant(session, source_id, target_id, tenant_id):
+            raise NotFoundError(MEMORY_NOT_FOUND)
         link = MemoryLink(
             source_memory_id=source_id,
             target_memory_id=target_id,
@@ -105,7 +131,7 @@ async def create_link(
                     "Link already exists between these memories with this type"
                 ) from exc
             if state == FOREIGN_KEY_VIOLATION:
-                raise NotFoundError("Memory not found") from exc
+                raise NotFoundError(MEMORY_NOT_FOUND) from exc
             raise
         await session.refresh(link)
 

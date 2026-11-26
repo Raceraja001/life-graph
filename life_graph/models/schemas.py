@@ -189,6 +189,10 @@ class MemoryLinkCreate(BaseModel):
         ..., description="Source memory UUID (ignored in path-based routes)"
     )
     target_memory_id: str = Field(..., description="Target memory UUID")
+    # ASSOCIATED (services/memory/links.py VALID_LINK_TYPES) is left out on
+    # purpose: those links are learned, one row per pair with the lower id as
+    # source (services/memory/associations.py). One made here, in either
+    # direction, would sit beside that row and double the pair's pull.
     link_type: str = Field(
         ...,
         pattern="^(BECAUSE|EVIDENCED_BY|RELATED_TO|CONTRADICTS|SUPERSEDES|LEADS_TO)$",

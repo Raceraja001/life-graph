@@ -38,6 +38,9 @@ async def create_link(
     The source_memory_id in the body is ignored — the path parameter
     is used as the source. Link types: BECAUSE, EVIDENCED_BY,
     RELATED_TO, CONTRADICTS, SUPERSEDES, LEADS_TO.
+
+    Both memories must belong to the caller's tenant. Another tenant's memory
+    is a 404 with the same body as a memory that does not exist.
     """
     tenant_id = get_current_tenant_id()
     try:
