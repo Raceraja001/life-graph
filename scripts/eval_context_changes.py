@@ -353,7 +353,14 @@ async def _snapshot(world: World, keys: list[str], conflicts: list[dict], at: da
     )
 
 
-async def _turn(tenant: str, session_id: Any, at: datetime, compact: dict | None) -> str:
+async def _turn(
+    tenant: str,
+    session_id: Any,
+    at: datetime,
+    compact: dict | None,
+    *,
+    changes_trace: dict | None = None,
+) -> str:
     from life_graph.models.db import AgentTask
     from life_graph.storage.database import async_session
 
@@ -367,6 +374,11 @@ async def _turn(tenant: str, session_id: Any, at: datetime, compact: dict | None
         result={"response": "ok", "trace": {"context_snapshot": compact}} if compact else {},
         created_at=at,
     )
+    if changes_trace is not None:
+        task.result = {
+            **task.result,
+            "trace": {**task.result["trace"], "context_changes": changes_trace},
+        }
     async with async_session() as s:
         s.add(task)
         await s.commit()
@@ -489,6 +501,18 @@ async def _setup(case: dict, world: World, other: World) -> tuple[Any, str, Any]
         )
         await s.commit()
     await world.mutate(case.get("mutate", []))
+    if case.get("failed_turn"):
+        # A turn between the two whose comparison timed out: its snapshot was
+        # taken after the changes, so using it as the baseline would lose them.
+        mid = now - timedelta(hours=1)
+        mid_snap = await _snapshot(world, case.get("current", []), [], mid)
+        await _turn(
+            world.tenant,
+            conv,
+            mid,
+            mid_snap.compact(),
+            changes_trace={"error": "TimeoutError", "ms": 1000},
+        )
     cur = await _snapshot(world, case.get("current", []), case.get("current_conflicts", []), now)
     return cur, world.turns["current"], conv
 

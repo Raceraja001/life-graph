@@ -341,3 +341,73 @@ async def test_detect_compares_with_the_previous_turns_trace():
         assert refs == [f"memory:{kept.id}"]
     finally:
         await _cleanup(tenant)
+
+
+@skip_on_db_error
+async def test_a_turn_whose_comparison_failed_is_not_the_baseline():
+    tenant = _tenant("fail")
+    try:
+        conv = await _conversation(tenant)
+        t = NOW - timedelta(hours=4)
+        good = await _turn(tenant, conv, at=t, compact=_compact(t))
+        failed = AgentTask(
+            id=uuid.uuid4(),
+            tenant_id=tenant,
+            agent_name="jarvis",
+            status="completed",
+            session_id=conv,
+            input={"message": "x"},
+            result={
+                "response": "ok",
+                "trace": {
+                    "context_snapshot": _compact(t + timedelta(hours=1)),
+                    "context_changes": {"error": "TimeoutError", "ms": 1000},
+                },
+            },
+            created_at=t + timedelta(hours=1),
+        )
+        await _add(failed)
+        current = await _turn(tenant, conv, at=t + timedelta(hours=3))
+        with tenant_scope(tenant):
+            found = await find_baseline(current.id)
+        # The window reaches back past the failed turn, so nothing is lost.
+        assert found.baseline is not None and found.baseline.task_id == str(good.id)
+    finally:
+        await _cleanup(tenant)
+
+
+@skip_on_db_error
+async def test_a_temporary_chat_is_never_a_baseline():
+    tenant = _tenant("temp")
+    try:
+        here = await _conversation(tenant)
+        temp = AgentSession(
+            tenant_id=tenant, user_message="m", routed_to="jarvis", context={"temporary": True}
+        )
+        await _add(temp)
+        t = NOW - timedelta(hours=3)
+        # A temporary chat's turn, by its input and by its conversation.
+        await _turn(
+            tenant,
+            temp.id,
+            at=t + timedelta(hours=1),
+            compact=_compact(t),
+            input={"message": "x", "temporary": True},
+        )
+        await _turn(tenant, temp.id, at=t + timedelta(hours=1, minutes=5), compact=_compact(t))
+        current = await _turn(tenant, here, at=t + timedelta(hours=2))
+        with tenant_scope(tenant):
+            assert (await find_baseline(current.id)).baseline is None
+        # A later turn of the temporary chat itself does not compare with it either.
+        later = await _turn(
+            tenant, temp.id, at=t + timedelta(hours=2), input={"message": "x", "temporary": True}
+        )
+        with tenant_scope(tenant):
+            assert (await find_baseline(later.id)).baseline is None
+        # An ordinary conversation still is.
+        plain = await _turn(tenant, await _conversation(tenant), at=t, compact=_compact(t))
+        with tenant_scope(tenant):
+            found = await find_baseline(current.id)
+        assert found.baseline is not None and found.baseline.task_id == str(plain.id)
+    finally:
+        await _cleanup(tenant)

@@ -589,3 +589,51 @@ def test_compare_reads_no_clock(monkeypatch):
     monkeypatch.setattr(changes, "datetime", _NoClock)
     rows = _rows(_row(M1, status="rejected"))
     assert _kinds(_run(_base([M1]), _snap([]), rows)) == [("rejected", M1.source_ref.key())]
+
+
+# ── Review of #405: past-due times, failed comparisons, temporary chats ──
+
+
+def test_a_time_that_passed_in_the_window_is_not_approaching():
+    i = _item("intention", 50, origin="extracted", confirmed=False)
+    three_days = T1 - timedelta(days=3)  # a window longer than 48 h
+    passed = T1 - timedelta(hours=2)  # crossed the 48 h line, then passed
+    result = _run(_base([i], at=three_days), _snap([i]), _rows(_row(i, trigger_time=passed)))
+    assert result.changes == ()
+    # An expiry that passed is the expired kind, never "within 48 hours".
+    gone = _run(_base([i], at=three_days), _snap([]), _rows(_row(i, expires_at=passed)))
+    assert _kinds(gone) == [("intention_expired", i.source_ref.key())]
+
+
+def test_a_failed_re_read_is_marked_so_the_next_turn_skips_it():
+    assert _run(_base([M1]), _snap([]), None).trace()["read_failed"] is True
+    assert _run(_base([M1]), _snap([]), _rows(_row(M1))).trace()["read_failed"] is False
+    assert changes.compare_failed({"error": "TimeoutError", "ms": 1000}) is True
+    assert changes.compare_failed({"read_failed": True, "insufficient": True}) is True
+    # No earlier snapshot is not a failure; nor is "compare was off".
+    assert changes.compare_failed(_run(None, _snap([M1]), {}).trace()) is False
+    assert changes.compare_failed(None) is False
+
+
+def _turn_row(n: int, at: datetime, *, chg=None, **inp):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=f"turn-{n}", input={"message": "x", **inp}, snap=_snap([M1], at=at).compact(), chg=chg
+    )
+
+
+def test_the_baseline_skips_failed_comparisons_and_temporary_turns():
+    from types import SimpleNamespace
+
+    cur = SimpleNamespace(id="turn-9", input={"message": "x"})
+    ok = _turn_row(1, T0)  # compare was off: still a baseline
+    failed = _turn_row(2, T0 + timedelta(hours=2), chg={"error": "TimeoutError"})
+    unread = _turn_row(3, T0 + timedelta(hours=3), chg={"read_failed": True})
+    temporary = _turn_row(4, T0 + timedelta(hours=4), temporary=True)
+    rows = [temporary, unread, failed, ok]  # newest first, as the lookup reads them
+    found = changes._pick(rows, cur, same_conversation=True)
+    assert found is not None and found.task_id == "turn-1"
+    fine = _turn_row(5, T0 + timedelta(hours=5), chg={"insufficient": True, "read_failed": False})
+    assert changes._pick([fine, *rows], cur, same_conversation=True).task_id == "turn-5"
+    assert changes._pick([temporary], cur, same_conversation=True) is None

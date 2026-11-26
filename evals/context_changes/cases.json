@@ -1554,6 +1554,65 @@
    ]
   },
   {
+   "id": "edit-before-a-failed-comparison",
+   "category": "transition",
+   "expect": "detect",
+   "seed": {
+    "memories": [
+     {
+      "key": "a",
+      "content": "the passport renewal is due in May"
+     }
+    ]
+   },
+   "previous": [
+    "a"
+   ],
+   "current": [
+    "a"
+   ],
+   "mutate": [
+    {
+     "op": "set",
+     "key": "a",
+     "set": {
+      "content": "the passport renewal is due in July",
+      "updated_at_h": -2
+     }
+    }
+   ],
+   "changes": [
+    {
+     "kind": "edited",
+     "ref": "a"
+    }
+   ],
+   "failed_turn": true
+  },
+  {
+   "id": "intention-time-passed-in-a-long-window",
+   "category": "approaching",
+   "expect": "silent",
+   "seed": {
+    "intentions": [
+     {
+      "key": "i",
+      "content": "collect the parcel",
+      "trigger_time_h": -2
+     }
+    ]
+   },
+   "previous": [
+    "i"
+   ],
+   "current": [
+    "i"
+   ],
+   "mutate": [],
+   "changes": [],
+   "window_hours": 72
+  },
+  {
    "id": "cosmetic-case-and-stop",
    "category": "cosmetic",
    "expect": "silent",

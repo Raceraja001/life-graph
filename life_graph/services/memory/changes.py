@@ -25,7 +25,8 @@ item missing from this turn's snapshot usually means a different question.
 A removal or transition is reported only when the source row itself changed.
 
 The window is ``from < t <= to``: from the baseline's ``reference_time`` to
-this snapshot's. No baseline, a format 1 trace, an error trace, a baseline
+this snapshot's. A turn whose own comparison failed, and any turn of a
+temporary chat, is never a baseline. No baseline, a format 1 trace, an error trace, a baseline
 over 30 days old or a failed read give ``insufficient`` and no changes, never
 "everything is new". A baseline from another conversation of the tenant
 (``same_conversation`` False) reports transitions, removals and approaching
@@ -69,7 +70,7 @@ import json
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -78,7 +79,7 @@ from sqlalchemy.orm import defer
 
 from life_graph.core.tenant import get_current_tenant_id, tenant_scope
 from life_graph.core.trust import is_excluded_from_agents
-from life_graph.models.db import AgentTask, Approval, Decision, Intention, Memory
+from life_graph.models.db import AgentSession, AgentTask, Approval, Decision, Intention, Memory
 from life_graph.services.chat_history import versions_of
 from life_graph.services.memory import retrieval
 from life_graph.services.memory import snapshot as snapshot_mod
@@ -350,6 +351,9 @@ class ContextChangeSet:
     suppressed: tuple[tuple[str, int], ...] = ()
     insufficient: bool = True
     explanation: str = ""
+    #: The re-read failed: nothing was compared, and this turn is no baseline
+    #: for the next one (find_baseline), so the next window still covers it.
+    read_failed: bool = False
 
     def to_dict(self, *, fingerprints: bool = True) -> dict[str, Any]:
         return {
@@ -359,6 +363,7 @@ class ContextChangeSet:
             "suppressed": dict(self.suppressed),
             "insufficient": self.insufficient,
             "explanation": self.explanation,
+            "read_failed": self.read_failed,
         }
 
     def trace(self) -> dict[str, Any]:
@@ -670,7 +675,9 @@ def _approaching(ref: str, run: _Run) -> None:
         times = [
             (t, name)
             for t, name in ((r.trigger_time, "trigger time"), (r.expires_at, "expiry"))
-            if _crossed(run, t, APPROACH_AHEAD)
+            # Still ahead at the end of the window: a time that already
+            # passed is not "within 48 hours" (an expiry has its own kind).
+            if t is not None and t > run.end and _crossed(run, t, APPROACH_AHEAD)
         ]
         if times:
             t, name = min(times, key=lambda x: (x[0], x[1]))
@@ -851,7 +858,10 @@ def compare_context(
     if end <= previous.reference_time:
         return _insufficient("The earlier snapshot is not earlier.", window, source)
     if resolved is None:
-        return _insufficient("Reading the records failed, so nothing was compared.", window, source)
+        failed = _insufficient(
+            "Reading the records failed, so nothing was compared.", window, source
+        )
+        return replace(failed, read_failed=True)
     run = _Run(
         start=previous.reference_time,
         end=end,
@@ -1105,15 +1115,40 @@ def _snap_col() -> Any:
     return AgentTask.result["trace"]["context_snapshot"]
 
 
+def _changes_col() -> Any:
+    return AgentTask.result["trace"]["context_changes"]
+
+
+def compare_failed(changes_trace: Any) -> bool:
+    """A turn's ``trace.context_changes`` says its comparison did not run through.
+
+    An error (a timeout, a failed baseline read) or a failed re-read. Such a
+    turn is skipped as a baseline, so the next window reaches back to the
+    last turn whose comparison went through, and no change is lost. A turn
+    with no ``context_changes`` at all (the change flag was off) is a
+    baseline: nothing was promised for it, and its snapshot is still what
+    Jarvis had in hand.
+    """
+    if not isinstance(changes_trace, dict):
+        return False
+    return changes_trace.get("error") is not None or changes_trace.get("read_failed") is True
+
+
+def _temporary(row: Any) -> bool:
+    """A turn of a temporary chat (chat_turn: input ``temporary``): never a baseline."""
+    return (getattr(row, "input", None) or {}).get("temporary") is True
+
+
 async def find_baseline(task_id: uuid.UUID | None) -> BaselineLookup:
     """The latest usable earlier snapshot for the turn *task_id*, current tenant only.
 
     The same conversation first: its latest earlier top-level turn with a
     format 2, non-error snapshot, skipping every version of the turn being
     regenerated (a regeneration compares with what the replaced turn would
-    have). Failing that, the tenant's latest such turn of another
-    conversation within 30 days (``same_conversation`` False). Raises without
-    a tenant.
+    have) and every turn whose own comparison failed (:func:`compare_failed`).
+    Failing that, the tenant's latest such turn of another conversation
+    within 30 days (``same_conversation`` False). A temporary chat's turns
+    are never a baseline. Raises without a tenant.
     """
     tenant_id = get_current_tenant_id()
     if task_id is None:
@@ -1129,13 +1164,25 @@ async def find_baseline(task_id: uuid.UUID | None) -> BaselineLookup:
         if cur is None:
             return BaselineLookup(None)
         conversation: frozenset[str] = frozenset({str(cur.id)})
+        # A temporary chat promises nothing is kept: neither its turns nor
+        # its conversation are ever a baseline, for itself or another chat.
+        temporary_chats = select(AgentSession.id).where(
+            AgentSession.tenant_id == tenant_id,
+            AgentSession.context["temporary"].astext == "true",
+        )
         if cur.session_id is not None:
             rows = (
                 await s.execute(
-                    select(AgentTask.id, AgentTask.input, _snap_col().label("snap"))
+                    select(
+                        AgentTask.id,
+                        AgentTask.input,
+                        _snap_col().label("snap"),
+                        _changes_col().label("chg"),
+                    )
                     .where(
                         AgentTask.tenant_id == tenant_id,
                         AgentTask.session_id == cur.session_id,
+                        AgentTask.session_id.not_in(temporary_chats),
                         AgentTask.parent_task_id.is_(None),
                         AgentTask.id != cur.id,
                         AgentTask.created_at <= cur.created_at,
@@ -1149,7 +1196,12 @@ async def find_baseline(task_id: uuid.UUID | None) -> BaselineLookup:
             if found is not None:
                 return BaselineLookup(found, conversation)
         stmt = (
-            select(AgentTask.id, AgentTask.input, _snap_col().label("snap"))
+            select(
+                AgentTask.id,
+                AgentTask.input,
+                _snap_col().label("snap"),
+                _changes_col().label("chg"),
+            )
             .where(
                 AgentTask.tenant_id == tenant_id,
                 AgentTask.parent_task_id.is_(None),
@@ -1157,6 +1209,8 @@ async def find_baseline(task_id: uuid.UUID | None) -> BaselineLookup:
                 AgentTask.created_at < cur.created_at,
                 AgentTask.created_at >= cur.created_at - BASELINE_MAX_AGE,
                 _snap_col().is_not(None),
+                AgentTask.input["temporary"].astext.is_distinct_from("true"),
+                or_(AgentTask.session_id.is_(None), AgentTask.session_id.not_in(temporary_chats)),
             )
             .order_by(AgentTask.created_at.desc(), AgentTask.id)
             .limit(TENANT_SCAN)
@@ -1170,7 +1224,8 @@ async def find_baseline(task_id: uuid.UUID | None) -> BaselineLookup:
 
 
 def _pick(rows: list[Any], cur: Any, *, same_conversation: bool) -> Baseline | None:
-    """The newest row with a usable snapshot that is not a version of *cur*'s turn."""
+    """The newest usable row: a v2 snapshot, not a version of *cur*'s turn,
+    not a temporary chat's turn, and not a turn whose comparison failed."""
     everyone = [*rows, cur]
     mine = versions_of(everyone, cur.id)
     parent = {
@@ -1189,6 +1244,8 @@ def _pick(rows: list[Any], cur: Any, *, same_conversation: bool) -> Baseline | N
     own_root = root(str(cur.id))
     for r in rows:
         if str(r.id) in mine or root(str(r.id)) == own_root:
+            continue
+        if _temporary(r) or compare_failed(getattr(r, "chg", None)):
             continue
         found = Baseline.from_compact(
             r.snap, task_id=str(r.id), same_conversation=same_conversation
