@@ -625,3 +625,34 @@ Both passed health, UI, services, 0 log errors, the dev edition and the restore 
 - Connectors treat a pinned personal run as a cloud audience (over-strict).
 - New tables land in schema `life_graph` because of `"$user"` in the search_path.
 - `hybrid_search` itself does not drop hostile-tier rows; only the snapshot does.
+
+### D31. Snapshot latency explained and fixed; open items closed (2026-11-26)
+
+**Owner:** "proceed", after D30.
+
+**1. Latency root cause.** Prod embeds through `LIFE_GRAPH_LM_STUDIO_URL` (:11435). That is a llama.cpp server started without `--embeddings`, so it answers `/v1/embeddings` with 501. The OpenAI SDK retried twice with backoff before the Ollama fallback ran, about 1.3 s on every embedding.
+- **#398:** embeddings make one attempt, then skip a server that cannot embed for 10 minutes (circuit breaker). Both paths ask for the same model, bge-m3, and prod vectors always came from Ollama anyway.
+- **#400:** per-stage `timings_ms` in the snapshot.
+- **Released as `prod-20261126-0714`** (rollback `51860bb2`):
+  - snapshot: from 1.3–1.6 s to about 80 ms (embed about 40 ms);
+  - `/search`: from about 1.4 s to about 50 ms.
+- **Owner option, not required:** start :11435 with `--embeddings`, or point embeddings at Ollama.
+
+**2. Open items from D30, released as `prod-20261126-0729`** (rollback `70238308`):
+- **#399:** hostile-tier memories are left out of search, recall and `retrieve()` by default, with an explicit opt-in for the dashboard's pending view, contradiction checks and the snapshot's exclusion count.
+- **#401:** queued watcher notifications are gathered into one held notification a day for the brief.
+  - Rows older than 26 h expire unsent.
+  - At most 20 are delivered per run.
+  - A tenant whose autonomy is paused is skipped.
+  - `check_stale_critical` is left unwired: it has no age bound or resend time and marks rows sent that nobody received.
+- **#402:** a run pinned to local models is a LOCAL audience for connector data, and is CLOUD as soon as any pinned model is not local.
+
+Both releases passed health, UI, services, 0 log errors, the dev edition and the restore drill.
+
+**3. M8 Stage 2 ADR merged as Proposed** (#397, `docs/design/adr-m8-context-change-detection.md`):
+- no migration;
+- the baseline is the Jarvis turn trace;
+- comparison uses deterministic rules;
+- shadow only.
+
+Implementation waits for owner approval.
