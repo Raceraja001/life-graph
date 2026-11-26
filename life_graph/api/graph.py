@@ -13,9 +13,10 @@ import logging
 import re
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from life_graph.api.auth import require_owner_key
 from life_graph.api.responses import Envelope, success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.graph import (
@@ -213,11 +214,15 @@ async def get_entity(name: str):
     "/query",
     summary="Execute a Cypher query",
     response_model=Envelope[list[Any]],
+    dependencies=[Depends(require_owner_key)],
 )
 async def execute_cypher(body: CypherQuery):
     """Execute a raw Cypher query against the knowledge graph.
 
-    **Admin-level endpoint** — allows arbitrary read queries.
+    **Admin-level endpoint** — allows arbitrary read queries, across every
+    tenant's graph. Two things are required: an owner API key
+    (``require_owner_key``; 403 otherwise) and ``X-Tenant-ID: default``. The
+    header alone is not enough, because any service-key holder can send it.
     Write operations (CREATE, SET, DELETE, MERGE, REMOVE, DROP) are blocked.
 
     Returns an empty list with ``meta.graph_enabled = false`` when Apache AGE

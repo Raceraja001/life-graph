@@ -292,7 +292,10 @@ class TestCreateEdgeIfAbsent:
         store.execute_cypher = AsyncMock(return_value=[{"v": 5}])
         store.create_edge = AsyncMock()
 
-        assert await store.create_edge_if_absent("Person", "a", "Project", "b", "rel") == ""
+        assert (
+            await store.create_edge_if_absent("Person", "a", "Project", "b", "rel", tenant_id="T")
+            == ""
+        )
 
         store.create_edge.assert_not_awaited()
         cypher = store.execute_cypher.await_args.args[0]
@@ -319,4 +322,6 @@ class TestCreateEdgeIfAbsent:
         store.execute_cypher = AsyncMock(return_value=[])
 
         with pytest.raises(ValueError):
-            await store.create_edge_if_absent("Person) //", "a", "Project", "b", "rel")
+            await store.create_edge_if_absent(
+                "Person) //", "a", "Project", "b", "rel", tenant_id="T"
+            )

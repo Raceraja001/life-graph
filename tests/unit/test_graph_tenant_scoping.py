@@ -24,7 +24,7 @@ from life_graph.api import graph as graph_api
 from life_graph.core.tenant import tenant_scope
 from life_graph.main import app
 from life_graph.storage import graph as graph_module
-from life_graph.storage.graph import DEFAULT_GRAPH_TENANT, GraphStore
+from life_graph.storage.graph import GraphStore
 
 
 def _vertex(vid: int, name: str, tenant: str, label: str = "Entity") -> dict[str, Any]:
@@ -138,11 +138,12 @@ class TestWrites:
 
         assert "tenant_id: 'ctx'" in recording_store.execute_cypher.call_args.args[0]
 
-    async def test_create_vertex_falls_back_without_context(self, recording_store):
-        await recording_store.create_vertex("Entity", {"name": "x"})
+    async def test_create_vertex_without_a_tenant_fails_closed(self, recording_store):
+        """No tenant given and none in context: refuse, never write into "default"."""
+        with pytest.raises(RuntimeError, match="No tenant context"):
+            await recording_store.create_vertex("Entity", {"name": "x"})
 
-        cypher = recording_store.execute_cypher.call_args.args[0]
-        assert f"tenant_id: '{DEFAULT_GRAPH_TENANT}'" in cypher
+        recording_store.execute_cypher.assert_not_awaited()
 
     async def test_properties_cannot_claim_another_tenant(self, recording_store):
         await recording_store.create_vertex(
