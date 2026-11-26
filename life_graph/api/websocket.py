@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import Query, WebSocket, WebSocketDisconnect
 
-from life_graph.api.auth import extract_api_key
+from life_graph.api.auth import extract_api_key, key_may_use_tenant
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
 from life_graph.storage.redis import get_redis
@@ -253,7 +253,8 @@ async def _authenticate(
     if not key:
         return None
     if any(hmac.compare_digest(key.encode(), k.encode()) for k in valid):
-        return named
+        # The same key -> tenant binding as HTTP (settings.service_key_tenants).
+        return named if key_may_use_tenant(key, named) else None
     from life_graph.services.devices import authenticate
 
     try:

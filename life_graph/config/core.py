@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import lru_cache
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -78,6 +79,29 @@ class CoreSettings(BaseModel):
     # is in owner_api_keys. GET /admin/stats and /admin/gaps stay open. Reaching
     # ANOTHER tenant through /admin needs an owner key whatever this says.
     admin_require_owner: bool = False
+    service_key_tenants: str = ""
+    """Optional: which tenants each service key may name (LIFE_GRAPH_SERVICE_KEY_TENANTS).
+
+    Without it any valid service key may send any ``X-Tenant-ID``. Set, it is
+    a JSON object from the SHA-256 hex digest of a key to the tenants that key
+    may use, for example ``{"<64 hex>": ["acme"], "<64 hex>": ["acme", "dev"]}``.
+    Get a digest with ``printf %s "$KEY" | sha256sum``. Raw keys never go here.
+
+    - Empty (the default): no binding. Behaviour is exactly as before.
+    - Set: an explicit allowlist (api/auth.py ``key_may_use_tenant``). A key
+      with an entry may use only its listed tenants; any other is a 403. A key
+      with NO entry is refused (403) on every tenant route, so a key that was
+      forgotten does not keep reaching every tenant.
+    - Owner keys (``owner_api_keys``) are never restricted: they are the
+      deployment owner, who already reaches every tenant through /admin.
+    - A paired phone is bound to its tenant by its pairing; this does not
+      apply to it. Exempt paths (/health, /docs, ...) have no tenant.
+    - Not valid JSON, or not an object of lists of strings: logged as an
+      error, and every key but the owner's is refused (fail closed).
+
+    Applies to HTTP routes (api/middleware.py TenantMiddleware) and the
+    WebSocket handshake (api/websocket.py).
+    """
     # A paired phone's token stops working after this many days unused
     # (services/devices.py authenticate; re-pair to get a new one). 0 = never.
     device_token_idle_days: int = Field(default=60, ge=0)
@@ -137,6 +161,14 @@ class CoreSettings(BaseModel):
         if not self.owner_api_keys:
             return []
         return [k.strip() for k in self.owner_api_keys.split(",") if k.strip()]
+
+    @property
+    def service_key_tenants_map(self) -> dict[str, frozenset[str]] | None:
+        """Parsed :attr:`service_key_tenants`; None when unset (no binding)."""
+        raw = self.service_key_tenants.strip()
+        if not raw:
+            return None
+        return _parse_service_key_tenants(raw)
 
     @property
     def tenant_plans_dict(self) -> dict[str, str]:
@@ -207,3 +239,27 @@ class CoreSettings(BaseModel):
         """Get rate limit config for a tenant based on their plan."""
         plan = self.get_plan_for_tenant(tenant_id)
         return self.PLAN_LIMITS.get(plan, self.PLAN_LIMITS["free"])
+
+
+@lru_cache(maxsize=4)
+def _parse_service_key_tenants(raw: str) -> dict[str, frozenset[str]]:
+    """Digest -> allowed tenants. Malformed input gives ``{}``: every key refused.
+
+    Cached on the raw string, so it is parsed (and a bad value logged) once,
+    not on every request.
+    """
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict) or not all(
+            isinstance(tenants, list) and all(isinstance(t, str) for t in tenants)
+            for tenants in data.values()
+        ):
+            raise ValueError("expected an object of lists of tenant ids")
+    except ValueError as exc:  # JSONDecodeError is a ValueError
+        logger.error(
+            "LIFE_GRAPH_SERVICE_KEY_TENANTS is not a JSON object of lists (%s): every "
+            "service key except the owner's is refused until it is fixed.",
+            exc,
+        )
+        return {}
+    return {str(digest).lower(): frozenset(tenants) for digest, tenants in data.items()}
