@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-26 07:28 UTC` from `master` @ `cd93be3`
+Generated `2026-11-26 07:52 UTC` from `master` @ `e56f8f3`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-26 07:28 UTC` from `master` @ `cd93be3`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **36** |
-| Config settings | **334** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6004** in 648 files |
+| Config settings | **335** (prefix `LIFE_GRAPH_`) |
+| Test functions | **6014** in 649 files |
 | Dashboard pages | **23** |
-| Python | 529 files, 151,249 lines |
+| Python | 529 files, 151,279 lines |
 
 ---
 
@@ -1041,16 +1041,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 493 | 4976 |
+| `tests/unit/` | 494 | 4986 |
 | `tests/integration/` | 154 | 1016 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **648** | **6004** |
+| **total** | **649** | **6014** |
 
 ---
 
 ## Configuration
 
-334 settings, all overridable by environment variable.
+335 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1146,6 +1146,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_LM_EXTRACTION_MODEL` | `'qwen2.5-3b-instruct'` |
 | `LIFE_GRAPH_LM_SYNTHESIS_MODEL` | `'qwen2.5-coder-7b-instruct'` |
 | `LIFE_GRAPH_LM_EMBEDDING_MODEL` | `'text-embedding-nomic-embed-text-v1.5'` |
+| `LIFE_GRAPH_LM_EMBEDDINGS_BACKEND` | `'auto'` |
 | `LIFE_GRAPH_USE_LOCAL_LLM` | `True` |
 | `LIFE_GRAPH_LM_STRUCTURED_OUTPUT` | `True` |
 | `LIFE_GRAPH_LM_REASONING_EFFORT` | `—` |
