@@ -6,6 +6,8 @@ One part of :class:`life_graph.config.Settings`; the fields are read as
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -26,6 +28,16 @@ class LLMSettings(BaseModel):
     lm_extraction_model: str = "qwen2.5-3b-instruct"
     lm_synthesis_model: str = "qwen2.5-coder-7b-instruct"
     lm_embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
+    lm_embeddings_backend: Literal["auto", "ollama"] = "auto"
+    """Where local embeddings go (``LIFE_GRAPH_LM_EMBEDDINGS_BACKEND``).
+
+    ``auto``: try ``lm_studio_url`` first; a server that cannot embed is
+    skipped for a while and Ollama is used instead. When ``lm_studio_url``
+    already points at Ollama, Ollama's native API is used.
+    ``ollama``: always send embeddings to Ollama (``ollama_api_base``) and
+    never to ``lm_studio_url``. Use it when ``lm_studio_url`` is a chat-only
+    server, or one that would embed with a different model. Chat calls still
+    go to ``lm_studio_url`` either way."""
     use_local_llm: bool = True
     lm_structured_output: bool = True
     """Constrain local extraction output to its JSON schema (``json_schema``
