@@ -810,6 +810,7 @@ if settings.is_full_profile:
     from life_graph.api import assistant as assistant_api
     from life_graph.api import brief as brief_api
     from life_graph.api import connectors as connectors_api
+    from life_graph.api import context as context_api
     from life_graph.api import conversations as conversations_api
 
     # The phone app (docs/design/12_android_app_plan.md): pairing, and the only
@@ -870,6 +871,8 @@ if settings.is_full_profile:
     v1_router.include_router(devices_api.router)
     v1_router.include_router(jarvis_api.router)
     v1_router.include_router(vault_api.router)
+    # M8 Stage 1: read-only context snapshot (services/memory/snapshot.py).
+    v1_router.include_router(context_api.router)
 
 app.include_router(v1_router)
 

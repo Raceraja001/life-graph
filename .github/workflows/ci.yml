@@ -497,6 +497,16 @@ jobs:
           LIFE_GRAPH_REQUIRE_POSTGRES_TESTS: "1"
         run: python -m pytest tests/unit/test_exact_bound_capabilities.py -q --tb=short -rs
 
+      # M8 context snapshot (services/memory/snapshot.py) over synthetic cases
+      # (evals/context/cases.json), each in throwaway tenants of the test
+      # database the integration suite just migrated. Zero-target counts
+      # (expired or superseded shown as current, cross-tenant items, wrong
+      # labels, budget, determinism) must be 0; rates may not fall more than
+      # 0.05 below evals/context/baseline.json.
+      - name: Verify Context Snapshot Gates
+        if: ${{ !cancelled() }}
+        run: python scripts/eval_context_snapshot.py --verify
+
       - name: Upload integration coverage
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7

@@ -21,6 +21,7 @@ from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import AgentTask
+from life_graph.services.memory import snapshot as context_snapshot
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import (
@@ -813,11 +814,19 @@ class ProcessManager:
         used_memories: list[dict[str, Any]] = []
         tool_calls: list[dict[str, Any]] = []
         tool_started: float | None = None
+        shadow: asyncio.Task[dict[str, Any]] | None = None
         if (
             lead_route is not None
             and lead_route.kind == "personal"
             and (lead_route.pinned or run_is_local(orchestrator.model))
         ):
+            if settings.context_snapshot_shadow:
+                # M8 shadow mode: built next to the memory block, kept only in
+                # the trace (refs and labels); never changes the prompt, never
+                # fails the turn (services/memory/snapshot.py shadow_compact).
+                shadow = asyncio.create_task(
+                    context_snapshot.shadow_compact(tenant_id, messages[-1]["content"], history)
+                )
             # The owner's memories, on a local run only (services/memory/context.py):
             # a personal route is pinned to local models (only_models below), or
             # its model and every fallback are local.
@@ -928,6 +937,8 @@ class ProcessManager:
             used_memories,
             tool_calls,
         )
+        if shadow is not None:
+            out["trace"]["context_snapshot"] = await shadow
         if lead_route is not None:
             out["route"] = lead_route.as_record()
             # No content: stage times and where it ran only.
