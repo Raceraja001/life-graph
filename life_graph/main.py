@@ -30,7 +30,12 @@ from life_graph.api.middleware import (
 )
 from life_graph.api.multimodal import router as multimodal_router
 from life_graph.api.responses import InvalidCursorError, error_response, http_error_body
-from life_graph.api.websocket import websocket_endpoint, ws_event_handler
+from life_graph.api.websocket import (
+    start_relay,
+    stop_relay,
+    websocket_endpoint,
+    ws_event_handler,
+)
 from life_graph.config import settings
 from life_graph.core.errors import DomainError
 from life_graph.core.events import enable_redis_bridge, event_bus
@@ -572,10 +577,13 @@ async def lifespan(app: FastAPI):
     event_bus.subscribe_all(ws_event_handler)
     logger.info("WebSocket event handler registered")
 
-    # Startup — Redis
+    # Startup — Redis. The relay sends what ws_event_handler publishes to Redis
+    # on to this process's sockets (api/websocket.py start_subscriber).
+    app.state.ws_relay = None
     with startup_step(report, "redis"):
         await init_redis()
         enable_redis_bridge()
+        app.state.ws_relay = start_relay()
 
     # Startup — wire preference → knowledge graph sync
     with startup_step(report, "preference_graph_sync"):
@@ -649,6 +657,7 @@ async def lifespan(app: FastAPI):
     # Shutdown — close the shared arq pool, then Redis
 
     await close_arq_pool()
+    await stop_relay(app.state.ws_relay)
     await close_redis()
 
     # Shutdown — close DB

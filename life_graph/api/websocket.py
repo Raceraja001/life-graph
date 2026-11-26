@@ -26,6 +26,7 @@ from fastapi import Query, WebSocket, WebSocketDisconnect
 
 from life_graph.api.auth import extract_api_key, key_may_use_tenant
 from life_graph.config import settings
+from life_graph.core.events import EventType
 from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
 from life_graph.storage.redis import get_redis
 
@@ -130,7 +131,10 @@ ws_manager = ConnectionManager()
 async def publish_event(tenant_id: str, event: dict) -> None:
     """Publish an event to Redis channel ``events:{tenant_id}``.
 
-    Falls back to local broadcast if Redis is unavailable.
+    Every API process's relay (:func:`start_subscriber`) hears it and sends
+    it to its own sockets for that tenant, so a client gets it once, whichever
+    process holds its socket. Falls back to local broadcast if Redis is
+    unavailable.
     """
     r = get_redis()
     if r is not None:
@@ -144,43 +148,115 @@ async def publish_event(tenant_id: str, event: dict) -> None:
     await ws_manager.broadcast_to_tenant(tenant_id, event)
 
 
-async def start_subscriber() -> None:
-    """Subscribe to ``events:*`` Redis pattern and relay to local connections.
+#: Channel prefix shared by the WebSocket relay and the EventBus Redis bridge.
+_CHANNEL_PREFIX = "events:"
 
-    Runs as a long-lived background task. On each message received,
-    extracts the tenant_id from the channel name and broadcasts to
-    the matching local WebSocket connections.
+#: Seconds between reconnect attempts after the subscription drops (doubles, capped).
+_RECONNECT_FIRST_SECONDS = 1.0
+_RECONNECT_MAX_SECONDS = 60.0
+
+
+def _channel_tenant(channel: str) -> tuple[str | None, bool]:
+    """``(tenant, is_relay_channel)`` for a channel heard on ``events:*``.
+
+    Two publishers share the prefix:
+
+    - :func:`publish_event` (this module): ``events:{tenant}``, one message
+      per event, ready for the sockets;
+    - ``RedisBridge`` (core/events.py): ``events:{tenant}:{event_type}``.
+
+    The tenant used to be read as everything after the first colon, so a
+    bridge channel gave ``"{tenant}:{event_type}"``, a tenant no socket has.
+    Event type values have colons of their own (``memory:created``,
+    ``kernel:task:completed``), so the channel is a bridge one only when it
+    ends in ``:`` plus a real ``EventType`` value; a tenant id with a colon
+    in it still parses.
     """
-    r = get_redis()
-    if r is None:
-        logger.warning("Redis unavailable — WebSocket subscriber not started")
+    if not channel.startswith(_CHANNEL_PREFIX):
+        return None, False
+    rest = channel[len(_CHANNEL_PREFIX) :]
+    # Longest first, so a type that ends another type's name cannot cut it short.
+    for value in sorted((t.value for t in EventType), key=len, reverse=True):
+        suffix = f":{value}"
+        if rest.endswith(suffix) and len(rest) > len(suffix):
+            return rest[: -len(suffix)], False
+    return (rest or None), True
+
+
+async def _relay(message: dict[str, Any]) -> None:
+    """Send one pub/sub message to its tenant's local sockets.
+
+    Only the relay's own ``events:{tenant}`` channel is sent on. The bridge's
+    ``events:{tenant}:{type}`` copy of the same event is skipped: both are
+    published, in the same API process, for every event (ws_event_handler and
+    the bridge are both subscribed to the event bus, main.py), so relaying
+    both would give each socket every event twice. The relay copy is the one
+    kept because ws_event_handler tells the tenant safely (payload and
+    context must agree) while the bridge uses the context alone and falls
+    back to "system".
+    """
+    if message.get("type") != "pmessage":
         return
-
-    pubsub = r.pubsub()
-    await pubsub.psubscribe("events:*")
-    logger.info("Redis subscriber started on pattern events:*")
-
+    channel = str(message.get("channel", ""))
+    tenant_id, is_relay = _channel_tenant(channel)
+    if not is_relay or tenant_id is None:
+        return
     try:
-        async for message in pubsub.listen():
-            if message["type"] != "pmessage":
-                continue
-            channel: str = message["channel"]
-            # Channel format: events:{tenant_id}
-            tenant_id = channel.split(":", 1)[1] if ":" in channel else "unknown"
-            try:
-                data = json.loads(message["data"])
-            except (json.JSONDecodeError, TypeError):
-                logger.warning("Invalid JSON on channel %s", channel)
-                continue
+        data = json.loads(message["data"])
+    except (json.JSONDecodeError, TypeError, KeyError):
+        logger.warning("Invalid JSON on channel %s", channel)
+        return
+    await ws_manager.broadcast_to_tenant(tenant_id, data)
 
-            await ws_manager.broadcast_to_tenant(tenant_id, data)
-    except asyncio.CancelledError:
-        logger.info("Redis subscriber cancelled")
-    except Exception:
-        logger.exception("Redis subscriber error")
-    finally:
-        await pubsub.punsubscribe("events:*")
-        await pubsub.close()
+
+async def start_subscriber() -> None:
+    """Subscribe to ``events:*`` on Redis and relay to local connections.
+
+    Runs as a long-lived background task, started by :func:`start_relay` at
+    API startup. Without it, :func:`publish_event` published every event to
+    Redis and nothing ever sent it on, so with Redis up no socket got any
+    event. When the subscription drops it reconnects, waiting longer each time
+    (up to a minute), until cancelled.
+    """
+    delay = _RECONNECT_FIRST_SECONDS
+    while True:
+        r = get_redis()
+        if r is None:
+            logger.warning("Redis unavailable — WebSocket subscriber not started")
+            return
+        pubsub = r.pubsub()
+        try:
+            await pubsub.psubscribe(f"{_CHANNEL_PREFIX}*")
+            logger.info("Redis subscriber started on pattern events:*")
+            delay = _RECONNECT_FIRST_SECONDS
+            async for message in pubsub.listen():
+                await _relay(message)
+        except asyncio.CancelledError:
+            logger.info("Redis subscriber cancelled")
+            raise
+        except Exception:  # fail-open: reconnect after a pause; local publish still falls back
+            logger.warning("Redis subscriber dropped; retrying in %.0fs", delay, exc_info=True)
+        finally:
+            with contextlib.suppress(Exception):
+                await pubsub.punsubscribe(f"{_CHANNEL_PREFIX}*")
+            with contextlib.suppress(Exception):
+                await pubsub.aclose()  # type: ignore[no-untyped-call, unused-ignore]  # strict only
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, _RECONNECT_MAX_SECONDS)
+
+
+def start_relay() -> asyncio.Task[None]:
+    """Start :func:`start_subscriber` as a background task (API startup)."""
+    return asyncio.create_task(start_subscriber(), name="ws-redis-relay")
+
+
+async def stop_relay(task: asyncio.Task[None] | None) -> None:
+    """Cancel the relay task and wait for it to finish (API shutdown)."""
+    if task is None:
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await task
 
 
 # ── Event handler ────────────────────────────────────────────
