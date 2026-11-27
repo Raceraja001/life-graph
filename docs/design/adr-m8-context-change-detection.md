@@ -25,12 +25,12 @@ Stage 2 adds the comparison. It stays internal and read-only: nothing is shown t
 ## 3. What exists today (facts)
 
 - **Stage 1 snapshot** (`snapshot.py`). Items are references (`memory` / `decision` / `intention` + id) with status, origin, confirmed, evidence, freshness and reason. Conflicts are pairs of references. `compact()` drops content and the query. It also drops `reference_time` and each item's `recorded_at`, and has no content fingerprint, so today's compact form alone cannot tell an edit from no change.
-- **Shadow hook** (`kernel/process_manager.py:836-841`, `:950-951`). On a personal, local Jarvis turn, when `settings.context_snapshot_shadow` is on, the compact snapshot is stored at `agent_tasks.result.trace.context_snapshot`. The flag is **off and not set in prod** (D30). So prod has **no stored snapshots** today.
+- **Shadow hook** (`kernel/process_manager.py:840-854`, `:962-963`). On a personal, local Jarvis turn, when `settings.context_snapshot_shadow` is on, the compact snapshot is stored at `agent_tasks.result.trace.context_snapshot`. The flag is **off and not set in prod** (D30). So prod has **no stored snapshots** today.
 - **Turn traces already hold memory snippets.** `services/turn_trace.py` `build_trace` keeps `memories[].snippet` for the memories put in front of the model. A fingerprint in the same trace adds no new kind of exposure.
 - **Lookup is cheap.** `agent_tasks` has `ix_agent_tasks_session (session_id)` and `ix_agent_tasks_created_desc (tenant_id, created_at)`; `services/chat_turn.py` `load_chat_history` already reads a conversation's earlier turns by tenant and session.
 - **Prod data is thin** (Stage 0 §2, §5). On every active memory `valid_from == created_at`, and `valid_until` is never set. There is 1 superseded memory, 11 decisions (all `candidate`), 1 intention and 0 predictions. Supersession is the only working temporal signal.
 - **Row timestamps that exist:** memory `created_at`, `updated_at`, `last_reinforced`, `properties.superseded_at`, `properties.review.at` (only when a reviewer is named); decision `created_at`, `decided_at`, `review_at`, `reviewed_at` (no superseded-at time); intention `created_at`, `triggered_at`, `completed_at`, `expires_at`, `trigger_time`; approval `created_at`, `resolved_at`.
-- **What leaves no trace:** a memory hard delete (`storage/postgres.py:416-436`), an in-place content edit (`MemoryUpdate.content`; no history), a memory archive or reject without a named reviewer, a decision status change (status overwritten in place).
+- **What leaves no trace:** a memory hard delete (`storage/postgres.py:423-443`), an in-place content edit (`MemoryUpdate.content`; no history), a memory archive or reject without a named reviewer, a decision status change (status overwritten in place).
 - **Events** (`core/events.py`): see §7. In short, no memory-change event is emitted except `MEMORY_PENDING`, `MEMORY_APPROVED` and `MEMORY_REJECTED`; `MEMORY_UPDATED` and `MEMORY_DELETED` are defined but never emitted, and nothing guarantees `tenant_id` in a payload.
 
 ## 4. Decision (summary)
@@ -162,7 +162,13 @@ The change list is stored next to it as `trace.context_changes`: `window`, `base
 
 `agent_tasks.result.trace.context_snapshot` of an earlier turn.
 
-- **Can:** everything in §5.3 for the refs it holds, once `compact()` carries `reference_time`, `fp` and `rec` (§5.7). There is no new table. Tenant scope comes for free: `agent_tasks.tenant_id` is already filtered in every read, and `load_chat_history` shows the pattern. The baseline is "what Jarvis actually had in hand last turn", which is the honest meaning of "since last interaction".
+- **Can:** everything in §5.3 for the refs it holds, once `compact()` carries `reference_time`, `fp` and `rec` (§5.7). There is no new table. Tenant scope comes for free: `agent_tasks.tenant_id` is already filtered in every read, and `load_chat_history` shows the pattern. The baseline is the snapshot Life Graph built for Jarvis's last turn, which is the honest meaning of "since last interaction".
+
+  *Correction (2026-11-27, M8 context-quality evaluation, PR #412):* this snapshot is **not** what Jarvis's prompt used. The two are built separately on the same turn:
+  - **Jarvis's prompt** gets the owner's profile card plus `retrieve(cold=True)` with the local relevance judge on (`services/memory/context.py`, `_sections`).
+  - **The snapshot** is `retrieve(judge=False)`, with no profile card and no cold tier, plus matching decisions and open intentions, which never reach the prompt (`services/memory/snapshot.py`, `_memories`, `_decisions`, `_intentions`).
+
+  So the baseline is "what the snapshot held last turn". The two usually overlap, but a memory can be in one and not the other. Making the snapshot match the prompt, or labelling the difference, is P1 work in the evaluation (§6 there).
 - **Cannot:** compare for a consumer that has no turn (daily brief, watcher, project task). It holds nothing while the shadow flag is off; prod has no snapshots today (D30). Its retention is whatever `agent_tasks` has: nothing purges traces, and a deleted memory's id (and, today, its snippet) stays in old traces.
 - **Cost:** one indexed read per turn.
 
@@ -183,7 +189,7 @@ What it can and cannot see on today's prod data:
 | Change | Detectable by (c)? | Why |
 |---|---|---|
 | New memory, decision or intention recorded after `T` | Yes | `created_at` / `recorded_at` exist. But since `valid_from == created_at` on every active memory, "valid as of `T`" is the same as "recorded by `T`". Valid-time `as_of` adds nothing over recorded time. |
-| Memory superseded after `T` | Partly | `properties.superseded_at` exists (`memory_manager.py:273`, `postgres.py:1272`). Prod has 1 superseded row. |
+| Memory superseded after `T` | Partly | `properties.superseded_at` exists (`memory_manager.py:273`, `postgres.py:1302`). Prod has 1 superseded row. |
 | Memory hard-deleted | **No** | The row is gone; nothing says it existed at `T`. |
 | Memory content edited in place | **No** | No history; the `as_of` view shows today's text. |
 | Memory rejected / archived | Only with a named reviewer | `properties.review.at` is set only when `decided_by` is known. |
@@ -201,7 +207,7 @@ What it can and cannot see on today's prod data:
 |---|---|---|---|
 | Migration | none | yes | none |
 | Sees deletes and in-place edits | yes (re-read by id + `fp`) | yes | no |
-| Baseline = what was actually seen | yes | yes | no |
+| Baseline = what the last snapshot held (not the prompt, see the correction above) | yes | yes | no |
 | Works outside Jarvis conversations | no | yes | yes |
 | Extra cost per turn | 1 indexed read + ≤ 4 id reads | same + 1 insert | a second full search (~1.3 s on prod) |
 | Retention follows source deletes | no (existing trace gap) | yes, by design | n/a |
@@ -209,7 +215,7 @@ What it can and cannot see on today's prod data:
 
 ### Recommendation: (a), with (b) deferred
 
-- Stage 2 is internal and its only consumer is the Jarvis shadow path. For that consumer the turn trace already is the right baseline. It is tenant-scoped, indexed and written every turn, and it is what Jarvis actually had.
+- Stage 2 is internal and its only consumer is the Jarvis shadow path. For that consumer the turn trace already is the right baseline. It is tenant-scoped, indexed and written every turn. It is the last turn's snapshot, not the prompt itself (see the correction under option (a)).
 - With the re-read by id (§5.1) and a fingerprint (§5.7), (a) detects deletes and edits that (c) never can.
 - (b) adds no capability for a conversation. It only pays off when a consumer without a turn needs a baseline, which is Stage 4 territory.
 
@@ -229,11 +235,11 @@ What exists, for the record:
 
 | Event | Emitted? | `tenant_id` in payload | Use for change detection |
 |---|---|---|---|
-| `memory:pending` | yes (`storage/postgres.py:290`, `cross_system_sync.py:236`) | yes | not needed: pending is never reported |
+| `memory:pending` | yes (`storage/postgres.py:297`, `cross_system_sync.py:236`) | yes | not needed: pending is never reported |
 | `memory:approved` / `memory:rejected` | yes (`services/memory/transitions.py:169,190`) | yes | could mark a "dirty" baseline later |
 | `memory:updated` / `memory:deleted` | **defined, never emitted** | — | would be needed for push or cache invalidation |
 | `memory:created` | only for shared context | — | no |
-| `judgment:decision:superseded` | yes (`services/judgment.py:543`) | yes | covered by re-read |
+| `judgment:decision:superseded` | **in code only, never fires**: emitted only inside `JudgmentService.supersede_decision` (`services/judgment.py:517-549`), which nothing calls, and no API route changes a decision after it is created (`api/judgment.py`) | yes | covered by re-read, if a write path is ever added |
 | `capture:correction:recorded` | yes (`services/capture.py:291`) | yes | covered by re-read (acknowledged rule) |
 | `approval:resolved` | yes (`api/approvals.py:163`, `services/approvals.py:1514`) | yes | covered by re-read |
 | `contradiction:detected`, `intention:triggered` | defined, not emitted by any caller found | — | no |
@@ -372,7 +378,7 @@ No content, no query, no summary columns. Review rule: a PR adding any text colu
 
 ## Appendix B: as built (Stage 2, 2026-11-26)
 
-Option (a) was built as decided: `life_graph/services/memory/changes.py`, the trace v2 fields in `snapshot.py`, the `context_change_shadow` setting (default off, effective only with `context_snapshot_shadow`), the eval `scripts/eval_context_changes.py` over `evals/context_changes/cases.json` (40 must-detect, 21 must-stay-silent) and its CI step. No migration, no table, no event. Where the build differs from the text above, and why:
+Option (a) was built as decided: `life_graph/services/memory/changes.py`, the trace v2 fields in `snapshot.py`, the `context_change_shadow` setting (default off, effective only with `context_snapshot_shadow`), the eval `scripts/eval_context_changes.py` over `evals/context_changes/cases.json` (41 must-detect, 22 must-stay-silent) and its CI step. No migration, no table, no event. Where the build differs from the text above, and why:
 
 1. **What is re-read.** `resolve_refs` reads the refs of both snapshots and of their conflict sides, plus the approvals of both (§5.1 says "every previous reference"). An addition needs the row's review stamp and who saved it; a conflict needs its sides' and its approval's times; a hostile side must be dropped. Still one query per kind.
 2. **Chains.** A supersession chain is followed by up to 3 extra memory reads (`CHAIN_HOPS`), only when a chain exists. The usual case stays at ≤ 4 reads.
