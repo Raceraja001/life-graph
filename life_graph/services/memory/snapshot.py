@@ -124,7 +124,6 @@ import asyncio
 import contextlib
 import hashlib
 import logging
-import re
 import time
 import unicodedata
 import uuid
@@ -219,7 +218,6 @@ TIMING_STAGES = (
     "total",
 )
 
-_WORD = re.compile(r"\w+")
 #: Format of :meth:`ContextSnapshot.compact` (2: reference_time, fp, rec).
 COMPACT_FORMAT = 2
 #: Hex characters of a record fingerprint (64 bits).
@@ -684,16 +682,42 @@ def apply_budget(items: list[ContextItem], budget: Budget) -> tuple[list[Context
 # ── Reads ─────────────────────────────────────────────────────
 
 
+def _is_word_char(ch: str) -> bool:
+    """A letter, a mark or a digit of any script (Unicode categories L*, M*, N*)."""
+    return unicodedata.category(ch)[0] in "LMN"
+
+
 def _words(query: str) -> list[str]:
+    """The distinct words of *query*, lowercased, in order, at most 32.
+
+    A word is a run of letters, marks and digits; everything else (spaces,
+    punctuation, symbols) splits. Not ``\\w``: Python's ``\\w`` does not match
+    Tamil vowel signs, which are combining marks, so "பள்ளி கட்டணம்" fell
+    apart into "பள", "ள", "கட", "டணம" and no Tamil decision or intention
+    could match (D10, docs/audits/2026-11-26-m8-context-quality-evaluation.md).
+    """
     out: list[str] = []
-    for w in _WORD.findall(query.lower()):
-        if w not in out:
-            out.append(w)
+    word: list[str] = []
+    for ch in query.lower() + " ":
+        if _is_word_char(ch):
+            word.append(ch)
+            continue
+        if word:
+            w = "".join(word)
+            if w not in out:
+                out.append(w)
+            word = []
     return out[:32]
 
 
 def _tsquery(query: str) -> str:
-    return " | ".join(_words(query))
+    """A to_tsquery() expression matching ANY word of *query*: "'a' | 'b'".
+
+    Each word is quoted, and holds only letters, marks and digits (no quote,
+    backslash, space or tsquery operator such as & | ! : ( ) < > *), so the
+    query's text can never become tsquery syntax. Empty when there are no words.
+    """
+    return " | ".join(f"'{w}'" for w in _words(query))
 
 
 async def _matching_decisions(

@@ -22,7 +22,11 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import select
+
 from life_graph.core.trust import is_excluded_from_agents
+from life_graph.models.db import Memory
+from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
 
@@ -608,6 +612,85 @@ def is_known_at(memory: Any, recorded_at: datetime) -> bool:
     return recorded_yet and still_believed
 
 
+def visible_at(
+    memory: Any,
+    *,
+    valid_at: datetime | None = None,
+    recorded_at: datetime | None = None,
+    kept_history: set[Any] | frozenset[Any] = frozenset(),
+) -> bool:
+    """:func:`is_bitemporally_valid`, or a replaced memory kept as history (*kept_history*).
+
+    A memory in *kept_history* (see :func:`_kept_history`) was replaced by a
+    successor that was not yet true at *valid_at*, so for that instant it is
+    still the answer: it passes when it was true then and had been recorded
+    by *recorded_at*. Only the "had we replaced it yet?" edge is waived.
+    """
+    if is_bitemporally_valid(memory, valid_at=valid_at, recorded_at=recorded_at):
+        return True
+    if valid_at is None or getattr(memory, "id", None) not in kept_history:
+        return False
+    if not is_valid_at(memory, valid_at):
+        return False
+    known_from = recorded_time_of(memory)
+    return recorded_at is None or known_from is None or known_from <= _ensure_utc(recorded_at)
+
+
+async def _successor_starts(tenant_id: str, ids: list[Any]) -> dict[Any, datetime]:
+    """When each memory in *ids* became true in the world (valid_from, else created_at)."""
+    async with async_session() as s:
+        rows = (
+            await s.execute(
+                select(Memory.id, Memory.valid_from, Memory.created_at, Memory.properties)
+                .where(Memory.tenant_id == tenant_id)
+                .where(Memory.id.in_(ids))
+            )
+        ).all()
+    out: dict[Any, datetime] = {}
+    for rid, valid_from, created, props in rows:
+        row = {"valid_from": valid_from, "created_at": created, "properties": props or {}}
+        start = _temporal(row, "valid_from", "created_at")
+        if start is not None:
+            out[rid] = start
+    return out
+
+
+async def _kept_history(
+    tenant_id: str,
+    rows: list[Any],
+    as_of: datetime | None,
+    recorded_as_of: datetime | None,
+) -> set[Any]:
+    """Ids of replaced *rows* that still answer a question about *as_of* (D1).
+
+    "What was my salary in March?" is a valid-time question asked with
+    transaction time anchored to now, so every replaced row used to be
+    dropped (its ``superseded_at`` is before now), and the old salary could
+    never be the answer. A row whose successor was **not yet true** at
+    *as_of* is history that answers it, so it is kept. A row whose successor
+    was already true then (a correction backdated before *as_of*, or a later
+    question) stays dropped, and so does one with no readable successor.
+
+    Only for an *as_of* question without *recorded_as_of* ("what did we
+    believe on X?" keeps its own rule). Never for a current-time question.
+    A failed read keeps nothing extra: the old behaviour.
+    """
+    if as_of is None or recorded_as_of is not None:
+        return set()
+    replaced = [m for m in rows if getattr(m, "superseded_by", None) is not None]
+    if not replaced:
+        return set()
+    try:
+        starts = await _successor_starts(tenant_id, list({m.superseded_by for m in replaced}))
+    except Exception:  # noqa: BLE001 — history is a bonus; the plain rule still answers
+        logger.warning("Successor read failed; replaced memories stay dropped", exc_info=True)
+        return set()
+    at = _ensure_utc(as_of)
+    return {
+        m.id for m in replaced if (start := starts.get(m.superseded_by)) is not None and at < start
+    }
+
+
 def is_bitemporally_valid(
     memory: Any,
     *,
@@ -793,10 +876,11 @@ async def retrieve(
         # "Tell me everything about Dify": the memories linked to Dify are about
         # Dify by construction, and the judge dropped the one that mattered
         # ("Life Graph does NOT use … Dify", 2026-10-23). They go first, unjudged.
+        history = await _kept_history(tenant_id, linked, as_of, recorded_as_of)
         current = [
             m
             for m in linked
-            if is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)
+            if visible_at(m, valid_at=ref_time, recorded_at=recorded_ref, kept_history=history)
         ]
         return _result(question, (dated + current)[:limit], early=early, now=ref_time)
     if settings.memory_links and candidates and not early_exit:
@@ -804,12 +888,14 @@ async def retrieve(
 
     seen = {m.id for m in dated}
     # A fact with an end date that has passed is no longer true ("in Chennai
-    # until Friday"); when as_of is given, reconstruct validity at that point in time.
+    # until Friday"); when as_of is given, reconstruct validity at that point in
+    # time, a replaced fact included while its successor was not yet true (D1).
+    history = await _kept_history(tenant_id, candidates, as_of, recorded_as_of)
     memories = [
         m
         for m in candidates
         if m.id not in seen
-        and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)
+        and visible_at(m, valid_at=ref_time, recorded_at=recorded_ref, kept_history=history)
         # Asked about a time: other days' summaries only blur the answer.
         and not (window is not None and (m.properties or {}).get("kind") == episodes.KIND)
     ]
