@@ -167,7 +167,8 @@ The context layer should initially be a **read model and service boundary**, not
 Names below are conceptual. During Stage 0, map them to existing modules and reuse existing services where appropriate; do not create duplicate abstractions solely to match these names.
 
 - `assemble_context(subject, purpose, as_of, budget, filters)`  
-  Returns a context snapshot with included items, source references, freshness, confidence/evidence labels, exclusions, and an explanation.
+  Returns a context snapshot with included items, source references, freshness, confidence/evidence labels, exclusions, and an explanation.  
+  *As built (Stage 1, note of 2026-11-27):* `services/memory/snapshot.py` `assemble_context(query, *, purpose, as_of, budget, now)` takes the question text, not a subject. There is no `subject` and no `filters` yet, and the endpoint `GET /api/v1/context/snapshot` takes only `q` and `as_of`, so `purpose` is always "conversation" there.
 - `compare_context(previous_snapshot, current_snapshot)`  
   Returns evidence-backed additions, removals, transitions, conflicts, and stale items.
 - `build_context_brief(snapshot, audience, budget)`  
