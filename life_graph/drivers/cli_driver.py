@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import tempfile
 import time
@@ -25,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
+from life_graph.drivers import accounts_hook
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.cli_failure import classify_failure
 from life_graph.drivers.cli_run import CliProbe, cli_env, probe, resolve_binary, run_cli
@@ -41,6 +43,10 @@ logger = logging.getLogger(__name__)
 WRITE_TOOLS = frozenset({"file_write", "code_edit"})
 
 MAX_OUTPUT_CHARS = 20_000
+
+# A CLI session id: Codex thread UUIDs, Gemini session UUIDs, Claude session
+# UUIDs. Anything else (a flag, a path) is refused before it reaches argv.
+_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{7,63}$")
 
 
 @dataclass
@@ -130,6 +136,14 @@ def build_prompt(packet: ContextPacket, *, read_only: bool) -> str:
     return "\n\n".join(parts)
 
 
+def build_resume_prompt(prompt: str, *, read_only: bool) -> str:
+    """The follow-up sent to a resumed session: the prompt, plus the read-only line."""
+    parts = [prompt.strip()]
+    if read_only:
+        parts.append("Do not modify any files: this run is read-only.")
+    return "\n\n".join(p for p in parts if p)
+
+
 class _LiveSteps:
     """Each stdout line -> parser -> live session events (as claude_code's _LiveStream)."""
 
@@ -159,7 +173,7 @@ class SubscriptionCliDriver:
 
     name: ClassVar[str] = ""
     billing: ClassVar[str] = "subscription"
-    max_concurrency: ClassVar[int] = 1  # one subscription's limits; Phase 3b adds a pool
+    max_concurrency: ClassVar[int] = 1  # one subscription's limits (accounts: Phase 3b)
     login_hint: ClassVar[str] = ""
 
     def __init__(self, binary: str | None = None) -> None:
@@ -195,9 +209,19 @@ class SubscriptionCliDriver:
         return None
 
     def build_argv(
-        self, binary: str, cwd: Path, *, read_only: bool, scratch: Path
+        self,
+        binary: str,
+        cwd: Path,
+        *,
+        read_only: bool,
+        scratch: Path,
+        model: str = "",
+        resume: str | None = None,
     ) -> tuple[list[str], dict[str, str]]:  # pragma: no cover - abstract
-        """(argv, extra env) for one run; *scratch* is a private temp dir."""
+        """(argv, extra env) for one run; *scratch* is a private temp dir.
+
+        *resume* is a session id to continue instead of starting a new one.
+        """
         raise NotImplementedError
 
     def new_parser(self) -> EventParser:  # pragma: no cover - abstract
@@ -254,6 +278,47 @@ class SubscriptionCliDriver:
         *,
         now: datetime | None = None,
     ) -> DriverResult:
+        return await self._run(packet, workdir, timeout, now=now)
+
+    async def resume(
+        self,
+        packet: ContextPacket,
+        workdir: Path,
+        session_id: str,
+        prompt: str,
+        timeout: int = 300,
+        *,
+        account_id: object = None,
+        now: datetime | None = None,
+    ) -> DriverResult:
+        """Continue session *session_id* with *prompt* (Phase 3b; not wired yet).
+
+        Runs in the packet's workdir like a dispatch; the session must exist
+        in the CLI home it ran in, so with accounts on pass the *account_id*
+        recorded in that run's ``metadata.account.id``. Memories and
+        preferences are not added: the prompt is sent as given (plus the
+        read-only line for a plan).
+        """
+        if not session_id or not _SESSION_ID.fullmatch(session_id):
+            return DriverResult(
+                success=False,
+                error=f"{self.name}: not a session id",
+                metadata={"exit_status": "bad_session", "driver": self.name},
+            )
+        return await self._run(
+            packet, workdir, timeout, now=now, resume=(session_id, prompt), account_id=account_id
+        )
+
+    async def _run(
+        self,
+        packet: ContextPacket,
+        workdir: Path,
+        timeout: int,
+        *,
+        now: datetime | None = None,
+        resume: tuple[str, str] | None = None,
+        account_id: object = None,
+    ) -> DriverResult:
         start = time.monotonic()
 
         def elapsed() -> int:
@@ -271,12 +336,49 @@ class SubscriptionCliDriver:
                 duration_ms=elapsed(),
                 metadata={"exit_status": "not_installed", "driver": self.name},
             )
+        lease = await accounts_hook.acquire(self.name, packet.tenant_id, account_id=account_id)
+        if lease.refusal is not None:
+            lease.refusal.duration_ms = elapsed()
+            return lease.refusal
+        result = await self._execute(
+            packet, workdir, timeout, binary, lease, now=now, resume=resume, start=start
+        )
+        await accounts_hook.release(lease, result)
+        return result
+
+    async def _execute(
+        self,
+        packet: ContextPacket,
+        workdir: Path,
+        timeout: int,
+        binary: str,
+        lease: accounts_hook.AccountLease,
+        *,
+        now: datetime | None,
+        resume: tuple[str, str] | None,
+        start: float,
+    ) -> DriverResult:
+        def elapsed() -> int:
+            return int((time.monotonic() - start) * 1000)
+
         read_only = needs_read_only(packet)
         cwd, worktree = await resolve_workdir(packet, workdir)
         scratch = Path(tempfile.mkdtemp(prefix=f"lg-{self.name}-"))
         try:
-            argv, extra = self.build_argv(binary, cwd, read_only=read_only, scratch=scratch)
-            env = cli_env(binary, {**self.env_extra(), **extra})
+            argv, extra = self.build_argv(
+                binary,
+                cwd,
+                read_only=read_only,
+                scratch=scratch,
+                model=lease.model or self.model,
+                resume=resume[0] if resume else None,
+            )
+            env = lease.apply(cli_env(binary, {**self.env_extra(), **extra}))
+            stdin = (
+                build_resume_prompt(resume[1], read_only=read_only)
+                if resume
+                else build_prompt(packet, read_only=read_only)
+            )
             parser = self.new_parser()
             live = _LiveSteps(packet, parser, self.name)
             try:
@@ -285,7 +387,7 @@ class SubscriptionCliDriver:
                     cwd=cwd,
                     env=env,
                     timeout=timeout,
-                    stdin=build_prompt(packet, read_only=read_only),
+                    stdin=stdin,
                     on_stdout_line=live,
                 )
             except FileNotFoundError:
@@ -306,8 +408,9 @@ class SubscriptionCliDriver:
             metadata: dict = {
                 "driver": self.name,
                 "billing": self.billing,
-                "model": parsed.model or self.model or None,
+                "model": parsed.model or lease.model or self.model or None,
                 "session_id": parsed.session_id,
+                **({"resumed_from": resume[0]} if resume else {}),
                 "num_turns": parsed.turns,
                 "usage": parsed.usage or None,
                 "steps": number(parsed.steps, tool_names=True),

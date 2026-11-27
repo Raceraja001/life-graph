@@ -78,6 +78,20 @@ class DriverSettings(BaseModel):
     driver_gemini_bin: str = "gemini"
     driver_gemini_model: str = ""  # empty = the CLI's own default model
     driver_gemini_timeout_seconds: int = 1200
+    # Agent accounts (services/agent_accounts; spec agent-drivers.md, Phase 3b):
+    # several named logins per CLI, each in its own life-graph-managed home
+    # under driver_accounts_home_root, tried in pool order, skipped while
+    # cooling down after a rate limit. Off: every driver runs on the host's
+    # single login exactly as before and the accounts table is never read.
+    # On with no enabled account for a driver: that driver also runs as before.
+    driver_accounts_enabled: bool = False
+    driver_accounts_home_root: str = "~/.local/share/life-graph/agent-homes"
+    # Cooldown after a rate limit that named no reset time.
+    driver_accounts_default_cooldown_minutes: int = 15
+    # Read Codex plan windows with `codex app-server` (account/rateLimits/read,
+    # no prompt sent) when GET .../limits?refresh=true asks. Off: only the
+    # windows the last run reported are shown. Claude is never polled (U4).
+    driver_accounts_codex_probe_enabled: bool = False
     # A plan approves itself only for a project with auto_approve_plans set,
     # at most this many tasks, and every other rule in services/dev/plan_policy.py.
     auto_plan_max_tasks: int = 3

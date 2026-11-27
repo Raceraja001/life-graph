@@ -51,6 +51,8 @@ BASE_ENV_KEYS: tuple[str, ...] = (
     # Where the Claude CLI keeps its login and which endpoint it talks to:
     # locations, not credentials.
     "CLAUDE_CONFIG_DIR",
+    "CODEX_HOME",
+    "GEMINI_CLI_HOME",
     "ANTHROPIC_BASE_URL",
     "SSL_CERT_FILE",
     "SSL_CERT_DIR",

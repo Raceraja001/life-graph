@@ -206,6 +206,19 @@ def _key() -> bytes:
     return key
 
 
+def derived_key(purpose: str) -> bytes:
+    """A 32-byte key for *purpose*, derived from the vault key (HMAC-SHA256).
+
+    For keyed hashes elsewhere (agent account identities): one key to back
+    up, and a hash made with it says nothing without the vault key. Never
+    used to encrypt; never equal to the vault key itself.
+    """
+    import hashlib
+    import hmac
+
+    return hmac.new(_key(), b"life-graph/derived/" + purpose.encode(), hashlib.sha256).digest()
+
+
 def reset_key_cache() -> None:
     """Forget the cached key (tests, and after rotating the setting)."""
     global _key_cache
