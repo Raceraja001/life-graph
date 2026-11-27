@@ -827,6 +827,7 @@ if settings.is_full_profile:
     # endpoints a device token opens.
     from life_graph.api import devices as devices_api
     from life_graph.api import drivers as drivers_api
+    from life_graph.api import drivers_automation as drivers_automation_api
     from life_graph.api import evidence as evidence_api
     from life_graph.api import integrations_telegram as telegram_api
     from life_graph.api import internal_sync as internal_sync_api
@@ -870,6 +871,7 @@ if settings.is_full_profile:
     v1_router.include_router(judgment_api.router)
     v1_router.include_router(connectors_api.router)
     v1_router.include_router(drivers_api.router)
+    v1_router.include_router(drivers_automation_api.router)
     v1_router.include_router(agent_accounts_api.router)
     v1_router.include_router(approvals_api.router)
     v1_router.include_router(push_api.router)

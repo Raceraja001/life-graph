@@ -38,6 +38,7 @@ from life_graph.models.agents import (
 )
 from life_graph.models.authorization import Capability, StandingRuleRecord
 from life_graph.models.base import _EMBED_DIM, Base, _utcnow
+from life_graph.models.dev_groups import DevTaskGroup, PrWatch
 from life_graph.models.judgment import (
     CalibrationSnapshot,
     Challenge,
@@ -131,6 +132,8 @@ __all__ = [
     "VaultSecret",
     "AgentAccount",
     "AgentAccountLimit",
+    "DevTaskGroup",
+    "PrWatch",
 ]
 
 # NOTE: The Era-8 autonomy models (AutoAction, ApprovalQueueEntry, AuditLogEntry,

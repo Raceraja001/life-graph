@@ -61,10 +61,17 @@ from life_graph.drivers.plan_spec import (  # noqa: F401  (re-exported)
     _SPEC_FIRST_PREFIX,
     _extract_spec,
     _parse_tasks,
+    plan_only_prefix,
 )
 from life_graph.drivers.registry import driver_registry, selection_key
 from life_graph.drivers.review_stages import AutonomyRoundsMixin
 from life_graph.drivers.run_health import RunHealthMixin
+from life_graph.drivers.seed_branches import (
+    apply_handoffs,
+    commit_seed,
+    seed_report,
+    unresolved_markers,
+)
 from life_graph.drivers.verify_chain import (  # noqa: F401  (re-exported)
     DEFAULT_VERIFY_CHAIN,
     _resolve_verify_chain,
@@ -306,6 +313,19 @@ class _DispatchRun:
     continuation_round: int = 0
     base_commit: str | None = None
     landed_branch: str | None = None
+    # Phase 4b (teams, arena): "branch" = land on the task's branch and stop
+    # there (no approval, no PR: a team worker's hand-off); the hand-offs to
+    # apply to the fresh worktree first ({"handoffs": [...], "commit": bool});
+    # what applying them did; a driver and/or account this task is pinned to
+    # (an arena racer); and hold_auto = never auto-open or auto-merge.
+    handoff: str | None = None
+    seed: dict | None = None
+    seed_results: list = field(default_factory=list)
+    seed_error: str | None = None
+    seed_conflicts: list[str] = field(default_factory=list)
+    driver_pin: str | None = None
+    account_pin: str | None = None
+    hold_auto: bool = False
 
 
 class TaskDispatcher(
@@ -364,6 +384,11 @@ class TaskDispatcher(
         spec_first: bool = False,
         acceptance_tests: list[str] | None = None,
         timeout_seconds: int | None = None,
+        handoff: str | None = None,
+        seed: dict | None = None,
+        driver_pin: str | None = None,
+        account_pin: str | None = None,
+        hold_auto: bool = False,
     ) -> DriverResult:
         """Dispatch a task through the full driver pipeline.
 
@@ -393,6 +418,14 @@ class TaskDispatcher(
             private: If True, strip memories/preferences.
             cost_cap_usd: Maximum cost allowed for this dispatch.
             verify_chain: List of verifier names to run.
+            handoff: ``"branch"`` lands the verified work on the task's branch
+                and files no approval (a team worker, Phase 4b).
+            seed: hand-offs to apply to the fresh worktree before the run
+                (``{"handoffs": [...], "commit": bool}``, drivers/seed_branches.py).
+            driver_pin / account_pin: run on exactly this driver / agent
+                account (an arena racer); an unavailable pinned driver fails
+                the dispatch instead of falling back.
+            hold_auto: never auto-open or auto-merge the result (arena).
 
         Returns:
             DriverResult with the outcome.
@@ -416,6 +449,11 @@ class TaskDispatcher(
             spec_first=spec_first,
             acceptance_tests=acceptance_tests,
             timeout_seconds=timeout_seconds,
+            handoff=handoff,
+            seed=seed,
+            driver_pin=driver_pin,
+            account_pin=account_pin,
+            hold_auto=hold_auto,
         )
 
         try:
@@ -436,14 +474,20 @@ class TaskDispatcher(
                 isolate_workdir=isolate_workdir,
             )
 
-            # Step 3: Select driver
-            run.driver = await self._select_driver(
-                task_type,
-                persona_name,
-                tenant_id,
-                session,
-                persona=run.persona,
-                project_id=run.project_uuid,
+            # Step 3: Select driver (an arena racer is pinned to one).
+            if run.account_pin:
+                run.packet.account_id = str(run.account_pin)
+            run.driver = (
+                await self._pinned_task_driver(run.driver_pin)
+                if run.driver_pin
+                else await self._select_driver(
+                    task_type,
+                    persona_name,
+                    tenant_id,
+                    session,
+                    persona=run.persona,
+                    project_id=run.project_uuid,
+                )
             )
             task_events.emit(
                 tenant_id, task_id, "driver", f"driver {run.driver.name}",
@@ -472,6 +516,8 @@ class TaskDispatcher(
             await self._run_driver(run)
             await self._check_worktree_link(run)
             await self._check_files_changed(run)
+            # Step 4c': an integration task left no conflict marker behind.
+            self._check_seed_conflicts(run)
             # Step 4d: still rate limited with no account left -> park (owner opt-in).
             self._decide_park(run)
 
@@ -756,7 +802,10 @@ class TaskDispatcher(
         run.packet = packet
 
         if run.task_type == "plan":
-            packet.instruction = _PLAN_ONLY_PREFIX + packet.instruction
+            # Parallel plans on: the plan also declares each task's files.
+            packet.instruction = (
+                plan_only_prefix(settings.driver_team_max_parallel > 1) + packet.instruction
+            )
         elif run.spec_first:
             packet.instruction = _SPEC_FIRST_PREFIX + packet.instruction
 
@@ -889,6 +938,17 @@ class TaskDispatcher(
         packet, driver, task_id = run.packet, run.driver, run.task_id
         if resume is None:
             await self._resolve_run_workdir(run)
+            if run.seed_error:
+                # A dependency's change could not be applied: nothing is run.
+                run.result = DriverResult(
+                    success=False,
+                    error=run.seed_error,
+                    metadata={
+                        "exit_status": "seed_failed",
+                        "seed": [r.as_dict() for r in run.seed_results],
+                    },
+                )
+                return
         # Rate-limit rotation and stall retries happen inside (run_health.py).
         result, attempt = await self._drive(
             run, driver, packet, run.workdir, attempt=1, book_first=True, resume=resume
@@ -956,6 +1016,8 @@ class TaskDispatcher(
                     f"{code_context}\n"
                     "Check these callers before changing a signature or return shape."
                 )
+        if run.seed:
+            await self._seed_worktree(run)
 
     async def _check_worktree_link(self, run: _DispatchRun) -> None:
         """Step 4b: the driver must not have swapped the worktree's .git link.
@@ -1459,6 +1521,11 @@ class TaskDispatcher(
         ctx = run.packet.project_context
         run.landed_branch = landed_branch
         run.result.metadata = {**(run.result.metadata or {}), "landed_branch": landed_branch}
+        if run.handoff == "branch":
+            # A team worker: the branch is the hand-off; the plan's integration
+            # task files the one approval (Phase 4b).
+            await self._record_handoff(run, landed_branch)
+            return
         await self._create_pr_approval(
             tenant_id=run.tenant_id,
             task_id=run.task_id,
@@ -1472,8 +1539,8 @@ class TaskDispatcher(
             session=run.session,
             verified=not run.unverifiable,
             unverifiable_checks=[r.verifier for r in run.unverifiable],
-            auto_open_pr=bool(ctx.get("auto_open_pr")),
-            auto_merge=bool(ctx.get("auto_merge")),
+            auto_open_pr=bool(ctx.get("auto_open_pr")) and not run.hold_auto,
+            auto_merge=bool(ctx.get("auto_merge")) and not run.hold_auto,
             base_branch=ctx.get("base_branch") or None,
             change_policy=policy_from_project(ctx),
             autonomy=self._autonomy_payload(run),
@@ -1483,6 +1550,104 @@ class TaskDispatcher(
                 else None
             ),
         )
+
+    # ── Phase 4b: seeds, hand-off, pinned driver ─────────────────
+
+    async def _seed_worktree(self, run: _DispatchRun) -> None:
+        """Apply the hand-offs this task starts from to its fresh worktree.
+
+        A worker (``seed.commit``) starts from its dependencies' changes,
+        committed, so its own branch adds only its delta; any of them that
+        does not apply cleanly fails the worker (``seed_error``). The
+        integration task keeps them uncommitted and conflicts as markers for
+        the agent; the report is appended to the instruction either way.
+        """
+        seed = run.seed or {}
+        handoffs = [h for h in seed.get("handoffs") or [] if isinstance(h, dict)]
+        if not handoffs:
+            return
+        if run.worktree is None:
+            run.seed_error = "No isolated worktree to apply the plan's earlier changes to"
+            return
+        results = await apply_handoffs(Path(run.worktree), handoffs)
+        run.seed_results = results
+        run.seed_conflicts = sorted(
+            {f for r in results if r.status == "conflicts" for f in r.files}
+        )
+        report = seed_report(results)
+        task_events.emit(
+            run.tenant_id, run.task_id, "seed", f"applied {len(results)} hand-off(s)",
+            data={"results": [r.as_dict() for r in results], "commit": bool(seed.get("commit"))},
+            source="dispatcher",
+        )  # fmt: skip
+        if seed.get("commit"):
+            bad = [r for r in results if r.status not in ("applied", "empty")]
+            if bad:
+                run.seed_error = (
+                    "Could not start from the changes this task depends on:\n" + report
+                )[:2000]
+                return
+            await commit_seed(
+                Path(run.worktree), f"Seed: changes of {', '.join(r.branch for r in results)}"
+            )
+            run.packet.instruction += (
+                "\n\n--- STARTING POINT ---\nThis worktree already contains (committed) the "
+                f"changes of the plan tasks this one depends on:\n{report}"
+            )
+            return
+        failed = [r for r in results if r.status == "failed"]
+        run.packet.instruction += (
+            "\n\n--- THE TEAM'S CHANGES, APPLIED TO THIS WORKTREE ---\n"
+            f"{report}\n"
+            "These changes are uncommitted in this worktree. Resolve every conflict marker, "
+            "make the pieces work together, and make the plan's checks pass."
+            + (
+                " Changes that could not be applied must be re-done by hand from the plan."
+                if failed
+                else ""
+            )
+        )
+
+    def _check_seed_conflicts(self, run: _DispatchRun) -> None:
+        """Step 4c': an integration run must not land a file with conflict markers."""
+        if not (run.seed_conflicts and run.result is not None and run.result.success):
+            return
+        if run.worktree is None:
+            return
+        left = unresolved_markers(Path(run.worktree), run.seed_conflicts)
+        if not left:
+            return
+        result = run.result
+        run.result = DriverResult(
+            success=False,
+            output=result.output,
+            error=f"Conflict markers left unresolved in {', '.join(left[:10])}; not landed",
+            cost_usd=result.cost_usd,
+            duration_ms=result.duration_ms,
+            metadata={**(result.metadata or {}), "stop_reason": "unresolved_conflicts"},
+        )
+
+    async def _record_handoff(self, run: _DispatchRun, branch: str) -> None:
+        """A team worker's hand-off: where its own change starts and ends."""
+        head = await _head_sha(run.worktree)
+        handoff = {
+            "task_id": run.task_id,
+            "branch": branch,
+            "base_commit": run.base_commit,
+            "head_commit": head,
+        }
+        run.result.metadata = {**(run.result.metadata or {}), "handoff": handoff}
+        task_events.emit(
+            run.tenant_id, run.task_id, "handoff", f"handed off on {branch}",
+            data=handoff, source="dispatcher",
+        )  # fmt: skip
+
+    async def _pinned_task_driver(self, name: str):
+        """The driver an arena racer is pinned to; never another one."""
+        driver = driver_registry.get(name)
+        if driver is None or not await driver.available():
+            raise DispatchError(f"Pinned driver {name!r} is not available")
+        return driver
 
     async def _finish_dispatch(self, run: _DispatchRun) -> None:
         """Step 7: record stats and emit the result event."""

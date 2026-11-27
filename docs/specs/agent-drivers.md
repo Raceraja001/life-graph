@@ -1,6 +1,6 @@
 # Agent Drivers — Rent the Muscle, Own the Nervous System — Feature Spec
 
-> **Status: Built.** Implemented in `life_graph/drivers/dispatcher.py`. The [2026-11-27 autonomy-policy amendment](#amendment-2026-11-27--autonomy-policy-owner-decision-d2) is built too (migration `063_autonomy_policies`). This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+> **Status: Built.** Implemented in `life_graph/drivers/dispatcher.py`. The [2026-11-27 autonomy-policy amendment](#amendment-2026-11-27--autonomy-policy-owner-decision-d2) is built too (migration `063_autonomy_policies`). [Phase 4b](#phase-4b-2026-11-27-dependencies-parallel-plans-pr-feedback-loop-arena) (dependencies, parallel plans, PR feedback loop, arena) is built too (migration `066_dev_task_groups_pr_watches`), off by default. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
 
 > _Historical banner (July 2026); the line above and docs/STATE.md are current._ ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `021_agent_drivers.py`; package `life_graph/drivers/` (base protocol, registry, local driver, dispatcher with WIP limits + bounce-once, context packets); `services/verifiers.py`, `services/results_loop.py`; API `api/drivers.py`. **Still pending**: second-opinion reviewer pass; seed personas (`uzhavu-ops`, `dependency-updater`); watcher-finding → task origination. See [CHARTER.md](../../CHARTER.md#current-frontier) for what is genuinely still open. **Do not rebuild what exists.**
 
@@ -1175,3 +1175,286 @@ continue). Integration tests against Postgres and recorded runs of signed-in CLI
 - [x] D4: `services/agent_accounts/budget.py`, `acquire(unattended)`, `preview`, billing per account
 - [x] API, events, unit tests (`test_run_health.py`, `test_phase3b_part2.py`, `test_phase3b_part2_api.py`)
 - [ ] Integration test against Postgres; a real rotation, park and continue on signed-in CLIs
+
+## Phase 4b (2026-11-27): dependencies, parallel plans, PR feedback loop, arena
+
+> **Status: Built, fixture-tested.** Branch `race/automation-teams` (off `race/migration`).
+> Migration `066_dev_task_groups_pr_watches.py` (revises 064; `race/automation-intake` takes
+> 065 in parallel and the merge re-chains them). Code: `services/dev/dependencies.py`,
+> `services/dev/team_scope.py`, `services/dev/teams.py`, `drivers/seed_branches.py`,
+> `services/dev/pr_feedback_signals.py`, `services/dev/pr_watch.py`, `services/dev/arena.py`,
+> `services/dev/automation_gate.py`, `models/dev_groups.py`, `api/drivers_automation.py`;
+> hooks in `services/dev/tasks.py` (create, claim, run options, serialize), `drivers/dispatcher.py`
+> (seed, hand-off, pinned driver, `hold_auto`), `drivers/plan_spec.py` (`Files:`),
+> `services/approvals.py` (team fan-out), `services/dev/runner.py` (`housekeep`). Everything is
+> **off by default**, and nothing in this phase approves, merges or pushes on its own: the
+> one approval a team or a race produces is an ordinary pending `driver_pr`. Rebuilt from
+> race-app's `docs/specs/TEAMWORK.md` §4, §7, §8, `automation/{pr-watch,team}/**`,
+> `providers/local/{dependencies,handoff-branch}.ts`, `agents/worktree-seed.ts` and
+> `arena/arena-manager.ts` (the owner's code; nothing third-party was ported). Not yet run
+> against a real GitHub PR or signed-in CLIs.
+
+### The gate before every automatic action
+
+Two things in this phase start work without anyone pressing a button: releasing a held task
+once its dependencies finished, and a PR-feedback round. Before each,
+`automation_gate.blockers(tenant, driver, account_id)` asks, in order: the **kill switch**
+(paused tenant → wait), the **subscription share** (D4; with agent accounts on, the driver's
+pool — or the pinned account — previewed as an unattended run: `over_budget`, `cooling` or an
+unreadable pool → wait), and the **Governor** as an unattended spend (skipped when the run is
+billed to a subscription account). A refusal is recorded (`dependency_wait.blocked`,
+`pr_watches.last_error = "Waiting: …"`) and retried on the next pass; nothing is dropped.
+Team workers and racers are ordinary queued tasks: the claim checks the kill switch and the
+dispatch applies the Governor (unattended workers) and D4 as for any task.
+
+### Requirements
+
+**Task dependencies** (no switch: nothing changes unless a task is created with `depends_on`)
+- GIVEN `POST /kernel/drivers/tasks` with `depends_on: [task ids]` (≤ 20) WHEN an id is not a
+  dev task of this tenant (another tenant's id reads as unknown), not a UUID, or the
+  dependencies' own `depends_on` graph has a cycle THEN 422 `"<invalid|unknown|cyclic>: …"` and
+  nothing is created.
+- GIVEN it is valid THEN the task is `queued` with `properties.depends_on`,
+  `deps_pending: true` and `dependency_wait = {waiting_on, since}`; the claim skips it.
+- WHEN every dependency reached a **work-finished** stage — `awaiting_pr`, `pr_open`,
+  `awaiting_merge`, `merged`, or `landed` (a branch hand-off), or `completed` with nothing to
+  approve — AND the gate allows THEN the hold is lifted (`dependencies_met_at`) and it runs like
+  any queued task (its own `start_now`/`interactive` kept).
+- WHEN a dependency is `failed` / `cancelled` / `timeout`, its PR was rejected or closed, or its
+  row is gone THEN the task is `cancelled` with `error = "Dependency <id> failed (<stage>)"` and
+  `properties.dependency_failed = {task_id, stage}`; its own dependents follow on the next pass.
+- The runner's loop (`DevTaskRunner.housekeep`, before every fill: each wake-up, a task ending,
+  or ≤ 60 s) calls `release_dependencies`. Rows are the only state: a restart resumes exactly.
+
+**Parallel plans — teams** (`driver_team_max_parallel`, default 1)
+- GIVEN the default 1 THEN plan fan-out is exactly as before: tasks run one at a time, each
+  waiting for the previous one to merge, each with its own PR approval.
+- GIVEN `driver_team_max_parallel > 1` WHEN a plan is generated THEN the plan prompt also asks
+  each task to end with `Files: <paths or globs>` (spec format extension, parsed by
+  `plan_spec.parse_task_files`: comma/space separated, backticks and `(AC-n)` ignored; `*` =
+  one segment part, `**` = any depth, `?` = one character).
+- GIVEN an approved plan with ≥ 2 tasks of which at least one declares files THEN it becomes a
+  **team** (`dev_task_groups` row, kind `team`, id = `plan_group_id`):
+  - one **worker** dev task per plan task (`origin: team_worker`, `team_role: worker`,
+    `team_files`, `team_max_parallel`), queued unattended; a task whose scope overlaps an
+    earlier task's (`team_scope.overlap_dependencies`: same path, nested directory, glob match;
+    two globs by literal prefix; **an undeclared scope overlaps everything**) gets `depends_on`
+    on it and `seed_from` it;
+  - one **integration** task (`origin: team_integration`, `team_role: integration`)
+    `depends_on` and `seed_from` every worker, checked against every acceptance criterion the
+    spec binds.
+- The claim runs at most `team_max_parallel` workers of one team at once (also bounded by the
+  project WIP limit of 2, the tenant's 5 and `dev_runner_max_concurrency`); team tasks do not
+  take the runner's single unattended slot and skip the sequential plan gate.
+- A worker dispatch: its worktree first gets the hand-offs of its `seed_from` workers applied
+  (`git apply --3way`) and **committed** as a seed commit (any that does not apply cleanly →
+  the worker fails `exit_status = seed_failed`, nothing runs); then the normal chain; landing
+  commits on `lg/task-<id>` and stops there: **no `driver_pr` approval, no PR** (branch
+  hand-off). `result.metadata.handoff = {task_id, branch, base_commit, head_commit}` is its own
+  delta (base = the seed commit). Its worktree is never kept for `continue_task`.
+- The integration dispatch: every worker's hand-off is applied in plan order with
+  `git diff --binary base head | git apply --3way`, **left uncommitted** (index reset), conflicts
+  as markers; the agent gets the report (applied / CONFLICTS in … / could not be applied); after
+  the run a file that was conflicted and still holds `<<<<<<<` / `>>>>>>>` / `|||||||` lines fails
+  it (`stop_reason = unresolved_conflicts`); then the normal verifier chain, landing and the
+  plan's **single** `driver_pr` approval (auto-open/auto-merge rules as for any task).
+- Any worker `failed` / `cancelled` / `timeout` THEN `teams.reconcile` (runner loop) cancels
+  every other open team task (queued at once, running through its runner), the team is
+  `failed` with the reason, the owner is told once (`approval:filed`, kind `plan_stopped`) and
+  `driver:team:failed` fires. Re-approving the plan starts a new team.
+- Team status: `running` → `integrating` (integration task running) → `awaiting_approval`
+  (its PR approval filed) | `failed`.
+
+**PR feedback loop** (`driver_pr_feedback_enabled`, default false)
+- Watches dev tasks with status `completed`, stage `pr_open` / `awaiting_merge`, a `driver_pr`
+  approval with a `pr_url`, and a kept worktree + session (`properties.continuation`, needs
+  `driver_continue_enabled`). One `pr_watches` row per task; `since` = when the PR approval
+  was resolved.
+- Every `driver_pr_feedback_poll_minutes` (ARQ cron `poll_pr_feedback`, every 5 min; or the
+  owner's `POST …/pr-watch/poll`, which ignores the interval) it reads, **read only**:
+  `gh pr view <url> --json state,mergeable,headRefOid,statusCheckRollup,reviews,comments`,
+  `gh api repos/<o>/<r>/pulls/<n>/comments?per_page=100` (when review comments are on) and
+  `gh run view <run> --repo <o>/<r> --log-failed` (≤ 3 failing Actions checks; tail 60 lines /
+  3000 chars).
+- New = not in `seen` and not older than `since`: failing checks on the head SHA (key
+  `check:<sha>:<name>`; the same check failing on a new head is new), reviews requesting
+  changes or commented with a body (`review:<id>`), PR comments (`comment:<id>`), inline review
+  comments (`inline:<id>`), `mergeable == CONFLICTING` (`conflict:<sha>`). Life Graph's own text
+  (starts with "Life Graph" / `<!-- life-graph`) and approvals are skipped. Each of the three
+  kinds has its toggle.
+- New feedback → the gate → **one** message (failing checks with log tails, comments with
+  author/path/line, the conflict with "merge `origin/<base>`", "don't push") →
+  `continue_task(task, feedback, reason="pr_feedback: <summary>")`; the row goes
+  `feeding_back`, `rounds + 1`, the keys join `seen`.
+- One round in flight: while the task is queued/running/parked or its newest `driver_pr`
+  approval ("Update PR") is pending, nothing is read; once that update was approved (pushed)
+  the watch is `watching` again and is read at once. A round that ended failed → `needs_you`.
+- `rounds ≥ driver_pr_feedback_max_rounds` and still new feedback → `needs_you`, notified once
+  (`approval:filed`, kind `pr_feedback`). `MERGED` → `merged`, `CLOSED` → `closed`, worktree or
+  session gone / not a GitHub URL / `continue_task` refused other than `busy` → `stopped` with
+  the reason; `busy` waits; `paused` waits. The owner's stop → `stopped`, never re-watched.
+- Concurrency: each check holds its `pr_watches` row `FOR UPDATE SKIP LOCKED` across the
+  hand-over, so the cron and an API poll never send the same round.
+
+**Arena** (`driver_arena_enabled`, default false)
+- `POST /kernel/drivers/arena` (owner) with 2–5 racers (a driver name, or `{driver, account_id}`
+  — the same driver on two accounts is two racers): one dev task per racer, the same
+  instruction, `start_now` (the owner asked), `properties.arena_id`, `driver_pin`,
+  `account_pin`; the duplicate check is per racer (`dedupe_scope`). Unknown driver or an account
+  that is not this tenant's account of that driver → 422.
+- A racer runs on exactly its driver (unavailable → the dispatch fails, never another driver)
+  and account (`ContextPacket.account_id`; the D4 preview uses it), and its result never
+  auto-opens or auto-merges (`hold_auto`): at most a pending `driver_pr`.
+- `GET …/arena/{id}`: status `racing` (a racer still queued/running/parked) → `ready_to_pick` →
+  `decided`; per racer: status, stage, error, driver it ran on, model, cost, duration, rounds
+  (verification attempts), `verified`, checks, diff size (`files`, `lines` from the approval's
+  change summary), branch, approval, and the driver's 30-day scorecard.
+- `POST …/arena/{id}/pick {task_id}` (owner): the winner must have landed (stage
+  `awaiting_pr` / `pr_open` / `awaiting_merge` / `merged`; else 409 `not_ready`); every other
+  racer still open is cancelled, their pending `driver_pr` / `driver_merge` approvals are
+  rejected (`resolved_by = "system: arena"`); the winner's approval is untouched and proceeds
+  normally. Decided → 409 `decided`; not a racer → 422.
+
+### Data (migration 066)
+
+```sql
+CREATE TABLE dev_task_groups (
+    id          UUID PRIMARY KEY,            -- a team's id = its plan_group_id
+    tenant_id   VARCHAR(64) NOT NULL,
+    kind        VARCHAR(16) NOT NULL,        -- team | arena
+    project_id  UUID,
+    status      VARCHAR(24) NOT NULL,        -- team: running|integrating|awaiting_approval|failed
+                                             -- arena: racing|decided|cancelled
+    title       VARCHAR(200) NOT NULL DEFAULT '',
+    source_ref  VARCHAR(64),                 -- team: the plan task id
+    properties  JSONB NOT NULL DEFAULT '{}', -- team: max_parallel, scopes, waves, worker_ids,
+                                             --   integration_task_id, reason, history
+                                             -- arena: instruction, racers[{task_id,driver,account_id}],
+                                             --   winner_task_id, decided_at, cancelled_task_ids,
+                                             --   rejected_approval_ids
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_dev_task_groups_state ON dev_task_groups (tenant_id, kind, status);
+
+CREATE TABLE pr_watches (
+    id              UUID PRIMARY KEY,
+    tenant_id       VARCHAR(64) NOT NULL,
+    task_id         UUID NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+    pr_url          VARCHAR(300) NOT NULL,
+    state           VARCHAR(20) NOT NULL DEFAULT 'watching',
+                    -- watching|feeding_back|needs_you|merged|closed|stopped
+    rounds          INTEGER NOT NULL DEFAULT 0,
+    seen            JSONB NOT NULL DEFAULT '[]',   -- dedupe keys already handed back
+    since           TIMESTAMPTZ,
+    last_checked_at TIMESTAMPTZ,
+    last_feedback   VARCHAR(300),
+    last_error      VARCHAR(300),
+    notified_at     TIMESTAMPTZ,
+    properties      JSONB NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_pr_watches_task UNIQUE (tenant_id, task_id)
+);
+CREATE INDEX ix_pr_watches_state ON pr_watches (state);
+```
+
+Dev-task `properties` (no migration): `depends_on`, `deps_pending`, `dependency_wait
+{waiting_on, since, blocked?}`, `dependencies_met_at`, `dependency_failed {task_id, stage}`;
+team: `team_role` (worker|integration), `team_files`, `team_max_parallel`, `seed_from`, plus
+the existing `plan_task_id` / `plan_group_id` / `plan_task_index` / `plan_task_count`;
+arena: `arena_id`, `arena_index`, `driver_pin`, `account_pin`. Run metadata: `handoff`,
+`seed` (on `seed_failed`); task events `seed`, `handoff`, `dependencies`, `pr_watch`.
+
+### Settings
+
+| Env (`LIFE_GRAPH_…`) | Setting | Default | Meaning |
+|---|---|---|---|
+| `DRIVER_TEAM_MAX_PARALLEL` | `driver_team_max_parallel` | 1 | workers of one plan at once; 1 = sequential fan-out as before |
+| `DRIVER_PR_FEEDBACK_ENABLED` | `driver_pr_feedback_enabled` | false | the PR feedback loop |
+| `DRIVER_PR_FEEDBACK_POLL_MINUTES` | `driver_pr_feedback_poll_minutes` | 10 | per-PR read interval |
+| `DRIVER_PR_FEEDBACK_MAX_ROUNDS` | `driver_pr_feedback_max_rounds` | 3 | rounds per PR, then `needs_you` |
+| `DRIVER_PR_FEEDBACK_ON_FAILING_CHECKS` | `driver_pr_feedback_on_failing_checks` | true | hand back failing checks |
+| `DRIVER_PR_FEEDBACK_ON_REVIEW_COMMENTS` | `driver_pr_feedback_on_review_comments` | true | hand back reviews / comments |
+| `DRIVER_PR_FEEDBACK_ON_CONFLICTS` | `driver_pr_feedback_on_conflicts` | true | hand back merge conflicts |
+| `DRIVER_ARENA_ENABLED` | `driver_arena_enabled` | false | `POST …/arena` (409 when off) |
+
+The PR loop also needs `driver_continue_enabled` (worktrees kept) and a logged-in `gh`.
+
+### API (`/api/v1/kernel/drivers`)
+
+| Route | Who | Body → `data` |
+|---|---|---|
+| `POST /tasks` (existing) | tenant | + `depends_on?: [uuid] (≤20)` → the task; 422 `"unknown: …"` / `"cyclic: …"` / `"invalid: …"` |
+| `GET /tasks[/{id}]` (existing) | tenant | each task + `depends_on: []`, `dependency_wait: {waiting_on, since, blocked?} \| null`, `dependency_failed`, `team: {group_id, role, files, seed_from} \| null`, `arena: {id, index, driver, account_id} \| null`, `handoff` |
+| `GET /plans/{id}` (existing) | tenant | + `team: {group_id, status, reason, max_parallel, waves, workers: [Row], integration: Row} \| null`; a held child's `gate = {state: wait, waiting_on}` |
+| `GET /pr-watch` | tenant | → `{settings: {enabled, poll_minutes, max_rounds, on_failing_checks, on_review_comments, on_conflicts}, watches: [Watch]}` |
+| `POST /pr-watch/poll` | owner | → `{enabled, discovered, checked, outcomes: {sent, quiet, in_flight, blocked, needs_you, merged, closed, stopped, not_due, error}}` (`{enabled: false, checked: 0}` when off) |
+| `POST /pr-watch/{task_id}/stop` | owner | → `Watch` (`state: stopped`); 404 not watched, 400 not a UUID |
+| `POST /arena` | owner | `{project_id, instruction (5..8000), drivers: [name \| {driver, account_id?}] (2..5), persona_name? = "code-fixer"}` (unknown fields 422) → 202 `Arena`; 409 `arena_disabled`, 422 unknown driver/account, 404 project/persona |
+| `GET /arena/{id}` | tenant | → `Arena`; 404 |
+| `POST /arena/{id}/pick` | owner | `{task_id}` → `Arena` + `cancelled_task_ids`, `rejected_approval_ids`; 409 `decided` / `not_ready`, 422 `not_a_racer`, 404 |
+
+`Row` (team): `{task_id, index, title, files, depends_on, status, stage, waiting, branch,
+handoff, error}`. `Watch`: `{task_id, pr_url, state, rounds, max_rounds, seen (count), since,
+last_checked_at, last_feedback, last_error, notified_at}`. `Arena`: `{id, project_id,
+instruction, status (racing|ready_to_pick|decided), winner_task_id, decided_at, created_at,
+racers: [{task_id, driver, account_id, ran_on, model, status, stage, error, cost_usd,
+duration_ms, rounds, verified, checks, diff: {files, lines, kind} | null, branch,
+approval: {id, status, title} | null, scorecard: {runs, success_rate, bounce_rate, merged,
+cost_per_merged} | null}]}`.
+
+Example — `POST /kernel/drivers/arena`:
+
+```json
+{"project_id": "5b0c…", "instruction": "Make the importer stream instead of loading the whole file",
+ "drivers": ["claude_code", {"driver": "codex", "account_id": "a6f1…"}]}
+```
+
+### Events
+
+EventBus: `driver:task:dependencies_met` (`tenant_id, task_id`), `driver:task:dependency_failed`
+(`tenant_id, task_id, dependency, stage`), `driver:team:started` (`tenant_id, group_id,
+plan_task_id, workers, max_parallel`), `driver:team:integrating`, `driver:team:awaiting_approval`,
+`driver:team:failed` (`tenant_id, group_id, plan_task_id, status, reason,
+integration_task_id`), `driver:pr_watch:feedback` (`tenant_id, task_id, round, summary,
+pr_url`), `driver:pr_watch:needs_you` (`tenant_id, task_id, reason`), `driver:pr_watch:stopped`
+(`tenant_id, task_id, state, reason`), `driver:arena:created` (`tenant_id, arena_id, racers,
+drivers`), `driver:arena:decided` (`tenant_id, arena_id, winner_task_id, winner_driver,
+cancelled, rejected`). Notifications reuse `driver:approval:filed` with kind `plan_stopped`
+(team failed) and `pr_feedback` (needs you). Task events: `dependencies`, `seed`, `handoff`,
+`pr_watch`, and `status cancelled` with `dependency_failed`.
+
+### What race-app's UI needs
+
+- **New task**: a "Depends on" picker (task ids → `depends_on`); show the 422 reason. Task view:
+  "waiting for N tasks" from `dependency_wait.waiting_on` (and `blocked` — "kill switch on" /
+  "over the plan share" / "budget"), "cancelled: dependency X failed" from `dependency_failed`.
+- **Settings → Automation**: `driver_team_max_parallel`, the PR-feedback switches and the arena
+  switch are env settings for now (read-only display from `GET …/pr-watch` `settings`).
+- **Plan view** (`GET …/plans/{id}`): when `team` is set, a team board — workers with files,
+  status/stage, branch, "waiting on", grouped by `waves`; the integration task; team status and
+  `reason`; the one approval is the integration task's.
+- **PR feedback**: a watched-PRs list (`GET …/pr-watch`): state, rounds / max_rounds, last
+  feedback, last error ("Waiting: …"), "Poll now" (`POST …/poll`), "Stop" per PR; `needs_you`
+  appears in the inbox via the `pr_feedback` notification.
+- **Arena**: "Race this" on a new task (drivers/accounts multi-select → `POST …/arena`), a side
+  by side page polling `GET …/arena/{id}` (diff size, verified, cost, rounds, time, scorecard)
+  with "Pick winner" (`POST …/pick`), then the winner's normal approval.
+
+### Not in 4b
+
+A lead agent planning a team (the plan task's spec is the plan); retrying one failed worker in
+place (re-approve the plan); per-project overrides of the new settings; settings editable at
+runtime (they are env); cancelling a whole team or race in one call (cancel each task); racing
+plan tasks. Integration tests against Postgres, a real GitHub PR and signed-in CLIs.
+
+### Tasks
+
+- [x] Migration 066, models `DevTaskGroup`, `PrWatch`
+- [x] Dependencies: create-time validation (unknown/cyclic 422), hold, release/cancel in the runner loop, API field
+- [x] `Files:` scopes, overlap rules, team fan-out, `max_parallel` claim bound, worker hand-off, seeding (`git apply --3way`), conflict-marker guard, integration task, reconcile + failure cancel, team view
+- [x] PR feedback loop: gh reader (read only), signals + dedupe, one round in flight, max rounds, merged/closed, gate, cron + API
+- [x] Arena: create (pinned drivers/accounts, `hold_auto`), side-by-side view with scorecards, pick
+- [x] Automation gate (kill switch, D4 share, Governor); unit tests (`tests/unit/test_phase4b_*.py`, real temp git repo for seeding)
+- [ ] Integration tests against Postgres; a real PR round on GitHub; a real team run

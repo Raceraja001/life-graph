@@ -155,6 +155,22 @@ class EventType(StrEnum):
     TASK_PARKED = "driver:task:parked"
     TASK_UNPARKED = "driver:task:unparked"
     TASK_CONTINUED = "driver:task:continued"
+    # Phase 4b: a held dev task's dependencies all finished (it may start) or
+    # one failed (it was cancelled); a parallel plan (team) started, began
+    # integrating, is waiting on its one approval, or failed; the PR feedback
+    # loop sent a round, needs the owner, or stopped; an arena race was
+    # created or decided.
+    TASK_DEPENDENCIES_MET = "driver:task:dependencies_met"
+    TASK_DEPENDENCY_FAILED = "driver:task:dependency_failed"
+    TEAM_STARTED = "driver:team:started"
+    TEAM_INTEGRATING = "driver:team:integrating"
+    TEAM_AWAITING_APPROVAL = "driver:team:awaiting_approval"
+    TEAM_FAILED = "driver:team:failed"
+    PR_WATCH_FEEDBACK = "driver:pr_watch:feedback"
+    PR_WATCH_NEEDS_YOU = "driver:pr_watch:needs_you"
+    PR_WATCH_STOPPED = "driver:pr_watch:stopped"
+    ARENA_CREATED = "driver:arena:created"
+    ARENA_DECIDED = "driver:arena:decided"
 
 
 @dataclass

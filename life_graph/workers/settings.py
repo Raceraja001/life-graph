@@ -188,6 +188,7 @@ class WorkerSettings:
         "life_graph.workers.tasks.decay_trust_scores",
         "life_graph.workers.tasks.check_approval_timeouts",
         "life_graph.workers.tasks.sync_dev_task_prs",
+        "life_graph.workers.tasks.poll_pr_feedback",
         "life_graph.workers.tasks.run_nightly_dev_suggestions",
         "life_graph.workers.tasks.learn_project_task",
         "life_graph.workers.tasks.send_approval_escalations",
@@ -369,6 +370,12 @@ class WorkerSettings:
         cron(
             "life_graph.workers.tasks.sync_dev_task_prs",
             minute={0, 15, 30, 45},
+            run_at_startup=False,
+        ),
+        # ── Phase 4b: PR feedback loop (off unless driver_pr_feedback_enabled) ──
+        cron(
+            "life_graph.workers.tasks.poll_pr_feedback",
+            minute=set(range(2, 60, 5)),
             run_at_startup=False,
         ),
         cron(

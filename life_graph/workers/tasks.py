@@ -985,6 +985,21 @@ async def sync_dev_task_prs(ctx: dict) -> dict:
     return result
 
 
+async def poll_pr_feedback(ctx: dict) -> dict:
+    """Every 5 min: the PR feedback loop (Phase 4b; off unless driver_pr_feedback_enabled).
+
+    Reads each watched PR with gh (read only) once its poll interval passed
+    and hands new failing checks, review comments and conflicts back to the
+    task through continue_task. See ``life_graph/services/dev/pr_watch.py``.
+    """
+    from life_graph.services.dev.pr_watch import poll
+
+    result = await poll(async_session)
+    if result.get("enabled"):
+        logger.info("PR feedback poll: %s", result)
+    return result
+
+
 async def run_nightly_dev_suggestions(ctx: dict) -> dict:
     """21:00 UTC (02:30 IST): queue dev tasks for opted-in projects' findings.
 

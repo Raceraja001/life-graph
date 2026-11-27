@@ -70,11 +70,16 @@ BASELINE = {
     # tasks) and drivers.dispatcher (sweep_kept_worktrees; the dispatcher
     # pulls in the driver stack) lazily, as its other event/runner calls do;
     # runner.housekeep imports tasks lazily like its __init__ does.
-    "services": 626,
+    # 626 -> 628 (Phase 4b): tasks.create_dev_task imports services.dev.dependencies
+    # lazily (dependencies imports tasks at module level), and runner.housekeep
+    # imports dependencies/teams lazily like the tasks import beside it.
+    "services": 628,
     "storage": 7,
     "tools": 101,
     "watchers": 28,
-    "workers": 104,
+    # 104 -> 105 (Phase 4b): workers.tasks.poll_pr_feedback imports its service
+    # inside the job, like every other job in that module.
+    "workers": 105,
 }
 
 

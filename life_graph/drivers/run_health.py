@@ -463,7 +463,14 @@ class RunHealthMixin:
         name = getattr(run.driver, "name", "")
         if not settings.driver_accounts_enabled or name not in DRIVERS:
             return None
-        preview = await accounts_hook.preview(name, run.tenant_id, unattended=not run.interactive)
+        # A run pinned to one account (an arena racer) is previewed on that one.
+        pinned = getattr(run.packet, "account_id", None) if run.packet is not None else None
+        preview = await accounts_hook.preview(
+            name,
+            run.tenant_id,
+            unattended=not run.interactive,
+            **({"account_id": pinned} if pinned else {}),
+        )
         if preview is None:
             return None
         decision = preview.get("budget") or {}
@@ -510,6 +517,8 @@ class RunHealthMixin:
             return False
         if run.result is not None and (run.result.metadata or {}).get("park"):
             return False  # a parked task re-runs from a fresh worktree
+        if getattr(run, "handoff", None):
+            return False  # a team worker's branch is its hand-off; nothing to continue
         worktree = Path(run.worktree)
         if not worktree.is_dir() or not worktree_intact(worktree, run.worktree_origin):
             return False
