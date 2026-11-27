@@ -73,7 +73,16 @@ def _decision(status="candidate", **kw):
 @pytest.fixture
 def wired(monkeypatch):
     """Stand-ins for every read; tests fill ``state``."""
-    state = {"found": [], "pool": [], "decisions": [], "superseded": [], "intentions": []}
+    state = {
+        "found": [],
+        "pool": [],
+        "decisions": [],
+        "superseded": [],
+        "intentions": [],
+        "current_decisions": [],
+        "due": [],
+        "result": None,
+    }
 
     class _Manager:
         async def generate_embedding(self, text_):
@@ -86,6 +95,8 @@ def wired(monkeypatch):
 
     async def fake_retrieve(question, **kw):
         assert kw["judge"] is False and kw["query_embedding"] == [0.1, 0.2]
+        if state["result"] is not None:
+            return state["result"]
         return list(state["found"])
 
     async def no_conflicts(tenant_id, included):
@@ -100,6 +111,12 @@ def wired(monkeypatch):
     async def intentions(tenant_id, query, ref, as_of):
         return list(state["intentions"])
 
+    async def current_decisions(tenant_id, ref, as_of):
+        return list(state["current_decisions"])
+
+    async def due_intentions(tenant_id, ref, as_of):
+        return list(state["due"])
+
     monkeypatch.setattr(runtime, "get_memory_manager", lambda: _Manager())
     monkeypatch.setattr(runtime, "get_store", lambda: _Store())
     monkeypatch.setattr(retrieval, "retrieve", fake_retrieve)
@@ -107,6 +124,8 @@ def wired(monkeypatch):
     monkeypatch.setattr(snapshot, "_matching_decisions", decisions)
     monkeypatch.setattr(snapshot, "_superseded_decisions", superseded)
     monkeypatch.setattr(snapshot, "_open_intentions", intentions)
+    monkeypatch.setattr(snapshot, "_current_decisions", current_decisions)
+    monkeypatch.setattr(snapshot, "_due_intentions", due_intentions)
     with tenant_scope("t-snap"):
         yield state
 
@@ -498,3 +517,170 @@ async def test_timings_when_a_read_fails(wired, monkeypatch):
         "decisions",
         "total",
     ]
+
+
+# ── Standing items: due intentions and current decisions (D2, D3) ──
+
+
+def _intention(content="Send the runbook to Suresh", **kw):
+    base = {
+        "id": uuid.uuid4(),
+        "content": content,
+        "status": "pending",
+        "trigger_type": "time",
+        "trigger_time": None,
+        "context_match": {"set_by": "jarvis"},
+        "expires_at": None,
+        "created_at": NOW - timedelta(days=3),
+    }
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def test_an_intention_is_due_at_its_trigger_then_its_due_by_then_its_expiry():
+    trigger, due_by, expires = (NOW + timedelta(days=d) for d in (1, 2, 3))
+    both = {"due_by": due_by.isoformat()}
+    assert (
+        snapshot.intention_due(
+            _intention(trigger_time=trigger, context_match=both, expires_at=expires)
+        )
+        == trigger
+    )
+    assert snapshot.intention_due(_intention(context_match=both, expires_at=expires)) == due_by
+    assert snapshot.intention_due(_intention(expires_at=expires)) == expires
+    # A due_by that is not a time is ignored, not guessed.
+    junk = {"due_by": "next Friday-ish"}
+    assert snapshot.intention_due(_intention(context_match=junk, expires_at=expires)) == expires
+    assert snapshot.intention_due(_intention(context_match=None)) is None
+
+
+def test_due_soon_keeps_overdue_and_the_window_nearest_first_and_caps_it():
+    later = _intention("in 15 days", trigger_time=NOW + timedelta(days=15))
+    edge = _intention("in 14 days", trigger_time=NOW + snapshot.DUE_WINDOW)
+    overdue = _intention("overdue", trigger_time=NOW - timedelta(days=3))
+    soon = _intention("tomorrow", trigger_time=NOW + timedelta(days=1))
+    undated = _intention("no time at all", context_match=None)
+    by_due_by = _intention(
+        "promise", context_match={"due_by": (NOW + timedelta(days=2)).isoformat()}
+    )
+    picked = snapshot.due_soon([later, edge, undated, soon, by_due_by, overdue], NOW)
+    assert [i.content for i in picked] == ["overdue", "tomorrow", "promise", "in 14 days"]
+    many = [_intention(f"n{k}", trigger_time=NOW + timedelta(hours=k)) for k in range(9)]
+    assert [i.content for i in snapshot.due_soon(many, NOW)] == ["n0", "n1", "n2", "n3", "n4"]
+
+
+async def test_a_due_intention_is_listed_whatever_the_question_with_its_due_time(wired):
+    due_at = NOW + timedelta(days=2)
+    wired["found"] = [_mem("the owner likes filter coffee")]
+    wired["due"] = [_intention(trigger_time=due_at)]
+    snap = await assemble_context("what are my current priorities?", now=NOW)
+    (item,) = [i for i in snap.items if i.source_ref.kind == "intention"]
+    assert item.reason == "due_intention" and item.due == due_at.isoformat()
+    assert item.score == snapshot.REASON_SCORE["due_intention"]
+    assert item.to_dict()["due"] == due_at.isoformat()
+    assert snap.insufficient is False
+    assert "listed whatever the question" in snap.explanation
+
+
+async def test_a_keyword_match_keeps_its_reason_and_is_listed_once(wired):
+    i = _intention(trigger_time=NOW + timedelta(days=1))
+    wired["intentions"] = [i]
+    wired["due"] = [i]
+    d = _decision("decided")
+    wired["decisions"] = [d]
+    wired["current_decisions"] = [d]
+    snap = await assemble_context("runbook", now=NOW)
+    assert sorted((x.source_ref.kind, x.reason) for x in snap.items) == [
+        ("decision", "decision"),
+        ("intention", "open_intention"),
+    ]
+
+
+async def test_current_decisions_are_listed_with_their_review_time_and_supersession(wired):
+    review = NOW + timedelta(days=20)
+    new = _decision("decided", review_at=review, title="Use a Postgres queue")
+    old = _decision("superseded", superseded_by=new.id, title="Use Kafka")
+    wired["current_decisions"] = [new]
+    wired["superseded"] = [old]
+    snap = await assemble_context("what did I decide recently?", now=NOW)
+    (item,) = snap.items
+    assert item.reason == "current_decision" and item.label == "decided"
+    assert item.due == review.isoformat() and item.confirmed is False
+    (conflict,) = snap.conflicts
+    assert conflict.kind == "decision_supersession"
+    assert [s.source_ref.id for s in conflict.sides] == [str(new.id), str(old.id)]
+
+
+async def test_a_standing_read_never_lists_a_superseded_or_discarded_decision(wired):
+    wired["current_decisions"] = [_decision("superseded"), _decision("discarded")]
+    snap = await assemble_context("what did I decide?", now=NOW)
+    assert snap.items == ()
+
+
+async def test_only_standing_items_are_not_enough_to_answer(wired):
+    """What is due and what was decided is listed for every question, so it
+    does not make an unrelated question answerable ("what is my blood group?")."""
+    wired["due"] = [_intention(trigger_time=NOW + timedelta(days=1))]
+    wired["current_decisions"] = [_decision("decided")]
+    snap = await assemble_context("what is my blood group?", now=NOW)
+    assert len(snap.items) == 2
+    assert snap.insufficient is True
+    assert snap.explanation.startswith("Nothing in memory, decisions or open intentions matched")
+    assert "Listed anyway: 1 decision, 1 intention." in snap.explanation
+
+
+async def test_the_compact_form_carries_due_and_abstain_but_no_content(wired):
+    due_at = NOW + timedelta(days=1)
+    wired["due"] = [_intention("SECRET-ERRAND", trigger_time=due_at)]
+    wired["result"] = retrieval.RetrievalResult(
+        [_mem("SECRET-NOTE")], abstain=True, abstention_reason="contradictory_evidence"
+    )
+    compact = (await assemble_context("q", now=NOW)).compact()
+    (intention,) = [i for i in compact["items"] if i["ref"].startswith("intention:")]
+    assert intention["due"] == due_at.isoformat()
+    assert compact["abstain"] is True
+    assert compact["abstention_reason"] == "contradictory_evidence"
+    assert compact["v"] == snapshot.COMPACT_FORMAT == 2
+    assert "SECRET" not in json.dumps(compact)
+
+
+# ── retrieve's abstention (D7) ──
+
+
+async def test_contradictory_evidence_is_reported_but_the_items_still_answer(wired):
+    wired["result"] = retrieval.RetrievalResult(
+        [_mem("I am not looking for a new job")],
+        abstain=True,
+        abstention_reason="contradictory_evidence",
+    )
+    snap = await assemble_context("am I looking for a new job?", now=NOW)
+    assert snap.abstain is True and snap.abstention_reason == "contradictory_evidence"
+    assert snap.insufficient is False
+    assert "incompatible with the question" in snap.explanation
+    assert snap.to_dict()["abstention_reason"] == "contradictory_evidence"
+
+
+async def test_thin_memory_evidence_makes_the_snapshot_insufficient_but_keeps_the_items(wired):
+    m = _mem("Before booking the AWS exam I want 80% on two practice tests")
+    wired["result"] = retrieval.RetrievalResult(
+        [m], abstain=True, abstention_reason="unresolvable_missing_evidence"
+    )
+    snap = await assemble_context("what is my credit score?", now=NOW)
+    assert snap.insufficient is True
+    assert [i.source_ref.id for i in snap.items] == [str(m.id)]
+    assert "no memory found carries usable evidence" in snap.explanation
+
+
+async def test_thin_memory_evidence_with_a_matching_decision_is_still_enough(wired):
+    wired["result"] = retrieval.RetrievalResult(
+        [_mem("a note")], abstain=True, abstention_reason="unresolvable_missing_evidence"
+    )
+    wired["decisions"] = [_decision("decided")]
+    snap = await assemble_context("backups", now=NOW)
+    assert snap.insufficient is False and snap.abstain is True
+
+
+async def test_no_abstention_when_retrieve_says_nothing(wired):
+    wired["found"] = [_mem("a note")]
+    snap = await assemble_context("q", now=NOW)
+    assert (snap.abstain, snap.abstention_reason, snap.insufficient) == (False, None, False)

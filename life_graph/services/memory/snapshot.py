@@ -53,10 +53,20 @@ Each item (:class:`ContextItem`) carries:
   owner's last reinforcement) at the snapshot's reference time:
   ``fresh`` < 7 days, ``recent`` < 30, ``aging`` < 180, ``stale`` beyond,
   ``unknown`` with no time at all.
+* ``due`` — when it is due, as an ISO time, or None: for an intention its
+  ``trigger_time``, else the promise's ``context_match.due_by``
+  (services/commitments.py), else its ``expires_at``; for a decision its
+  ``review_at``. Memories have none (a deadline in a memory is only text).
 * ``reason`` — why it was included: ``search_hit`` (vector or keyword match,
   fused), ``entity_link``, ``neighbour``, ``dated_episode``, ``decision``
   (a keyword match on a decision), ``open_intention`` (a keyword match on an
-  open intention).
+  open intention), and two that do not depend on the question's words at all:
+  ``due_intention`` (an open intention due within ``DUE_WINDOW``, 14 days, or
+  already overdue; the nearest first) and ``current_decision`` (one of the
+  latest current decisions: candidate, decided or reviewed, never superseded
+  or discarded; newest first). A question rarely shares words with a
+  commitment or a decision ("what are my priorities?" against "Send the
+  runbook to Suresh"), so without these a snapshot missed them.
 
 ``conflicts`` pairs records that disagree, both sides by reference, never
 merged or resolved: a memory and the one it superseded, a pending
@@ -70,8 +80,18 @@ decision) and ``over_budget``. They come from a second search over all
 statuses with the same embedding, so they describe near matches, not the
 whole store.
 
-``insufficient`` is True when nothing passed, or memory could not be searched;
-``explanation`` says which.
+``abstain`` and ``abstention_reason`` are retrieve()'s own evidence check on the
+memories it returned (retrieval.RetrievalResult): ``contradictory_evidence``
+(a memory asserts something incompatible with the question) or
+``unresolvable_missing_evidence`` (no memory carries usable evidence).
+
+``insufficient`` is True when memory could not be searched, when nothing
+passed, when only the question-independent items (``due_intention``,
+``current_decision``) are there, or when retrieve says the memory evidence is
+unresolvable and no decision or intention matched the question either. A
+contradiction alone does not make it insufficient: a memory that disagrees
+often is the answer ("you are not looking for a new job"), so it is reported
+in ``abstain`` and the explanation instead. ``explanation`` says which.
 
 ``timings_ms`` is how long each stage took, in milliseconds (``time.monotonic``):
 ``embed`` (the query embedding), ``retrieve`` (retrieve(): search, entity
@@ -109,10 +129,10 @@ import time
 import unicodedata
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import defer
 
 from life_graph import runtime
@@ -140,6 +160,16 @@ MODEL_PROPOSED = "model_proposed"
 # Reasons beyond retrieve's own (retrieval.SEARCH_HIT, ENTITY_LINK, …)
 DECISION = "decision"
 OPEN_INTENTION = "open_intention"
+#: An open intention due within DUE_WINDOW or overdue, whatever the question.
+DUE_INTENTION = "due_intention"
+#: One of the latest current decisions, whatever the question.
+CURRENT_DECISION = "current_decision"
+#: Reasons that do not depend on the question: they never make a snapshot sufficient.
+STANDING_REASONS = frozenset({DUE_INTENTION, CURRENT_DECISION})
+#: How far ahead an open intention counts as due soon (overdue ones always do).
+DUE_WINDOW = timedelta(days=14)
+#: retrieval's abstention reason for evidence too thin to answer from.
+THIN_EVIDENCE = "unresolvable_missing_evidence"
 
 #: Ordering score for a reason that has no search score of its own. Below a
 #: typical search hit (fused scores run ~0.5-1.0 for the top ranks), so a
@@ -149,6 +179,8 @@ REASON_SCORE = {
     retrieval.ENTITY_LINK: 0.30,
     DECISION: 0.25,
     OPEN_INTENTION: 0.25,
+    DUE_INTENTION: 0.22,
+    CURRENT_DECISION: 0.21,
     retrieval.NEIGHBOUR: 0.20,
     retrieval.COLD_TIER: 0.10,
 }
@@ -260,6 +292,8 @@ class ContextItem:
     #: :func:`fingerprint` of the full record text ("" when not known). Kept
     #: only in the compact (trace) form, never in to_dict or an API.
     fingerprint: str = ""
+    #: When it is due (ISO), or None: see the module docstring.
+    due: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -276,6 +310,7 @@ class ContextItem:
             "recorded_at": self.recorded_at,
             "world_time_known": self.world_time_known,
             "freshness": self.freshness,
+            "due": self.due,
             "content": self.content,
         }
 
@@ -318,6 +353,10 @@ class ContextSnapshot:
     explanation: str = ""
     content_chars: int = 0
     sources: tuple[str, ...] = field(default=())
+    #: retrieve()'s own evidence check on the memories (RetrievalResult.abstain).
+    abstain: bool = False
+    #: Its reason: "contradictory_evidence" | "unresolvable_missing_evidence" | None.
+    abstention_reason: str | None = None
     #: (stage, milliseconds) in TIMING_STAGES order; not part of equality.
     timings_ms: tuple[tuple[str, float], ...] = field(default=(), compare=False)
 
@@ -336,6 +375,8 @@ class ContextSnapshot:
             "conflicts": [c.to_dict() for c in self.conflicts],
             "exclusions": dict(self.exclusions),
             "insufficient": self.insufficient,
+            "abstain": self.abstain,
+            "abstention_reason": self.abstention_reason,
             "explanation": self.explanation,
             "content_chars": self.content_chars,
             "sources": list(self.sources),
@@ -348,7 +389,10 @@ class ContextSnapshot:
         Format 2 (``v``) adds ``reference_time``, ``sources`` and, per item,
         ``fp`` and ``rec``; a conflict keeps its sides' statuses and its
         approval id. All of it is what the next turn's comparison needs
-        (services/memory/changes.py); none of it is record text.
+        (services/memory/changes.py); none of it is record text. ``due`` per
+        item and ``abstain`` / ``abstention_reason`` were added later without
+        a new format number: a reader of format 2 ignores keys it does not
+        know, and an older trace simply lacks them.
         """
         return {
             "v": COMPACT_FORMAT,
@@ -367,6 +411,7 @@ class ContextSnapshot:
                     "world_time_known": i.world_time_known,
                     "fp": i.fingerprint,
                     "rec": i.recorded_at,
+                    "due": i.due,
                 }
                 for i in self.items
             ],
@@ -381,6 +426,8 @@ class ContextSnapshot:
             ],
             "exclusions": dict(self.exclusions),
             "insufficient": self.insufficient,
+            "abstain": self.abstain,
+            "abstention_reason": self.abstention_reason,
             "timings_ms": dict(self.timings_ms),
         }
 
@@ -504,7 +551,7 @@ def decision_text(d: Any) -> str:
     return f"{getattr(d, 'title', '') or ''}\n{getattr(d, 'reasoning', '') or ''}"
 
 
-def decision_item(d: Any, ref: datetime, budget: Budget) -> ContextItem:
+def decision_item(d: Any, ref: datetime, budget: Budget, reason: str = DECISION) -> ContextItem:
     # "explicit" is what the API caller declared (api/judgment.py), so it is
     # imported, like any other content over the API; the rest were detected
     # in conversation by Life Graph itself.
@@ -522,14 +569,15 @@ def decision_item(d: Any, ref: datetime, budget: Budget) -> ContextItem:
         evidence=ev.OUTSIDE if explicit else ev.INFERRED,
         label=DECISION_LABEL.get(status, status),
         status=status,
-        reason=DECISION,
-        score=REASON_SCORE[DECISION],
+        reason=reason,
+        score=REASON_SCORE[reason],
         valid_from=_iso(decided),
         recorded_at=_iso(recorded),
         world_time_known=world_time_known(decided, recorded),
         freshness=freshness_of(recorded, ref),
         content=_clip(f"{title}. {reasoning}" if reasoning else title, budget.item_chars),
         fingerprint=fingerprint(d.id, decision_text(d)),
+        due=_iso(retrieval._as_utc(getattr(d, "review_at", None))),
     )
 
 
@@ -543,7 +591,27 @@ def intention_origin(i: Any) -> str:
     return IMPORTED
 
 
-def intention_item(i: Any, ref: datetime, budget: Budget) -> ContextItem:
+def intention_due(i: Any) -> datetime | None:
+    """When *i* is due: its trigger time, else the promise's due_by, else its expiry.
+
+    A promise found in chat (services/commitments.py) keeps its real deadline
+    in ``context_match.due_by``; its ``trigger_time`` is the start of that
+    window. A due_by that is not a readable time is ignored.
+    """
+    trigger = retrieval._as_utc(getattr(i, "trigger_time", None))
+    if trigger is not None:
+        return trigger
+    match = getattr(i, "context_match", None)
+    if isinstance(match, dict):
+        due_by = retrieval._as_utc(match.get("due_by"))
+        if due_by is not None:
+            return due_by
+    return retrieval._as_utc(getattr(i, "expires_at", None))
+
+
+def intention_item(
+    i: Any, ref: datetime, budget: Budget, reason: str = OPEN_INTENTION
+) -> ContextItem:
     recorded = retrieval._as_utc(getattr(i, "created_at", None))
     origin = intention_origin(i)
     return ContextItem(
@@ -554,14 +622,15 @@ def intention_item(i: Any, ref: datetime, budget: Budget) -> ContextItem:
         evidence=ev.OBSERVED if origin == EXTRACTED else ev.OUTSIDE,
         label="open intention",
         status=str(i.status),
-        reason=OPEN_INTENTION,
-        score=REASON_SCORE[OPEN_INTENTION],
+        reason=reason,
+        score=REASON_SCORE[reason],
         valid_from=None,
         recorded_at=_iso(recorded),
         world_time_known=False,
         freshness=freshness_of(recorded, ref),
         content=_clip(getattr(i, "content", ""), budget.item_chars),
         fingerprint=fingerprint(i.id, getattr(i, "content", "")),
+        due=_iso(intention_due(i)),
     )
 
 
@@ -685,6 +754,75 @@ async def _open_intentions(
         return list((await s.execute(stmt)).scalars().all())
 
 
+async def _current_decisions(tenant_id: str, ref: datetime, as_of: datetime | None) -> list[Any]:
+    """The latest current decisions (candidate, decided, reviewed), whatever the query.
+
+    Newest first by decided time (else recorded time), then id: a fixed order,
+    so the same records give the same snapshot. Superseded and discarded
+    decisions are never read here.
+    """
+    stmt = (
+        select(Decision)
+        .options(defer(Decision.embedding))
+        .where(Decision.tenant_id == tenant_id)
+        .where(Decision.status.in_(tuple(DECISION_LABEL)))
+        .order_by(func.coalesce(Decision.decided_at, Decision.created_at).desc(), Decision.id)
+        .limit(SIDE_LIMIT)
+    )
+    if as_of is not None:
+        stmt = stmt.where(Decision.created_at <= ref)
+    async with async_session() as s:
+        return list((await s.execute(stmt)).scalars().all())
+
+
+async def _due_intentions(tenant_id: str, ref: datetime, as_of: datetime | None) -> list[Any]:
+    """Open intentions due by ``ref + DUE_WINDOW`` (overdue included), whatever the query.
+
+    Due is :func:`intention_due`. SQL narrows to rows that can be due in the
+    window (a trigger time or expiry inside it, or a promise's due_by, which
+    is JSON text and so is read in Python); the nearest due first, then id.
+    """
+    horizon = ref + DUE_WINDOW
+    stmt = (
+        select(Intention)
+        .options(defer(Intention.embedding))
+        .where(Intention.tenant_id == tenant_id)
+        .where(Intention.status.in_(OPEN_INTENTION_STATUSES))
+        .where(or_(Intention.expires_at.is_(None), Intention.expires_at > ref))
+        .where(
+            or_(
+                Intention.trigger_time <= horizon,
+                and_(
+                    Intention.trigger_time.is_(None),
+                    or_(
+                        Intention.context_match.has_key("due_by"),
+                        Intention.expires_at <= horizon,
+                    ),
+                ),
+            )
+        )
+        .order_by(
+            func.coalesce(Intention.trigger_time, Intention.expires_at).asc().nulls_last(),
+            Intention.id,
+        )
+        .limit(SIDE_LIMIT * 4)
+    )
+    if as_of is not None:
+        stmt = stmt.where(Intention.created_at <= ref)
+    async with async_session() as s:
+        rows = list((await s.execute(stmt)).scalars().all())
+    return due_soon(rows, ref)
+
+
+def due_soon(rows: list[Any], ref: datetime) -> list[Any]:
+    """*rows* due by ``ref + DUE_WINDOW``, nearest due first (then id), at most SIDE_LIMIT."""
+    horizon = ref + DUE_WINDOW
+    timed = [(intention_due(i), i) for i in rows]
+    kept = [(t, i) for t, i in timed if t is not None and t <= horizon]
+    kept.sort(key=lambda pair: (pair[0], str(pair[1].id)))
+    return [i for _, i in kept[:SIDE_LIMIT]]
+
+
 async def _memory_conflicts(tenant_id: str, included: list[Any]) -> list[ContextConflict]:
     """Supersession pairs and pending contradiction approvals touching *included*."""
     if not included:
@@ -801,6 +939,8 @@ class _Parts:
     sources: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     timings: dict[str, float] = field(default_factory=dict)
+    abstain: bool = False
+    abstention_reason: str | None = None
 
     def exclude(self, reason: str, n: int = 1) -> None:
         if n:
@@ -840,6 +980,10 @@ async def _memories(
             judge=False,
             query_embedding=embedding,
         )
+    # retrieve's own evidence check on what it returned (a RetrievalResult;
+    # a plain list carries none).
+    parts.abstain = bool(getattr(found, "abstain", False))
+    parts.abstention_reason = getattr(found, "abstention_reason", None) if parts.abstain else None
     kept: list[Any] = []
     for m in found or []:
         if is_excluded_from_agents(getattr(m, "trust_tier", None)):
@@ -884,7 +1028,16 @@ async def _decisions(
         elif d.status == "discarded":
             parts.exclude("discarded")
     parts.items += [decision_item(d, ref, budget) for d in current]
-    by_id = {d.id: d for d in current}
+    # The latest current decisions too, whatever the query's words; a keyword
+    # match keeps its own reason.
+    matched = {d.id for d in current}
+    standing = [
+        d
+        for d in await _current_decisions(tenant_id, ref, as_of)
+        if d.id not in matched and d.status in DECISION_LABEL
+    ]
+    parts.items += [decision_item(d, ref, budget, CURRENT_DECISION) for d in standing]
+    by_id = {d.id: d for d in current + standing}
     for old in await _superseded_decisions(tenant_id, list(by_id)):
         new = by_id[old.superseded_by]
         parts.conflicts.append(
@@ -904,20 +1057,57 @@ async def _intentions(
 ) -> None:
     rows = await _open_intentions(tenant_id, query, ref, as_of)
     parts.items += [intention_item(i, ref, budget) for i in rows]
+    # Open intentions due soon or overdue too, whatever the query's words.
+    matched = {i.id for i in rows}
+    due = [i for i in await _due_intentions(tenant_id, ref, as_of) if i.id not in matched]
+    parts.items += [intention_item(i, ref, budget, DUE_INTENTION) for i in due]
     parts.sources.append("intentions")
+
+
+NOTHING_MATCHED = "Nothing in memory, decisions or open intentions matched the query."
+#: Fixed words for retrieve's abstention reasons (no record text, no counts of it).
+ABSTENTION_NOTE = {
+    "contradictory_evidence": (
+        "Retrieval's evidence check: a memory found asserts something incompatible "
+        "with the question."
+    ),
+    THIN_EVIDENCE: (
+        "Retrieval's evidence check: no memory found carries usable evidence for the question."
+    ),
+}
+
+
+def is_insufficient(kept: list[ContextItem], parts: _Parts) -> bool:
+    """Whether *kept* is not enough to answer from (see the module docstring)."""
+    answering = [i for i in kept if i.reason not in STANDING_REASONS]
+    if not answering:
+        return True
+    thin = parts.abstain and parts.abstention_reason == THIN_EVIDENCE
+    return thin and all(i.source_ref.kind == "memory" for i in answering)
 
 
 def _explain(kept: list[ContextItem], parts: _Parts) -> str:
     if not kept:
-        return "Nothing in memory, decisions or open intentions matched the query."
+        return NOTHING_MATCHED
     counts: dict[str, int] = {}
     for item in kept:
         counts[item.source_ref.kind] = counts.get(item.source_ref.kind, 0) + 1
     found = ", ".join(f"{n} {k}{'s' if n != 1 else ''}" for k, n in sorted(counts.items()))
     held = sum(parts.excluded.values())
-    text_ = f"Found {found}."
+    standing = sum(1 for i in kept if i.reason in STANDING_REASONS)
+    if standing == len(kept):
+        text_ = f"{NOTHING_MATCHED} Listed anyway: {found}."
+    else:
+        text_ = f"Found {found}."
+    if standing:
+        text_ += (
+            f" {standing} of them {'is' if standing == 1 else 'are'} listed whatever the"
+            " question: open intentions due soon or overdue, the latest current decisions."
+        )
     if held:
         text_ += f" Held back {held} near match{'es' if held != 1 else ''}."
+    if parts.abstain and parts.abstention_reason in ABSTENTION_NOTE:
+        text_ += f" {ABSTENTION_NOTE[parts.abstention_reason]}"
     for note in parts.notes:
         text_ += f" {note}"
     return text_
@@ -987,10 +1177,12 @@ async def assemble_context(
         items=tuple(kept),
         conflicts=_dedupe_conflicts(parts.conflicts),
         exclusions=tuple(sorted(parts.excluded.items())),
-        insufficient=not kept,
+        insufficient=is_insufficient(kept, parts),
         explanation=_explain(kept, parts),
         content_chars=used,
         sources=tuple(parts.sources),
+        abstain=parts.abstain,
+        abstention_reason=parts.abstention_reason,
         timings_ms=timings(),
     )
 
