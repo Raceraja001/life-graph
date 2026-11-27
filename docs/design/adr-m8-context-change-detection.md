@@ -93,6 +93,7 @@ All rules are deterministic. "In window" means `from < t <= to`.
 | Removal | `rejected` / `archived` | Previous memory status `active`, live status `rejected` / `archived`. | the item |
 | Removal | `expired` | Live `valid_until` (memory) or `expires_at` (intention) is in window. | the item |
 | Removal | `discarded` | Decision status went to `discarded`. | the item |
+| Removal | `disputed` | *Added 2026-11-27 (D13).* Previous memory status `active`, live status `pending`, and `properties.disputed.at` (written only by the owner's "this memory was wrong", `api/jarvis.py` `memory_was_wrong`) in window. Always `acknowledged: true`. | the item |
 | Transition | `superseded` | Previous memory now `superseded` or has `superseded_by`. Reports the newest current memory in the chain. | old + new refs |
 | Transition | `confirmed` | Previous `confirmed=false`, live row is active and owner-confirmed. | the item (+ approval if any) |
 | Transition | `edited` | Same ref, live fingerprint differs from `fp` (see 5.4, cosmetic edits). | the item |
@@ -116,7 +117,7 @@ What Stage 2 does **not** detect, by design: a change to a record that is in nei
 
 Applied after the rules above, in this order. Each held-back change is counted in `suppressed` under its reason, so the eval can see them.
 
-1. **Hostile or pending:** a change whose subject is hostile-tier, or a pending memory, is dropped (`hostile`, `pending_only`). Same rule as Stage 1.
+1. **Hostile or pending:** a change whose subject is hostile-tier, or a pending memory, is dropped (`hostile`, `pending_only`). Same rule as Stage 1. *Amended 2026-11-27 (D13):* one exception. When the owner presses "this memory was wrong" on a reply, an active memory goes back to review (pending), and that is the owner's own correction, which spec §2.9 and §4.4 say must be seen. It is reported as `disputed` (see §5.3), acknowledged. The signal is deterministic and needs no migration: the endpoint merges `{"disputed": {"at", "task_id", "note"}}` into the memory's `properties` in the same UPDATE that sets `status = 'pending'`, and nothing else writes that key. The marker's `at` must be in the window, so an old marker on a memory that went back to pending some other way stays `pending_only`. Every other way to pending (an approval sent back, a sync) is still dropped. A hostile subject is still dropped first.
 2. **Cosmetic edits:** the fingerprint is `sha256(id + "\n" + normalised content)` truncated to 16 hex characters. Normalising means lower case, Unicode NFKC, whitespace collapsed, punctuation and trailing full stops removed. A case, spacing or punctuation edit gives the same fingerprint, so it is not an edit. Tags, importance and `access_count` are not part of the fingerprint. Counted as `cosmetic` only when `updated_at` moved but the fingerprint did not.
 3. **Duplicates:**
    - one change per `(kind, ref)` per comparison;
@@ -235,7 +236,7 @@ What exists, for the record:
 
 | Event | Emitted? | `tenant_id` in payload | Use for change detection |
 |---|---|---|---|
-| `memory:pending` | yes (`storage/postgres.py:297`, `cross_system_sync.py:236`) | yes | not needed: pending is never reported |
+| `memory:pending` | yes (`storage/postgres.py:297`, `cross_system_sync.py:236`) | yes | not needed: pending is reported only as an owner dispute (§5.4 rule 1), read from the row's `properties.disputed` |
 | `memory:approved` / `memory:rejected` | yes (`services/memory/transitions.py:169,190`) | yes | could mark a "dirty" baseline later |
 | `memory:updated` / `memory:deleted` | **defined, never emitted** | — | would be needed for push or cache invalidation |
 | `memory:created` | only for shared context | — | no |
@@ -393,3 +394,4 @@ Option (a) was built as decided: `life_graph/services/memory/changes.py`, the tr
 11. **Failed comparisons and temporary chats (review of #405).** A turn whose own comparison failed (an error entry, or `read_failed` after a failed re-read) is skipped as a baseline, so the next window reaches back to the last turn whose comparison went through and no change is lost. A turn with no `context_changes` at all (the change flag was off) is a baseline: nothing was promised for it. A temporary chat's turns, and any turn of a conversation marked temporary, are never a baseline. `intention_approaching` needs the time to be still ahead at the end of the window.
 12. **Eval method.** Snapshots are built from the seeded rows with Stage 1's own item builders, not by `assemble_context`, so the eval measures comparison, not retrieval, and needs no embedder. The option (c) column is the ADR §6 table, per kind, not a run. Latency p95 is gated at 50 ms; the ≤ 150 ms prod measurement is still to do (no prod access in the build).
 13. **Low confidence by evidence, not origin (D4, 2026-11-27).** Rule 4 is amended as noted in §5.4: an active memory that a model extracted from the owner's words is reported as `added` or `edited`. The eval case `model-proposed-addition` (an active, LLM-extracted memory, which the amended rule reports) became `inferred-addition` (source `distillation`, evidence `inferred`); `llm-extracted-addition` and `llm-extracted-edit` (must detect) and `model-proposed-pending-addition` and `inferred-edit` (must stay silent) were added: 43 must-detect, 24 must-stay-silent.
+14. **Owner disputes (D13, 2026-11-27).** A new kind, `disputed` (removal group, priority 0), as amended in §5.3 and §5.4 rule 1. `RowState.disputed_at` is read from `properties.disputed.at`. The eval case `sent-back-to-review` (an active memory set to pending: how the eval pinned the owner's dispute as silent) now carries the endpoint's marker and must be detected, as `owner-disputed` (`acknowledged: true`). `owner-disputed-other-conversation` (must detect) was added, so the kind has the two cases every kind needs. The old case without the marker stays silent as `sent-back-to-review-no-marker`, and `disputed-before-the-window` (must stay silent) was added: 45 must-detect, 25 must-stay-silent.
