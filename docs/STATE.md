@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-27 11:44 UTC` from `master` @ `cf6af37`
+Generated `2026-11-27 16:47 UTC` from `race/autonomy-policy` @ `a8be53f4`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-27 11:44 UTC` from `master` @ `cf6af37`
 
 | | |
 |---|---|
-| HTTP operations | **398** across 345 paths, 47 tags |
-| Database tables | **89** |
-| Migrations | **62** (head: `062_telegram_capture_idempotency`) |
+| HTTP operations | **406** across 349 paths, 47 tags |
+| Database tables | **90** |
+| Migrations | **63** (head: `063_autonomy_policies`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **36** |
 | Config settings | **336** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6173** in 662 files |
+| Test functions | **6248** in 666 files |
 | Dashboard pages | **23** |
-| Python | 531 files, 153,728 lines |
+| Python | 537 files, 155,449 lines |
 
 ---
 
 ## HTTP API
 
-398 operations, grouped by OpenAPI tag.
+406 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -79,6 +79,45 @@ Generated `2026-11-27 11:44 UTC` from `master` @ `cf6af37`
 | GET | `/api/v1/study/due` | Due Cards |
 | POST | `/api/v1/study/generate` | Generate Cards |
 | GET | `/api/v1/study/progress` | Study Progress |
+
+### `autonomy` — 34
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/autonomy/approvals` | List Approvals |
+| POST | `/api/v1/autonomy/approvals/batch` | Batch Resolve |
+| POST | `/api/v1/autonomy/approvals/{approval_id}/resolve` | Resolve Approval |
+| GET | `/api/v1/autonomy/audit` | Query Audit Log |
+| POST | `/api/v1/autonomy/audit/export` | Export Audit Log |
+| POST | `/api/v1/autonomy/audit/{action_id}/rollback` | Rollback From Audit |
+| GET | `/api/v1/autonomy/auto-actions` | List Auto Actions |
+| POST | `/api/v1/autonomy/auto-actions` | Trigger Auto Action |
+| POST | `/api/v1/autonomy/auto-actions/{action_id}/rollback` | Rollback Action |
+| GET | `/api/v1/autonomy/levels/{project_id}` | Get Autonomy Level |
+| POST | `/api/v1/autonomy/levels/{project_id}/set` | Set Autonomy Level |
+| DELETE | `/api/v1/autonomy/policy` | Remove the global autonomy policy (owner only) |
+| GET | `/api/v1/autonomy/policy` | The global autonomy policy, every project policy, today's count |
+| PUT | `/api/v1/autonomy/policy` | Replace the global autonomy policy (owner only) |
+| DELETE | `/api/v1/autonomy/policy/projects/{project_id}` | Remove a project's autonomy policy (owner only) |
+| GET | `/api/v1/autonomy/policy/projects/{project_id}` | A project's stored policy and the effective policy |
+| PUT | `/api/v1/autonomy/policy/projects/{project_id}` | Replace a project's autonomy policy (owner only) |
+| POST | `/api/v1/autonomy/safety/classify` | Classify Action |
+| GET | `/api/v1/autonomy/safety/kill-switch` | Get Kill Switch |
+| POST | `/api/v1/autonomy/safety/kill-switch/pause` | Pause Kill Switch |
+| POST | `/api/v1/autonomy/safety/kill-switch/resume` | Resume Kill Switch |
+| GET | `/api/v1/autonomy/safety/rules` | List Rules |
+| POST | `/api/v1/autonomy/safety/rules` | Create Rule |
+| DELETE | `/api/v1/autonomy/safety/rules/{rule_id}` | Delete Rule |
+| GET | `/api/v1/autonomy/safety/rules/{rule_id}` | Get Rule |
+| PATCH | `/api/v1/autonomy/safety/rules/{rule_id}` | Update Rule |
+| POST | `/api/v1/autonomy/safety/seed` | Seed Defaults |
+| GET | `/api/v1/autonomy/shadow/enrollments` | List Enrollments |
+| GET | `/api/v1/autonomy/shadow/runs` | List Runs |
+| POST | `/api/v1/autonomy/shadow/runs/{run_id}/grade` | Grade Run |
+| POST | `/api/v1/autonomy/trust/decay` | Trigger Decay |
+| POST | `/api/v1/autonomy/trust/override` | Override Trust |
+| GET | `/api/v1/autonomy/trust/scores` | List Scores |
+| GET | `/api/v1/autonomy/trust/scores/{score_id}` | Get Score |
 
 ### `jarvis` — 34
 
@@ -154,40 +193,7 @@ Generated `2026-11-27 11:44 UTC` from `master` @ `cf6af37`
 | GET | `/api/v1/kernel/tasks/{task_id}` | Get full task details |
 | POST | `/api/v1/kernel/tasks/{task_id}/cancel` | Cancel a running task |
 
-### `autonomy` — 28
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/autonomy/approvals` | List Approvals |
-| POST | `/api/v1/autonomy/approvals/batch` | Batch Resolve |
-| POST | `/api/v1/autonomy/approvals/{approval_id}/resolve` | Resolve Approval |
-| GET | `/api/v1/autonomy/audit` | Query Audit Log |
-| POST | `/api/v1/autonomy/audit/export` | Export Audit Log |
-| POST | `/api/v1/autonomy/audit/{action_id}/rollback` | Rollback From Audit |
-| GET | `/api/v1/autonomy/auto-actions` | List Auto Actions |
-| POST | `/api/v1/autonomy/auto-actions` | Trigger Auto Action |
-| POST | `/api/v1/autonomy/auto-actions/{action_id}/rollback` | Rollback Action |
-| GET | `/api/v1/autonomy/levels/{project_id}` | Get Autonomy Level |
-| POST | `/api/v1/autonomy/levels/{project_id}/set` | Set Autonomy Level |
-| POST | `/api/v1/autonomy/safety/classify` | Classify Action |
-| GET | `/api/v1/autonomy/safety/kill-switch` | Get Kill Switch |
-| POST | `/api/v1/autonomy/safety/kill-switch/pause` | Pause Kill Switch |
-| POST | `/api/v1/autonomy/safety/kill-switch/resume` | Resume Kill Switch |
-| GET | `/api/v1/autonomy/safety/rules` | List Rules |
-| POST | `/api/v1/autonomy/safety/rules` | Create Rule |
-| DELETE | `/api/v1/autonomy/safety/rules/{rule_id}` | Delete Rule |
-| GET | `/api/v1/autonomy/safety/rules/{rule_id}` | Get Rule |
-| PATCH | `/api/v1/autonomy/safety/rules/{rule_id}` | Update Rule |
-| POST | `/api/v1/autonomy/safety/seed` | Seed Defaults |
-| GET | `/api/v1/autonomy/shadow/enrollments` | List Enrollments |
-| GET | `/api/v1/autonomy/shadow/runs` | List Runs |
-| POST | `/api/v1/autonomy/shadow/runs/{run_id}/grade` | Grade Run |
-| POST | `/api/v1/autonomy/trust/decay` | Trigger Decay |
-| POST | `/api/v1/autonomy/trust/override` | Override Trust |
-| GET | `/api/v1/autonomy/trust/scores` | List Scores |
-| GET | `/api/v1/autonomy/trust/scores/{score_id}` | Get Score |
-
-### `drivers` — 25
+### `drivers` — 27
 
 | Method | Path | Summary |
 |---|---|---|
@@ -214,6 +220,8 @@ Generated `2026-11-27 11:44 UTC` from `master` @ `cf6af37`
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/events` | The task's live session events after a sequence number (long-poll) |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/events/stream` | The task's live session as Server-Sent Events (resumes from Last-Event-ID) |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/review-stages` | Every review-stage result of a dev task, and the latest per stage |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/risk` | The risk report of a dev task's change |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
 | GET | `/api/v1/kernel/drivers/templates` | App templates a new project can start from |
 
@@ -671,7 +679,7 @@ Generated `2026-11-27 11:44 UTC` from `master` @ `cf6af37`
 
 ## Database tables
 
-89 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+90 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -687,6 +695,7 @@ Generated `2026-11-27 11:44 UTC` from `master` @ `cf6af37`
 | `audit_log` | 22 | ✓ | `018_autonomous_ai` |
 | `auto_actions` | 31 | ✓ | `018_autonomous_ai` |
 | `autonomy_levels` | 28 | ✓ | `018_autonomous_ai` |
+| `autonomy_policies` | 7 | ✓ | `063_autonomy_policies` |
 | `budget_spend` | 6 | ✓ | `023_budget_spend` |
 | `capabilities` | 18 | ✓ | `059_durable_capabilities_and_standing_rules` |
 | `connector_accounts` | 18 | ✓ | `039_connectors` |
@@ -1029,9 +1038,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-62 revisions, head `062_telegram_capture_idempotency`.
+63 revisions, head `063_autonomy_policies`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies`
 
 ---
 
@@ -1041,10 +1050,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 505 | 5125 |
+| `tests/unit/` | 509 | 5200 |
 | `tests/integration/` | 156 | 1036 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **662** | **6173** |
+| **total** | **666** | **6248** |
 
 ---
 
