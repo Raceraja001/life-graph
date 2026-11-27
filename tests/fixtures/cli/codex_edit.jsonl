@@ -1,0 +1,13 @@
+{"type":"thread.started","thread_id":"0199c0de-0000-7000-8000-00000000c0de"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Reading README** I'll look at README.md before appending the line."}}
+{"type":"item.started","item":{"id":"item_1","type":"todo_list","items":[{"text":"Read README.md","completed":false},{"text":"Append the fixture line","completed":false}]}}
+{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"bash -lc 'cat README.md'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"bash -lc 'cat README.md'","aggregated_output":"# demo\n","exit_code":0,"status":"completed"}}
+{"type":"item.updated","item":{"id":"item_1","type":"todo_list","items":[{"text":"Read README.md","completed":true},{"text":"Append the fixture line","completed":false}]}}
+{"type":"item.completed","item":{"id":"item_3","type":"file_change","changes":[{"path":"README.md","kind":"update"}],"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_4","type":"mcp_tool_call","server":"docs","tool":"search","arguments":{"q":"readme"},"result":{"content":[{"type":"text","text":"no hits"}]},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_5","type":"web_search","query":"markdown heading syntax"}}
+{"type":"item.completed","item":{"id":"item_1","type":"todo_list","items":[{"text":"Read README.md","completed":true},{"text":"Append the fixture line","completed":true}]}}
+{"type":"item.completed","item":{"id":"item_6","type":"agent_message","text":"Appended 'fixture ok' to README.md."}}
+{"type":"turn.completed","usage":{"input_tokens":12840,"cached_input_tokens":11008,"output_tokens":312}}

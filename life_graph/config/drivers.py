@@ -63,6 +63,21 @@ class DriverSettings(BaseModel):
     # The host is not sandboxed for this driver, so OpenCode's shell stays
     # denied unless this is set. Tests run in the verifier sandbox regardless.
     driver_opencode_allow_bash: bool = False
+    # Subscription coding CLIs (drivers/codex.py, drivers/gemini.py; spec
+    # agent-drivers.md, Phase 3a). Off until the owner opts in: each sends the
+    # task and the code to its provider (never memories or preferences), and
+    # runs on the host. On, a driver is still unavailable until its binary is
+    # found (PATH or ~/.local/node/bin) and it is not signed out (`codex login`;
+    # `gemini` once, Login with Google). Codex also needs driver_allow_host_shell:
+    # its shell cannot be turned off and its sandbox does not confine reads.
+    driver_codex_enabled: bool = False
+    driver_codex_bin: str = "codex"
+    driver_codex_model: str = ""  # empty = the CLI's own default model
+    driver_codex_timeout_seconds: int = 1200
+    driver_gemini_enabled: bool = False
+    driver_gemini_bin: str = "gemini"
+    driver_gemini_model: str = ""  # empty = the CLI's own default model
+    driver_gemini_timeout_seconds: int = 1200
     # A plan approves itself only for a project with auto_approve_plans set,
     # at most this many tasks, and every other rule in services/dev/plan_policy.py.
     auto_plan_max_tasks: int = 3

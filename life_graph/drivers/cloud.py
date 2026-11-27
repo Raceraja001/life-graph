@@ -35,6 +35,8 @@ class CloudDriver(LocalDriver):
     """LocalDriver on a free cloud model, with personal context removed."""
 
     name = "cloud"
+    # A hosted model's free tier; never picked by capability (none declared).
+    billing = "api"
     # A pin to this driver must not fall through to another driver when it is
     # unavailable (no key): the persona's model would then run elsewhere.
     pin_required = True

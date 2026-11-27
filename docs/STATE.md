@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-27 16:47 UTC` from `race/autonomy-policy` @ `a8be53f4`
+Generated `2026-11-27 16:52 UTC` from `race/migration` @ `8ec40bea`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-27 16:47 UTC` from `race/autonomy-policy` @ `a8be53f4`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **36** |
-| Config settings | **336** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6248** in 666 files |
+| Config settings | **344** (prefix `LIFE_GRAPH_`) |
+| Test functions | **6282** in 667 files |
 | Dashboard pages | **23** |
-| Python | 537 files, 155,449 lines |
+| Python | 542 files, 156,926 lines |
 
 ---
 
@@ -1050,16 +1050,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 509 | 5200 |
+| `tests/unit/` | 510 | 5234 |
 | `tests/integration/` | 156 | 1036 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **666** | **6248** |
+| **total** | **667** | **6282** |
 
 ---
 
 ## Configuration
 
-336 settings, all overridable by environment variable.
+344 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1235,6 +1235,14 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_OPENCODE_OLLAMA_BASE` | `'http://localhost:11434/v1'` |
 | `LIFE_GRAPH_DRIVER_OPENCODE_TIMEOUT_SECONDS` | `1200` |
 | `LIFE_GRAPH_DRIVER_OPENCODE_ALLOW_BASH` | `False` |
+| `LIFE_GRAPH_DRIVER_CODEX_ENABLED` | `False` |
+| `LIFE_GRAPH_DRIVER_CODEX_BIN` | `'codex'` |
+| `LIFE_GRAPH_DRIVER_CODEX_MODEL` | `''` |
+| `LIFE_GRAPH_DRIVER_CODEX_TIMEOUT_SECONDS` | `1200` |
+| `LIFE_GRAPH_DRIVER_GEMINI_ENABLED` | `False` |
+| `LIFE_GRAPH_DRIVER_GEMINI_BIN` | `'gemini'` |
+| `LIFE_GRAPH_DRIVER_GEMINI_MODEL` | `''` |
+| `LIFE_GRAPH_DRIVER_GEMINI_TIMEOUT_SECONDS` | `1200` |
 | `LIFE_GRAPH_AUTO_PLAN_MAX_TASKS` | `3` |
 | `LIFE_GRAPH_POST_DEPLOY_SMOKE_TIMEOUT` | `300` |
 | `LIFE_GRAPH_BOOTSTRAP_ROOT` | `''` |

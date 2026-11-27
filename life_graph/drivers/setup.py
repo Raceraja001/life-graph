@@ -13,9 +13,18 @@ def register_default_drivers() -> list[str]:
     """Register every built-in driver; returns their names."""
     from life_graph.drivers.claude_code import ClaudeCodeDriver
     from life_graph.drivers.cloud import CloudDriver
+    from life_graph.drivers.codex import CodexDriver
+    from life_graph.drivers.gemini import GeminiDriver
     from life_graph.drivers.local import LocalDriver
     from life_graph.drivers.opencode import OpencodeDriver
 
-    for driver in (LocalDriver(), ClaudeCodeDriver(), OpencodeDriver(), CloudDriver()):
+    for driver in (
+        LocalDriver(),
+        ClaudeCodeDriver(),
+        OpencodeDriver(),
+        CloudDriver(),
+        CodexDriver(),
+        GeminiDriver(),
+    ):
         driver_registry.register(driver)
     return [d.name for d in driver_registry.list_all()]
