@@ -124,7 +124,7 @@ Applied after the rules above, in this order. Each held-back change is counted i
    - `deleted` wins over every other kind for the same ref;
    - `superseded` wins over `edited`.
    Across turns, the baseline moves forward every turn (§5.5), so a change already reported is part of the next baseline and does not repeat. The `key` lets a later stage drop repeats when two consumers compare different windows.
-4. **Low-confidence inference:** an `added` or `edited` item with origin `model_proposed` that is not `confirmed` is held back (`low_confidence`). So is a `candidate` decision appearing. Status changes of an authoritative record still count, even if the record was model-proposed: `candidate -> decided` is a real transition.
+4. **Low-confidence inference:** an `added` or `edited` item with origin `model_proposed` that is not `confirmed` is held back (`low_confidence`). So is a `candidate` decision appearing. *Amended 2026-11-27 (D4):* an **active** memory is not held back on origin alone. A model that extracts a fact from what the owner said (`extraction_tier` "llm") makes the origin `model_proposed`, and most chat facts are extracted that way. Such a memory is held back only when its evidence is Life Graph's own conclusion (`inferred`, a day `summary`) or is not known. Pending memories, and model-proposed decisions and intentions, are held back as before. Status changes of an authoritative record still count, even if the record was model-proposed: `candidate -> decided` is a real transition.
 5. **Already acknowledged:** Stage 2 has no feedback store yet (Stage 3 adds one). Until then, a change is marked `acknowledged: true` when the owner made it himself:
    - a review stamp `by` the owner;
    - a correction he recorded (`corrections` row, `CORRECTION_RECORDED`);
@@ -278,7 +278,7 @@ Patch every LLM client constructor to raise. Comparison and resolve run, includi
 
 At least 60 labelled scenarios built on throwaway tenants:
 - 40 **must-detect**, at least 2 per kind;
-- 20 **must-stay-silent**: cosmetic edits, a duplicate event, a different question on unchanged data, a model-proposed addition, an owner's own correction (flagged, not notable), a hostile-tier edit, a two-tenant leak attempt.
+- 20 **must-stay-silent**: cosmetic edits, a duplicate event, a different question on unchanged data, an inferred (model-concluded) addition, an owner's own correction (flagged, not notable), a hostile-tier edit, a two-tenant leak attempt.
 
 The report shows each kind and each noise category separately (spec §8), with option (c) as a side-by-side "what as-of recompute would have found" column for the record. No prod data leaves the machine; no cloud evaluator.
 
@@ -386,3 +386,4 @@ Option (a) was built as decided: `life_graph/services/memory/changes.py`, the tr
 10. **"Acknowledged" covers memory changes only.** Decision and intention changes the owner made himself (deciding, completing, dismissing) are not flagged yet; Stage 3's feedback store is the place to add them.
 11. **Failed comparisons and temporary chats (review of #405).** A turn whose own comparison failed (an error entry, or `read_failed` after a failed re-read) is skipped as a baseline, so the next window reaches back to the last turn whose comparison went through and no change is lost. A turn with no `context_changes` at all (the change flag was off) is a baseline: nothing was promised for it. A temporary chat's turns, and any turn of a conversation marked temporary, are never a baseline. `intention_approaching` needs the time to be still ahead at the end of the window.
 12. **Eval method.** Snapshots are built from the seeded rows with Stage 1's own item builders, not by `assemble_context`, so the eval measures comparison, not retrieval, and needs no embedder. The option (c) column is the ADR §6 table, per kind, not a run. Latency p95 is gated at 50 ms; the ≤ 150 ms prod measurement is still to do (no prod access in the build).
+13. **Low confidence by evidence, not origin (D4, 2026-11-27).** Rule 4 is amended as noted in §5.4: an active memory that a model extracted from the owner's words is reported as `added` or `edited`. The eval case `model-proposed-addition` (an active, LLM-extracted memory, which the amended rule reports) became `inferred-addition` (source `distillation`, evidence `inferred`); `llm-extracted-addition` and `llm-extracted-edit` (must detect) and `model-proposed-pending-addition` and `inferred-edit` (must stay silent) were added: 43 must-detect, 24 must-stay-silent.
