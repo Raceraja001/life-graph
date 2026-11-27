@@ -13,6 +13,7 @@ from life_graph.autonomy.safety.classifier import RiskLevel
 from life_graph.config import settings
 from life_graph.core.events import EventType
 from life_graph.drivers.plan_spec import _PLAN_SPEC_MAX_CHARS, _parse_tasks
+from life_graph.services.dev.autonomy_policy import with_policy_note
 from life_graph.services.dev.change_policy import describe_change, second_opinion
 
 if TYPE_CHECKING:
@@ -461,6 +462,8 @@ class ApprovalFilingMixin:
             )
             return
         allowed, why, _record = await auto_gate(session, appr.tenant_id, appr.payload or {})
+        # The refusal is kept where the owner sees it (payload.autonomy.policy_note).
+        appr.payload = with_policy_note(appr.payload, None if allowed else why)
         if not allowed:
             logger.info("Auto-open PR skipped for %s: %s", driver_name, why)
             return

@@ -596,6 +596,16 @@ All under `/api/v1`, tenant-scoped by `X-Tenant-ID`. Reads: any tenant key. Writ
 `DELETE`): **owner only** (`approval_identity.owner_only`, as trust overrides and autonomy levels)
 → 403 `{"detail": "Changing the autonomy policy needs the owner: an owner API key or a paired phone."}`.
 Invalid bodies → 422 (unknown fields are refused). Responses use the usual `{"data": …}` envelope.
+Errors use the app-wide error envelope (main.py handlers), with FastAPI's `detail` kept at the
+top level as a string:
+
+```
+422 {"error": {"code": "VALIDATION_ERROR", "message": "Request validation failed.",
+               "details": [{"field": "body → verify_fix_rounds", "message": "…"}], "request_id": "…"},
+     "detail": "Request validation failed."}
+404 {"error": {"code": "PROJECT_NOT_FOUND", "message": "Project not found", "request_id": "…"},
+     "detail": "Project not found"}
+```
 
 **Policy body** — global (`PUT /autonomy/policy`); every field optional, omitted = neutral default
 (`//` comments are annotations, not part of the body):
@@ -631,18 +641,42 @@ either list still forbids auto-approval).
 GET /autonomy/policy
 → 200 {"data": {
     "global": {"policy": {…global body…}, "updated_by": "owner", "updated_at": "2026-11-27T10:00:00+00:00"} | null,
-    "projects": [{"project_id": "<uuid>", "policy": {…project body…}, "updated_by": "owner", "updated_at": "…"}],
+    "projects": [{"project_id": "<uuid>", "name": "race-app" | null, "active": true, "override": true,
+                  "policy": {…project body…}, "updated_by": "owner", "updated_at": "…"}],
     "auto_approvals_today": 2,
-    "limits": {"max_fix_rounds": 3, "max_review_stages": 4, "max_globs": 50,
-               "reviewers": ["human", "pr_agent", "model:<model id>"]}}}
+    "limits": {
+      "max_fix_rounds": 3, "max_review_stages": 4, "max_globs": 50,          // original keys, kept
+      "reviewers": ["human", "pr_agent", "model:<model id>"],                 // original, kept
+      "reviewer_format": {"kinds": ["human", "pr_agent", "model"], "model_prefix": "model:",
+                          "max_length": 120},
+      "risk_tolerances": ["any", "warnings", "none"],
+      "bounds": {                       // every bound the pydantic models enforce; [] = each item
+        "conditions.max_changed_lines": {"min": 0, "max": 100000},
+        "conditions.max_files": {"min": 0, "max": 10000},
+        "conditions.paths_allowed": {"max_items": 50, "item_max_length": 200},
+        "conditions.paths_forbidden": {"max_items": 50, "item_max_length": 200},
+        "daily_auto_approval_cap": {"min": 0, "max": 1000},
+        "review_stages": {"max_items": 4},
+        "review_stages[].name": {"min_length": 1, "max_length": 60},
+        "review_stages[].reviewer": {"min_length": 1, "max_length": 120},
+        "review_stages[].focus": {"max_length": 2000},
+        "verify_fix_rounds": {"min": 0, "max": 3},
+        "review_fix_rounds": {"min": 0, "max": 3}}}}}
+
+`projects[]` lists exactly the stored project overrides (one row each, sorted by id): `name` and
+`active` come from `projects`; `active: false`, `name: null` = the row outlived its project
+(gone, archived or another tenant's id) and applies to no task.
 
 PUT /autonomy/policy            body: global body   → 200, same shape as GET
 DELETE /autonomy/policy                              → 200 {"data": {"removed": true}}
 
-GET /autonomy/policy/projects/{project_id}           (404 unknown/inactive/other-tenant project)
+GET /autonomy/policy/projects/{project_id}
+    404 PROJECT_NOT_FOUND: unknown, inactive or other-tenant project, or not a UUID.
+    A known project with no override is 200 with "override": null (effective = global).
 → 200 {"data": {
-    "project_id": "<uuid>",
-    "policy": {"policy": {…}, "updated_by": "owner", "updated_at": "…"} | null,
+    "project_id": "<uuid>", "name": "race-app", "has_override": true,
+    "override": {"policy": {…}, "updated_by": "owner", "updated_at": "…"} | null,
+    "policy": …same as override (original name, kept)…,
     "effective": {
       "configured": true, "sources": ["global", "project"],
       "conditions": [{"source": "global", …conditions…}, {"source": "project", …conditions…}],
@@ -673,7 +707,18 @@ GET /kernel/drivers/tasks/{task_id}   (existing) now also returns "review_stages
 
 The PR/merge approval payload gains `autonomy` (when anything was recorded):
 `{"review_stages": [latest per stage], "human_stage": true?, "risk": {"block", "warn", "complete"},
-"verify_fix": {"rounds", "allowed", "stopped"}?, "review_fix": {"rounds", "allowed"}?}`.
+"verify_fix": {"rounds", "allowed", "stopped"}?, "review_fix": {"rounds", "allowed"}?,
+"policy_note": "…"?}`.
+
+`autonomy.policy_note` (string, plain one line, ≤ 300 chars, secrets redacted by
+`core/redaction.redact_secrets`) is the reason `auto_gate` refused an unattended step, in the
+gate's own words — e.g. `"owner policy: owner rule (global): 412 changed lines (at most 300)"`,
+`"not yet trusted for code changes: codex has 2/5 code PRs merged"`. On the `driver_pr` approval
+it is set when auto-open was asked and refused (after the approval is filed); on the
+`driver_merge` approval when auto-merge was asked and refused (at filing, and again by each
+`retry_auto_merges` sweep). A later check that passes removes it; a merge approval never
+inherits the PR approval's note. Absent = no unattended step was refused (none was asked, or it
+passed). Local mode and unverified branches never consult the gate, so they set no note.
 Task events gain kind `round` (`data.kind` = `verify_fix` | `review_fix`).
 
 ### What the defaults guarantee
@@ -700,6 +745,9 @@ by one.
 - [x] `services/dev/risk_report.py` (entropy + line/change rules), stored report; opt-in `no_high_entropy_in_diff`
 - [x] API `/autonomy/policy*` (owner-only writes), `/kernel/drivers/tasks/{id}/review-stages|risk`
 - [x] Unit tests: narrowing only, cap, stages incl. human, bounded rounds and default 0, entropy, API
+- [x] Cockpit gaps (race-app): `autonomy.policy_note` on refused auto-open/merge; complete
+      `limits` (`bounds`, `reviewer_format`, `risk_tolerances`); `projects[].name|active|override`;
+      `override`/`has_override`/`name` and 404 `PROJECT_NOT_FOUND` on the project route
 - [ ] Integration test against Postgres (migration up/down, cap count on real approvals)
 - [ ] race-app Settings → Autonomy reads/writes these endpoints; race-app's local pipeline reads this policy
 ---

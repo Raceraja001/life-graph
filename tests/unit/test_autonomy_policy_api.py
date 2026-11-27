@@ -13,11 +13,15 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from life_graph import main
 from life_graph.api import drivers as drivers_api
 from life_graph.api.middleware import TenantMiddleware
 from life_graph.autonomy.router import router as autonomy_router
 from life_graph.config import settings
+from life_graph.core.errors import DomainError
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import AutonomyPolicy
 from life_graph.storage.database import get_session
@@ -35,6 +39,7 @@ class _Store:
         self.tenant = tenant
         self.rows: dict[tuple[str, str], AutonomyPolicy] = {}
         self.projects = {(tenant, PROJECT)}
+        self.names = {PROJECT: "race-app"}
         self.commits = 0
 
     def session(self):
@@ -60,9 +65,20 @@ class _StoreSession:
         if "count(" in sql:
             return FakeResult([0])
         if "FROM projects" in sql:
+            ids = re.search(r"projects.id IN \(([^)]*)\)", sql)
+            if ids:  # the names for GET /autonomy/policy's projects[]
+                wanted = {str(uuid.UUID(v)) for v in re.findall(r"'([^']+)'", ids.group(1))}
+                return FakeResult(
+                    [
+                        (pid, self.store.names.get(pid, "name"), True)
+                        for (t, pid) in self.store.projects
+                        if t == tenant and pid in wanted
+                    ]
+                )
             pid = re.search(r"projects.id = '([^']+)'", sql)
-            ok = pid and (tenant, str(uuid.UUID(pid.group(1)))) in self.store.projects
-            return FakeResult([(pid.group(1),)] if ok else [])
+            key = str(uuid.UUID(pid.group(1))) if pid else None
+            ok = pid and (tenant, key) in self.store.projects
+            return FakeResult([(key, self.store.names.get(key, "name"))] if ok else [])
         if "FROM autonomy_policies" in sql:
             rows = [r for (t, _s), r in self.store.rows.items() if t == tenant]
             one = re.search(r"autonomy_policies.scope = '([^']+)'", sql)
@@ -93,6 +109,10 @@ def store():
 @pytest_asyncio.fixture
 async def client(store):
     app = FastAPI()
+    # The app's own error envelope (main.py), as served.
+    app.add_exception_handler(StarletteHTTPException, main.http_exception_handler)
+    app.add_exception_handler(DomainError, main.domain_error_handler)
+    app.add_exception_handler(RequestValidationError, main.validation_exception_handler)
     app.add_middleware(TenantMiddleware)
     app.include_router(autonomy_router, prefix="/api/v1")
     app.include_router(drivers_api.router, prefix="/api/v1")
@@ -171,6 +191,81 @@ async def test_owner_puts_and_reads_the_global_policy(client, store):
 async def test_invalid_policy_is_422(client, body):
     r = await client.put("/api/v1/autonomy/policy", json=body, headers=_as(OWNER_KEY))
     assert r.status_code == 422
+    err = r.json()
+    # The app-wide envelope (main.py), not FastAPI's bare list.
+    assert err["error"]["code"] == "VALIDATION_ERROR"
+    assert err["error"]["details"] and err["detail"] == err["error"]["message"]
+
+
+async def test_limits_name_every_bound_and_the_reviewer_format(client):
+    r = await client.get("/api/v1/autonomy/policy", headers=_as(SERVICE_KEY))
+    limits = r.json()["data"]["limits"]
+    # The original flat shape stays.
+    assert limits["max_globs"] == 50
+    assert limits["reviewers"] == ["human", "pr_agent", "model:<model id>"]
+    assert limits["reviewer_format"] == {
+        "kinds": ["human", "pr_agent", "model"],
+        "model_prefix": "model:",
+        "max_length": 120,
+    }
+    assert limits["risk_tolerances"] == ["any", "warnings", "none"]
+    b = limits["bounds"]
+    assert b["conditions.max_changed_lines"] == {"min": 0, "max": 100_000}
+    assert b["conditions.max_files"] == {"min": 0, "max": 10_000}
+    assert b["conditions.paths_allowed"] == {"max_items": 50, "item_max_length": 200}
+    assert b["daily_auto_approval_cap"] == {"min": 0, "max": 1000}
+    assert b["review_stages"] == {"max_items": 4}
+    assert b["review_stages[].name"] == {"min_length": 1, "max_length": 60}
+    assert b["review_stages[].focus"] == {"max_length": 2000}
+    assert b["verify_fix_rounds"] == b["review_fix_rounds"] == {"min": 0, "max": 3}
+
+
+def _stage(**kw):
+    return {"name": "s", "reviewer": "human", "focus": "", **kw}
+
+
+@pytest.mark.parametrize(
+    ("at_limit", "over"),
+    [
+        ({"conditions": {"max_changed_lines": 100_000}}, {"conditions": {"max_changed_lines": 100_001}}),
+        ({"conditions": {"max_files": 10_000}}, {"conditions": {"max_files": 10_001}}),
+        ({"conditions": {"paths_allowed": [f"a{i}" for i in range(50)]}},
+         {"conditions": {"paths_allowed": [f"a{i}" for i in range(51)]}}),
+        ({"conditions": {"paths_forbidden": ["x" * 200]}},
+         {"conditions": {"paths_forbidden": ["x" * 201]}}),
+        ({"daily_auto_approval_cap": 1000}, {"daily_auto_approval_cap": 1001}),
+        ({"review_stages": [_stage(name="n" * 60)]}, {"review_stages": [_stage(name="n" * 61)]}),
+        ({"review_stages": [_stage(focus="f" * 2000)]},
+         {"review_stages": [_stage(focus="f" * 2001)]}),
+        ({"review_stages": [_stage(reviewer="model:" + "m" * 114)]},
+         {"review_stages": [_stage(reviewer="model:" + "m" * 115)]}),
+        ({"review_fix_rounds": 3}, {"review_fix_rounds": 4}),
+    ],
+)  # fmt: skip
+async def test_limits_are_the_bounds_the_models_enforce(client, at_limit, over):
+    r = await client.put("/api/v1/autonomy/policy", json=at_limit, headers=_as(OWNER_KEY))
+    assert r.status_code == 200, r.text
+    r = await client.put("/api/v1/autonomy/policy", json=over, headers=_as(OWNER_KEY))
+    assert r.status_code == 422
+
+
+async def test_a_known_project_without_an_override_is_200(client):
+    await client.put("/api/v1/autonomy/policy", json=GLOBAL, headers=_as(OWNER_KEY))
+    r = await client.get(f"/api/v1/autonomy/policy/projects/{PROJECT}", headers=_as(SERVICE_KEY))
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["override"] is None and data["policy"] is None
+    assert data["has_override"] is False and data["name"] == "race-app"
+    assert data["effective"]["sources"] == ["global"]
+    assert data["effective"]["daily_auto_approval_cap"] == 5
+
+
+async def test_a_project_row_for_a_gone_project_is_listed_inactive(client, store):
+    gone = str(uuid.uuid4())
+    store.rows[("raja", gone)] = AutonomyPolicy(tenant_id="raja", scope=gone, policy={})
+    r = await client.get("/api/v1/autonomy/policy", headers=_as(SERVICE_KEY))
+    (row,) = r.json()["data"]["projects"]
+    assert row["project_id"] == gone and row["name"] is None and row["active"] is False
 
 
 async def test_project_policy_roundtrip_and_effective(client, store):
@@ -194,8 +289,14 @@ async def test_project_policy_roundtrip_and_effective(client, store):
     assert [s["name"] for s in eff["review_stages"]] == ["security", "owner"]
     assert eff["human_stage"] is True and eff["daily_auto_approval_cap"] == 5
 
+    assert data["name"] == "race-app" and data["has_override"] is True
+    assert data["override"] == data["policy"]
+
     r = await client.get("/api/v1/autonomy/policy", headers=_as(SERVICE_KEY))
-    assert [p["project_id"] for p in r.json()["data"]["projects"]] == [PROJECT]
+    (row,) = r.json()["data"]["projects"]
+    assert row["project_id"] == PROJECT and row["name"] == "race-app"
+    assert row["active"] is True and row["override"] is True
+    assert row["policy"]["conditions"]["max_files"] == 2
 
     r = await client.delete(f"/api/v1/autonomy/policy/projects/{PROJECT}", headers=_as(OWNER_KEY))
     assert r.json()["data"] == {"project_id": PROJECT, "removed": True}
@@ -215,8 +316,14 @@ async def test_project_policy_rejects_a_cap_and_unknown_projects(client):
             f"/api/v1/autonomy/policy/projects/{other}", headers=_as(OWNER_KEY)
         )
         assert r.status_code == 404
+        assert r.json()["error"]["code"] == "PROJECT_NOT_FOUND"
+        assert r.json()["detail"] == "Project not found"
+    r = await client.put(
+        f"/api/v1/autonomy/policy/projects/{other}", json={}, headers=_as(OWNER_KEY)
+    )
+    assert r.status_code == 404 and r.json()["error"]["code"] == "PROJECT_NOT_FOUND"
     r = await client.get("/api/v1/autonomy/policy/projects/not-a-uuid", headers=_as(OWNER_KEY))
-    assert r.status_code == 404
+    assert r.status_code == 404 and r.json()["error"]["code"] == "PROJECT_NOT_FOUND"
 
 
 async def test_delete_global_is_owner_only(client, store):

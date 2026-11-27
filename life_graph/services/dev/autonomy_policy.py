@@ -39,6 +39,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 
 from life_graph.autonomy.kill_switch import autonomy_stopped
+from life_graph.core.redaction import redact_secrets
 from life_graph.models.db import Approval, AutonomyPolicy
 
 if TYPE_CHECKING:
@@ -50,6 +51,15 @@ GLOBAL_SCOPE = "global"
 MAX_FIX_ROUNDS = 3
 MAX_STAGES = 4
 MAX_GLOBS = 50
+MAX_GLOB_LENGTH = 200
+MAX_CHANGED_LINES = 100_000
+MAX_FILES = 10_000
+MAX_DAILY_CAP = 1000
+MAX_STAGE_NAME = 60
+MAX_REVIEWER = 120
+MAX_STAGE_FOCUS = 2000
+# payload.autonomy.policy_note: why auto-open/auto-merge was refused (plain text).
+MAX_POLICY_NOTE = 300
 # The approval kinds auto_gate decides; plans have their own policy (plan_policy.py).
 AUTO_KINDS = ("driver_pr", "driver_merge")
 HUMAN_REVIEWER = "human"
@@ -70,8 +80,8 @@ class AutoApprovalConditions(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    max_changed_lines: int | None = Field(None, ge=0, le=100_000)
-    max_files: int | None = Field(None, ge=0, le=10_000)
+    max_changed_lines: int | None = Field(None, ge=0, le=MAX_CHANGED_LINES)
+    max_files: int | None = Field(None, ge=0, le=MAX_FILES)
     # Every changed file must match one of these (fnmatch; * also crosses "/",
     # the same globs as protected_paths).
     paths_allowed: list[str] = Field(default_factory=list, max_length=MAX_GLOBS)
@@ -88,8 +98,8 @@ class AutoApprovalConditions(BaseModel):
     @classmethod
     def _clean_globs(cls, value: list[str]) -> list[str]:
         out = [str(v).strip() for v in value if str(v).strip()]
-        if any(len(v) > 200 for v in out):
-            raise ValueError("a glob may be at most 200 characters")
+        if any(len(v) > MAX_GLOB_LENGTH for v in out):
+            raise ValueError(f"a glob may be at most {MAX_GLOB_LENGTH} characters")
         return list(dict.fromkeys(out))
 
     def is_neutral(self) -> bool:
@@ -102,10 +112,10 @@ class ReviewStage(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(..., min_length=1, max_length=60)
+    name: str = Field(..., min_length=1, max_length=MAX_STAGE_NAME)
     # "human", "pr_agent", or "model:<model id>" (a veto-only LLM pass).
-    reviewer: str = Field(..., min_length=1, max_length=120)
-    focus: str = Field("", max_length=2000)
+    reviewer: str = Field(..., min_length=1, max_length=MAX_REVIEWER)
+    focus: str = Field("", max_length=MAX_STAGE_FOCUS)
 
     @field_validator("reviewer")
     @classmethod
@@ -151,7 +161,7 @@ class GlobalAutonomyPolicy(BaseModel):
     conditions: AutoApprovalConditions = Field(default_factory=AutoApprovalConditions)
     # Unattended opens/merges per UTC day across all projects, counted by task.
     # None = no cap; 0 = no auto-approval at all.
-    daily_auto_approval_cap: int | None = Field(None, ge=0, le=1000)
+    daily_auto_approval_cap: int | None = Field(None, ge=0, le=MAX_DAILY_CAP)
     review_stages: list[ReviewStage] = Field(default_factory=list, max_length=MAX_STAGES)
     verify_fix_rounds: int = Field(0, ge=0, le=MAX_FIX_ROUNDS)
     review_fix_rounds: int = Field(0, ge=0, le=MAX_FIX_ROUNDS)
@@ -515,3 +525,69 @@ def describe(policy: EffectivePolicy) -> dict[str, Any]:
         "verify_fix_rounds": policy.verify_fix_rounds,
         "review_fix_rounds": policy.review_fix_rounds,
     }
+
+
+def limits() -> dict[str, Any]:
+    """Every bound the models above enforce, for a UI to validate before PUT.
+
+    The flat keys are the original shape (kept); ``bounds`` is keyed by field
+    path (``[]`` = each item); ``reviewer_format`` is the reviewer grammar.
+    """
+    rounds = {"min": 0, "max": MAX_FIX_ROUNDS}
+    globs = {"max_items": MAX_GLOBS, "item_max_length": MAX_GLOB_LENGTH}
+    return {
+        "max_fix_rounds": MAX_FIX_ROUNDS,
+        "max_review_stages": MAX_STAGES,
+        "max_globs": MAX_GLOBS,
+        "reviewers": [HUMAN_REVIEWER, PR_AGENT_REVIEWER, f"{MODEL_PREFIX}<model id>"],
+        "reviewer_format": {
+            "kinds": [HUMAN_REVIEWER, PR_AGENT_REVIEWER, "model"],
+            "model_prefix": MODEL_PREFIX,
+            "max_length": MAX_REVIEWER,
+        },
+        "risk_tolerances": ["any", "warnings", "none"],
+        "bounds": {
+            "conditions.max_changed_lines": {"min": 0, "max": MAX_CHANGED_LINES},
+            "conditions.max_files": {"min": 0, "max": MAX_FILES},
+            "conditions.paths_allowed": globs,
+            "conditions.paths_forbidden": globs,
+            "daily_auto_approval_cap": {"min": 0, "max": MAX_DAILY_CAP},
+            "review_stages": {"max_items": MAX_STAGES},
+            "review_stages[].name": {"min_length": 1, "max_length": MAX_STAGE_NAME},
+            "review_stages[].reviewer": {"min_length": 1, "max_length": MAX_REVIEWER},
+            "review_stages[].focus": {"max_length": MAX_STAGE_FOCUS},
+            "verify_fix_rounds": rounds,
+            "review_fix_rounds": rounds,
+        },
+    }
+
+
+# ── The refusal, kept on the approval ───────────────────────────
+
+
+def policy_note(reason: str) -> str:
+    """*reason* as stored on an approval: secrets redacted, one line, capped."""
+    text = " ".join(redact_secrets(str(reason or "")).split())
+    if len(text) > MAX_POLICY_NOTE:
+        text = text[: MAX_POLICY_NOTE - 1].rstrip() + "\u2026"
+    return text
+
+
+def with_policy_note(payload: dict[str, Any] | None, reason: str | None) -> dict[str, Any]:
+    """A copy of *payload* with ``autonomy.policy_note`` set (or removed for None).
+
+    Returns a new dict so a JSON column sees the change. Set when auto_gate
+    refuses an unattended open/merge; removed when a later check passes, so
+    the note is never a stale refusal.
+    """
+    out = dict(payload or {})
+    autonomy = dict(out.get("autonomy") or {})
+    if reason:
+        autonomy["policy_note"] = policy_note(reason)
+    else:
+        autonomy.pop("policy_note", None)
+    if autonomy:
+        out["autonomy"] = autonomy
+    else:
+        out.pop("autonomy", None)
+    return out

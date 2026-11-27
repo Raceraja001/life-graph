@@ -23,6 +23,7 @@ from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_scoped
 from life_graph.models.db import Approval, Memory, Project
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
+from life_graph.services.dev.autonomy_policy import with_policy_note
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -526,6 +527,8 @@ class ApprovalService:
             **(merge_appr.payload or {}),
         }
         allowed, why, _record = await auto_gate(self.session, merge_appr.tenant_id, gate_payload)
+        # Kept where the owner sees it; cleared when a retry's check passes.
+        merge_appr.payload = with_policy_note(merge_appr.payload, None if allowed else why)
         if not allowed:
             logger.info("Auto-merge skipped for %s: %s", driver_name, why)
             return
@@ -556,6 +559,8 @@ class ApprovalService:
         # Never the PR approval's execution claim: that is its own attempt, and
         # a copy would leave the new merge approval "being applied" for good.
         pr_payload = {k: v for k, v in (pr_approval.payload or {}).items() if k != "execution"}
+        # Nor why opening was not automatic: the merge gets its own decision.
+        pr_payload = with_policy_note(pr_payload, None)
         fields = merge_approval_fields(pr_payload)
         merge = Approval(
             tenant_id=pr_approval.tenant_id,
