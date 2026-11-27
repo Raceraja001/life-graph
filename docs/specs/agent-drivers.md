@@ -449,7 +449,7 @@ LIFE_GRAPH_CONCURRENT_TASKS_PER_TENANT=5
 ## Phase 3a (2026-11-27): Codex and Gemini CLI drivers
 
 > **Status: Built, fixture-tested.** `drivers/codex.py`, `drivers/gemini.py`, shared
-> `drivers/cli_run.py` (host run + detection) and `drivers/cli_failure.py` (failure
+> `drivers/cli_driver.py` (the common dispatch flow), `drivers/cli_run.py` (host run + detection) and `drivers/cli_failure.py` (failure
 > classification). Both drivers are **off by default** and have not yet run against a
 > signed-in CLI: on the workstation both CLIs were signed out on 2026-11-27, so the event
 > parsers are tested against fixtures built from the CLIs' own event definitions, not
