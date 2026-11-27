@@ -33,7 +33,8 @@ over 30 days old or a failed read give ``insufficient`` and no changes, never
 items only; its additions are ``newly_relevant``.
 
 Change kinds (:data:`PRIORITY`): additions (``added``), removals
-(``deleted``, ``rejected``, ``archived``, ``expired``, ``discarded``),
+(``deleted``, ``rejected``, ``archived``, ``expired``, ``discarded``,
+``disputed``),
 transitions (``superseded``, ``confirmed``, ``edited``, ``decision_status``,
 ``decision_superseded``, ``intention_completed``, ``intention_expired``,
 ``intention_dismissed``), approaching or due (``decision_review_due``,
@@ -41,7 +42,10 @@ transitions (``superseded``, ``confirmed``, ``edited``, ``decision_status``,
 ``conflict_resolved``) and staleness (``became_stale``, ``reconfirmed``).
 
 Noise rules, each counted in ``suppressed``: ``hostile`` and ``pending_only``
-subjects are dropped; ``cosmetic`` edits (the fingerprint did not move, only
+subjects are dropped, with one exception: an active memory the owner marked
+wrong in the window ("this memory was wrong", api/jarvis.py, which moves it to
+pending and writes ``properties.disputed.at``) is reported as ``disputed``,
+acknowledged, since the owner did it (D13); ``cosmetic`` edits (the fingerprint did not move, only
 ``updated_at``); ``duplicate`` (one change per kind and ref, a supersession
 chain is one change, ``deleted`` beats every other kind and ``superseded``
 beats ``edited``); ``low_confidence`` (a model-proposed, unconfirmed addition
@@ -120,6 +124,7 @@ PRIORITY = {
     "archived": 0,
     "expired": 0,
     "discarded": 0,
+    "disputed": 0,
     "superseded": 0,
     "decision_superseded": 0,
     "confirmed": 1,
@@ -155,6 +160,7 @@ REASONS = {
     "archived": "status went {before} -> archived",
     "expired": "its valid time ended in the window",
     "discarded": "status went {before} -> discarded",
+    "disputed": "the owner said it was wrong: status went {before} -> pending",
     "superseded": "replaced by a newer record",
     "decision_superseded": "replaced by a newer decision",
     "confirmed": "the owner confirmed it",
@@ -293,6 +299,8 @@ class RowState:
     owner_correction: bool = False
     #: The owner /denied this row (storage/postgres.py deny).
     denied: bool = False
+    #: When the owner marked this memory wrong (properties.disputed.at), else None.
+    disputed_at: datetime | None = None
     decided_at: datetime | None = None
     review_due: datetime | None = None
     completed_at: datetime | None = None
@@ -666,7 +674,10 @@ def _previous_item(p: BaselineItem, run: _Run) -> None:
         run.hold("hostile")
         return
     if r.kind == "memory" and r.status == "pending":
-        run.hold("pending_only")
+        if p.status == "active" and run.within(r.disputed_at):
+            run.add(_disputed(p, r))
+        else:
+            run.hold("pending_only")
         return
     {"memory": _memory, "decision": _decision, "intention": _intention}.get(
         r.kind, lambda *_: None
@@ -674,6 +685,25 @@ def _previous_item(p: BaselineItem, run: _Run) -> None:
     c = run.current.get(p.ref)
     if c is not None:
         _staleness(p, c, r, run)
+
+
+def _disputed(p: BaselineItem, r: RowState) -> ContextChange:
+    """The owner said this active memory was wrong; it is back in review (D13).
+
+    Only the owner's "this memory was wrong" (api/jarvis.py memory_was_wrong)
+    writes ``properties.disputed.at`` as it moves an active memory to pending,
+    so the signal is the marker's time inside the window, not the status
+    alone: any other way back to pending stays ``pending_only``.
+    """
+    return _change(
+        "disputed",
+        p.ref,
+        before={"status": p.status, "fp": p.fp},
+        after={"status": r.status},
+        at=r.disputed_at,
+        origin=p.origin,
+        acknowledged=True,
+    )
 
 
 def _crossed(run: _Run, t: datetime | None, ahead: timedelta) -> bool:
@@ -972,6 +1002,7 @@ def memory_state(m: Any) -> RowState:
     tags = getattr(m, "tags", None) or []
     superseded_at = _ts(props.get("superseded_at"))
     until = _ts(getattr(m, "valid_until", None))
+    disputed = props.get("disputed") if isinstance(props.get("disputed"), dict) else {}
     return RowState(
         ref=f"memory:{m.id}",
         status=str(getattr(m, "status", "") or ""),
@@ -1004,6 +1035,8 @@ def memory_state(m: Any) -> RowState:
             and until is not None
             and abs((until - superseded_at).total_seconds()) < 1
         ),
+        # The owner's "this memory was wrong" (api/jarvis.py memory_was_wrong).
+        disputed_at=_ts(disputed.get("at")),
     )
 
 

@@ -2150,7 +2150,76 @@
    "changes": []
   },
   {
-   "id": "sent-back-to-review",
+   "id": "owner-disputed",
+   "category": "pending",
+   "expect": "detect",
+   "seed": {
+    "memories": [
+     {
+      "key": "a",
+      "content": "the car insurance renews in March"
+     }
+    ]
+   },
+   "previous": [
+    "a"
+   ],
+   "current": [],
+   "mutate": [
+    {
+     "op": "set",
+     "key": "a",
+     "set": {
+      "status": "pending",
+      "disputed_h": -2
+     }
+    }
+   ],
+   "changes": [
+    {
+     "kind": "disputed",
+     "ref": "a",
+     "acknowledged": true
+    }
+   ]
+  },
+  {
+   "id": "owner-disputed-other-conversation",
+   "category": "pending",
+   "expect": "detect",
+   "seed": {
+    "memories": [
+     {
+      "key": "a",
+      "content": "the car insurance renews in March"
+     }
+    ]
+   },
+   "previous": [
+    "a"
+   ],
+   "current": [],
+   "mutate": [
+    {
+     "op": "set",
+     "key": "a",
+     "set": {
+      "status": "pending",
+      "disputed_h": -2
+     }
+    }
+   ],
+   "changes": [
+    {
+     "kind": "disputed",
+     "ref": "a",
+     "acknowledged": true
+    }
+   ],
+   "baseline": "other_conversation"
+  },
+  {
+   "id": "sent-back-to-review-no-marker",
    "category": "pending",
    "expect": "silent",
    "seed": {
@@ -2171,6 +2240,34 @@
      "key": "a",
      "set": {
       "status": "pending"
+     }
+    }
+   ],
+   "changes": []
+  },
+  {
+   "id": "disputed-before-the-window",
+   "category": "pending",
+   "expect": "silent",
+   "seed": {
+    "memories": [
+     {
+      "key": "a",
+      "content": "the car insurance renews in March"
+     }
+    ]
+   },
+   "previous": [
+    "a"
+   ],
+   "current": [],
+   "mutate": [
+    {
+     "op": "set",
+     "key": "a",
+     "set": {
+      "status": "pending",
+      "disputed_h": -30
      }
     }
    ],

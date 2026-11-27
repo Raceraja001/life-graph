@@ -15,9 +15,11 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, text
 
 from life_graph.core.tenant import tenant_scope
+from life_graph.main import app
 from life_graph.models.db import AgentSession, AgentTask, Approval, Decision, Intention, Memory
 from life_graph.services.memory import snapshot
 from life_graph.services.memory.changes import (
@@ -442,5 +444,59 @@ async def test_a_memory_used_since_the_last_turn_is_not_an_edit():
         assert result.insufficient is False
         assert result.changes == ()
         assert "cosmetic" not in dict(result.suppressed)
+    finally:
+        await _cleanup(tenant)
+
+
+@skip_on_db_error
+async def test_the_owners_this_was_wrong_is_reported_as_disputed():
+    """D13: through the real endpoint, so the signal is what it really writes."""
+    tenant = _tenant("dispute")
+    try:
+        wrong = _mem(tenant, "the car insurance renews in March")
+        other = _mem(tenant, "the school bus leaves at 7:10")
+        await _add(wrong, other)
+        conv = await _conversation(tenant)
+        t = NOW - timedelta(hours=1)
+        prev = AgentTask(
+            id=uuid.uuid4(),
+            tenant_id=tenant,
+            agent_name="jarvis",
+            status="completed",
+            session_id=conv,
+            input={"message": "x"},
+            result={
+                "response": "ok",
+                "trace": {
+                    "context_snapshot": _compact(t, [wrong, other]),
+                    "memories": [{"id": str(wrong.id)}],
+                },
+            },
+            created_at=t,
+        )
+        await _add(prev)
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            headers={"X-Tenant-ID": tenant, "X-User-ID": "ctx-user"},
+        ) as client:
+            resp = await client.post(
+                f"/api/v1/jarvis/turns/{prev.id}/memories/{wrong.id}/wrong",
+                json={"note": "it renews in April"},
+            )
+        assert resp.status_code == 200, resp.text
+        # Another way back to pending, with no marker: still dropped.
+        async with async_session() as s:
+            (await s.get(Memory, other.id)).status = "pending"
+            await s.commit()
+        later = datetime.now(UTC)
+        current = await _turn(tenant, conv, at=later)
+        with tenant_scope(tenant):
+            result = await detect(_snap_of([], later), current.id, now=later)
+        assert [(c.kind, c.ref, c.acknowledged) for c in result.changes] == [
+            ("disputed", f"memory:{wrong.id}", True)
+        ]
+        assert dict(result.suppressed) == {"pending_only": 1}
+        assert "April" not in json.dumps(result.trace())
     finally:
         await _cleanup(tenant)

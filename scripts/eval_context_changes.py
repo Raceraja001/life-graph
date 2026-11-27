@@ -78,6 +78,7 @@ AS_OF_RECOMPUTE = {
     "archived": "only with a named reviewer",
     "expired": "in theory",
     "discarded": "partly",
+    "disputed": "no",
     "superseded": "partly",
     "confirmed": "no",
     "edited": "no",
@@ -139,6 +140,10 @@ def _memory_props(spec: dict[str, Any], now: datetime, turns: dict[str, str]) ->
         props[ev.OWNER_CONFIRMED] = {"by": "owner", "at": now.isoformat()}
     if spec.get("task") in turns:
         props["task_id"] = turns[spec["task"]]
+    if "disputed_h" in spec:
+        # What api/jarvis.py memory_was_wrong merges in (D13).
+        at = _hours(now, spec["disputed_h"]).isoformat()
+        props["disputed"] = {"at": at, "task_id": None, "note": None}
     return props
 
 
@@ -280,7 +285,7 @@ class World:
             return
         fields = dict(op.get("set") or {})
         for name, value in _timed(fields, self.now).items():
-            if name != "superseded_at":  # a memory property, set below
+            if name not in ("superseded_at", "disputed"):  # memory properties, set below
                 setattr(row, name, value)
         for name, value in fields.items():
             if name.endswith("_h") or name in ("review", "owner_confirmed", "task"):
@@ -291,7 +296,8 @@ class World:
                 value = {**(row.properties or {}), **value}
             setattr(row, name, value)
         if self.kind[key] == "memory" and any(
-            k in fields for k in ("review", "owner_confirmed", "task", "superseded_at_h")
+            k in fields
+            for k in ("review", "owner_confirmed", "task", "superseded_at_h", "disputed_h")
         ):
             extra = _memory_props(fields, self.now, self.turns)
             row.properties = {**(row.properties or {}), **extra}
