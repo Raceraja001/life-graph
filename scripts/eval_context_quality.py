@@ -447,6 +447,29 @@ def _leaks(snap: Any, other: World, tokens: list[str]) -> list[str]:
     return found
 
 
+def _current_at_as_of(q: dict[str, Any], world: World, keys: set[str]) -> set[str]:
+    """Superseded records that were still true at the question's ``as_of_d``.
+
+    The gold ``temporal`` label describes *now*. A question about an earlier
+    date (``as_of_d``) may rightly see a record replaced only later: its
+    successor was created after ``as_of_d``. Such a record is history today but
+    current at that date, so it is not "forbidden as current" for that question.
+    """
+    as_of = q.get("as_of_d")
+    if as_of is None:
+        return set()
+    out: set[str] = set()
+    for k in keys:
+        spec = world.specs.get(k) or {}
+        newer = spec.get("superseded_by")
+        if _gold_origin(world, k).get("temporal") != "superseded" or not newer:
+            continue
+        succ = world.specs.get(newer) or {}
+        if spec.get("created_d", 0) <= as_of < succ.get("created_d", 0):
+            out.add(k)
+    return out
+
+
 def score_snapshot(q: dict[str, Any], snap: Any, world: World, other: World, tokens: list[str]):
     """One question's snapshot against its gold labels (counts, so categories can sum)."""
     key_of = world.ids()
@@ -455,6 +478,7 @@ def score_snapshot(q: dict[str, Any], snap: Any, world: World, other: World, tok
     required, acceptable = set(q.get("required", [])), set(q.get("acceptable", []))
     ok = required | acceptable
     state_bad = {k for k in world.specs if _gold_origin(world, k).get("temporal") in NOT_CURRENT}
+    state_bad -= _current_at_as_of(q, world, state_bad)
     forbidden = (set(q.get("forbidden", [])) | state_bad) - ok
     pairs = _conflict_pairs(snap, key_of)
     in_conflicts = {k for p in pairs for k in p}
