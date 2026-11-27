@@ -128,6 +128,8 @@ async def create_dev_task(
     spec_first: bool = False,
     verify_chain: list[str] | None = None,
     timeout_seconds: int | None = None,
+    depends_on: list[str] | None = None,
+    dedupe_scope: str | None = None,
 ) -> dict[str, Any]:
     """Record a dev task and hand it to the dev-task runner.
 
@@ -139,11 +141,23 @@ async def create_dev_task(
     an ``asyncio.create_task`` in whichever API process got the request, which
     bypassed the lock, the concurrency limits and cancellation.
     ``start=False`` leaves it for its turn (nightly suggestions, plan tasks).
+
+    ``depends_on`` (Phase 4b, services/dev/dependencies.py): dev-task ids of
+    this tenant; the task is held in the queue until each of them finished,
+    and cancelled if one fails. Unknown ids or a cycle raise
+    :class:`~life_graph.services.dev.dependencies.DependencyError` (nothing is
+    created). ``dedupe_scope`` makes the duplicate check per scope (an arena
+    races the same instruction several times on purpose).
     """
+    from life_graph.services.dev import dependencies
+
     task_id = uuid.uuid4()
     title = instruction.strip().splitlines()[0][:200] if instruction.strip() else "Dev task"
-    key = instruction_key(instruction)
+    key = instruction_key(f"{dedupe_scope}\n{instruction}" if dedupe_scope else instruction)
     async with session_factory() as session:
+        held = await dependencies.validate_dependencies(
+            session, tenant_id, depends_on, new_id=str(task_id)
+        )
         # Two identical requests at the same moment both passed the duplicate
         # check before either row existed (audit L12). Serialise them on the
         # dedupe key until this transaction ends: the second then sees the
@@ -206,6 +220,7 @@ async def create_dev_task(
                 "spec_first": spec_first,
                 "verify_chain": list(verify_chain or []),
                 **({"timeout_seconds": int(timeout_seconds)} if timeout_seconds else {}),
+                **(dependencies.hold_properties(held) if held else {}),
             },
             tags=[KIND],
             status_history=[{"status": "queued", "at": datetime.now(UTC).isoformat()}],
@@ -261,6 +276,9 @@ async def _run(
         # the task's own session in its kept worktree instead of dispatching.
         continue_request = props.pop("continue_request", None)
         continuation = dict(props.get("continuation") or {}) if continue_request else None
+        # Phase 4b: a team task starts from earlier workers' hand-offs; a team
+        # worker hands off on its branch; an arena racer is pinned.
+        phase4b = await _phase4b_options(session, task)
         # A previous attempt's stage trail must not decide this attempt's
         # recovery: if this run crashed before its first checkpoint flush,
         # the old "finished, failed" trail would mark it failed unrun.
@@ -332,6 +350,7 @@ async def _run(
                     verify_chain=verify_chain,
                     acceptance_tests=acceptance_tests,
                     timeout_seconds=timeout_seconds,
+                    **phase4b,
                 )
                 await session.commit()
         status = "completed" if result.success else "failed"
@@ -395,6 +414,51 @@ async def _run(
             {"tenant_id": tenant_id, "task_id": task_id, "resume_at": park.get("resume_at"),
              "reason": park.get("reason")},
         )  # fmt: skip
+
+
+async def _phase4b_options(session: AsyncSession, task: AgentTask) -> dict[str, Any]:
+    """The dispatch options a team task or an arena racer runs with ({} otherwise).
+
+    ``seed_from`` names the team tasks whose hand-offs this one starts from,
+    read now (they finished before this task was released): a worker commits
+    them as its starting point, the integration task keeps them uncommitted.
+    """
+    props = task.properties or {}
+    out: dict[str, Any] = {}
+    role = props.get("team_role")
+    if role == "worker":
+        out["handoff"] = "branch"
+    seed_from = [str(t) for t in props.get("seed_from") or []]
+    if role and seed_from:
+        rows = (
+            (
+                await session.execute(
+                    select(AgentTask).where(
+                        AgentTask.tenant_id == task.tenant_id,
+                        _kind_filter(),
+                        AgentTask.id.in_([uuid.UUID(t) for t in seed_from]),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_id = {str(r.id): r for r in rows}
+        handoffs = []
+        for tid in seed_from:  # plan order
+            row = by_id.get(tid)
+            handoff = (((row.result or {}).get("metadata") or {}).get("handoff")) if row else None
+            handoffs.append(
+                handoff if isinstance(handoff, dict) else {"task_id": tid, "branch": "(none)"}
+            )
+        out["seed"] = {"handoffs": handoffs, "commit": role == "worker"}
+    if props.get("driver_pin"):
+        out["driver_pin"] = str(props["driver_pin"])
+    if props.get("account_pin"):
+        out["account_pin"] = str(props["account_pin"])
+    if props.get("arena_id"):
+        out["hold_auto"] = True
+    return out
 
 
 async def _emit_bus(name: str, payload: dict[str, Any]) -> None:
@@ -827,6 +891,35 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "park": props.get("park") if task.status == PARKED else None,
         # Whether continue_task can resume this task's session (no paths here).
         "continuation": _continuation_view(props.get("continuation")),
+        # Phase 4b: what it waits for, which team or arena race it belongs to.
+        "depends_on": list(props.get("depends_on") or []),
+        "dependency_wait": props.get("dependency_wait") if props.get("deps_pending") else None,
+        "dependency_failed": props.get("dependency_failed"),
+        "team": _team_view(props),
+        "arena": (
+            {
+                "id": props.get("arena_id"),
+                "index": props.get("arena_index"),
+                "driver": props.get("driver_pin"),
+                "account_id": props.get("account_pin"),
+            }
+            if props.get("arena_id")
+            else None
+        ),  # fmt: skip
+        "handoff": metadata.get("handoff"),
+    }
+
+
+def _team_view(props: dict) -> dict | None:
+    """A team task's place in its parallel plan (no paths)."""
+    role = props.get("team_role")
+    if not role:
+        return None
+    return {
+        "group_id": props.get("plan_group_id"),
+        "role": role,
+        "files": list(props.get("team_files") or []),
+        "seed_from": list(props.get("seed_from") or []),
     }
 
 
@@ -1111,6 +1204,9 @@ async def _plan_gate(session: AsyncSession, task: AgentTask) -> tuple[str, Agent
     """('ready' | 'wait' | 'blocked', predecessor, predecessor_stage)."""
     props = task.properties or {}
     group, index = props.get("plan_group_id"), props.get("plan_task_index")
+    if props.get("team_role"):
+        # A parallel plan's task (Phase 4b) waits on its depends_on instead.
+        return "ready", None, ""
     if not group or not isinstance(index, int) or index <= 1:
         return "ready", None, ""
     prev = (
@@ -1191,6 +1287,23 @@ async def _running_counts(session: AsyncSession) -> tuple[dict, dict]:
     return tenant, project
 
 
+async def _running_team_workers(session: AsyncSession) -> dict[str, int]:
+    """Running workers per parallel plan (plan_group_id)."""
+    group = AgentTask.properties["plan_group_id"].astext
+    rows = (
+        await session.execute(
+            select(group, func.count(AgentTask.id))
+            .where(
+                _kind_filter(),
+                AgentTask.status == "running",
+                AgentTask.properties["team_role"].astext == "worker",
+            )
+            .group_by(group)
+        )
+    ).all()
+    return {str(g): int(n) for g, n in rows if g}
+
+
 async def claim_next_queued(
     session_factory: async_sessionmaker[AsyncSession],
     *,
@@ -1260,6 +1373,9 @@ async def claim_next_queued(
                         _kind_filter(),
                         AgentTask.status == "queued",
                         AgentTask.properties["run_mode"].astext == QUEUE_MODE,
+                        # Held until its dependencies finished (Phase 4b):
+                        # released by dependencies.release_dependencies.
+                        AgentTask.properties["deps_pending"].astext.is_(None),
                         *not_full,
                     )
                     # start_now first (IS NULL sorts false first), then oldest.
@@ -1283,10 +1399,20 @@ async def claim_next_queued(
         # A paused tenant's tasks wait in the queue (start_now ones too): the
         # kill switch stops new agent runs, and resuming lets them run.
         paused = {t for t in {c.tenant_id for c in candidates} if await autonomy_stopped(t)}
+        team_running = (
+            await _running_team_workers(session)
+            if any((c.properties or {}).get("team_role") == "worker" for c in candidates)
+            else {}
+        )
         for task in candidates:
             props = task.properties or {}
             if task.tenant_id in paused:
                 continue
+            if props.get("team_role") == "worker":
+                # A parallel plan runs at most team_max_parallel workers at once.
+                group = str(props.get("plan_group_id"))
+                if team_running.get(group, 0) >= max(1, int(props.get("team_max_parallel") or 1)):
+                    continue
             if (
                 tenant_wip.get(task.tenant_id, 0) >= MAX_WIP_PER_TENANT
                 or project_wip.get((task.tenant_id, task.project_id), 0) >= MAX_WIP_PER_PROJECT
@@ -1301,7 +1427,9 @@ async def claim_next_queued(
                 task.properties = {**_without(props, "waiting"), "lease": lease}
                 claimed = task
                 break
-            if not allow_unattended and not props.get("interactive"):
+            # A parallel plan's tasks may run beside other unattended work: the
+            # team's own max_parallel and the WIP limits bound them instead.
+            if not allow_unattended and not props.get("interactive") and not props.get("team_role"):
                 continue
             gate, prev, stage = await _plan_gate(session, task)
             if gate == "wait":

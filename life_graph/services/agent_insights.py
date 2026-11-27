@@ -29,6 +29,7 @@ from life_graph.services.dev.tasks import (
     driver_of,
     serialize,
 )
+from life_graph.services.dev.teams import team_view
 from life_graph.services.dev.trajectories import list_steps
 
 if TYPE_CHECKING:
@@ -161,11 +162,16 @@ async def get_plan(session: AsyncSession, tenant_id: str, plan_id: str) -> dict 
         if c.status == "queued":
             gate, _prev, prev_stage = await _plan_gate(session, c)
             row["gate"] = {"state": gate, "waiting_on_stage": prev_stage or None}
+            if (c.properties or {}).get("deps_pending"):
+                wait = (c.properties or {}).get("dependency_wait") or {}
+                row["gate"] = {"state": "wait", "waiting_on": wait.get("waiting_on") or []}
         if c.status in FAILED:
             row["failure"] = await cause_of(session, tenant_id, c)
         row["acceptance_tests"] = (c.properties or {}).get("acceptance_tests") or []
         tasks.append(row)
     data["tasks"] = tasks
+    # Phase 4b: a parallel plan's workers, their scopes and the integration task.
+    data["team"] = await team_view(session, tenant_id, children, approvals)
     return data
 
 

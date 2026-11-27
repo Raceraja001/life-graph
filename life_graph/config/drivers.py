@@ -106,6 +106,27 @@ class DriverSettings(BaseModel):
     # (or pending PR approval) and it is older than driver_continue_keep_hours.
     driver_continue_enabled: bool = False
     driver_continue_keep_hours: int = 24
+    # Phase 4b (docs/specs/agent-drivers.md, "Phase 4b"): parallel plans. A plan
+    # whose Tasks declare file scopes ("Files: a.py, src/**") runs its
+    # non-overlapping tasks at once, at most this many per plan (also bounded by
+    # the per-project WIP limit and dev_runner_max_concurrency), each ending on
+    # its own branch, then ONE integration task files the single PR approval.
+    # 1 = today's sequential, merge-gated fan-out, unchanged.
+    driver_team_max_parallel: int = 1
+    # PR feedback loop (Phase 4b): for a task whose PR is open and whose
+    # worktree is kept (driver_continue_enabled), read the PR with gh every
+    # poll_minutes and hand new failing checks / review comments / merge
+    # conflicts back to the task as one continue_task round, at most
+    # max_rounds per PR (then "needs you"). Read-only on GitHub.
+    driver_pr_feedback_enabled: bool = False
+    driver_pr_feedback_poll_minutes: int = 10
+    driver_pr_feedback_max_rounds: int = 3
+    driver_pr_feedback_on_failing_checks: bool = True
+    driver_pr_feedback_on_review_comments: bool = True
+    driver_pr_feedback_on_conflicts: bool = True
+    # Arena (Phase 4b): the owner races one instruction on several drivers or
+    # accounts and picks the winner. Off: POST /kernel/drivers/arena is 409.
+    driver_arena_enabled: bool = False
     # A plan approves itself only for a project with auto_approve_plans set,
     # at most this many tasks, and every other rule in services/dev/plan_policy.py.
     auto_plan_max_tasks: int = 3

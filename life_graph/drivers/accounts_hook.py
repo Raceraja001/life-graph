@@ -193,7 +193,12 @@ async def _select(
 
 
 async def preview(
-    driver: str, tenant_id: str, *, unattended: bool = False, now: datetime | None = None
+    driver: str,
+    tenant_id: str,
+    *,
+    unattended: bool = False,
+    now: datetime | None = None,
+    account_id: Any = None,
 ) -> dict | None:
     """What :func:`acquire` would choose, without leasing anything.
 
@@ -201,7 +206,8 @@ async def preview(
     driver has no enabled account (today's path), else ``{state, kind, name,
     budget}`` with state ``selected`` / ``cooling`` / ``over_budget``.
     Raises nothing: an unreadable pool returns ``{"state": "error"}`` (the
-    driver's own acquire then refuses the run).
+    driver's own acquire then refuses the run). *account_id* previews a run
+    pinned to that account (a continuation resumes on its own account).
     """
     if not settings.driver_accounts_enabled:
         return None
@@ -209,7 +215,7 @@ async def preview(
     try:
         async with _sf()() as session:
             sel = await _select(
-                session, tenant_id, driver, account_id=None, unattended=unattended, now=now
+                session, tenant_id, driver, account_id=account_id, unattended=unattended, now=now
             )
     except Exception:  # noqa: BLE001
         logger.debug("%s: account preview failed", driver, exc_info=True)

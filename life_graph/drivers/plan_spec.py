@@ -110,3 +110,59 @@ def _parse_tasks(spec_text: str | None) -> list[str]:
         if text:
             items.append(text)
     return items
+
+
+# Phase 4b (docs/specs/agent-drivers.md): a plan task may declare the files it
+# will change, so tasks that touch different files can run at once. Asked for
+# only when the owner turned parallel plans on (driver_team_max_parallel > 1).
+_FILES_RULE = (
+    "- End each task with the files it will change, as paths or globs relative "
+    'to the repository root, e.g. "Files: life_graph/api/x.py, tests/unit/test_x.py" '
+    'or "Files: src/ui/**". Tasks that touch different files run in parallel.\n'
+)
+
+
+def plan_only_prefix(with_files: bool = False) -> str:
+    """The plan-only prompt prefix; *with_files* adds the ``Files:`` rule."""
+    if not with_files:
+        return _PLAN_ONLY_PREFIX
+    marker = "- Keep tasks few:"
+    return _PLAN_ONLY_PREFIX.replace(marker, _FILES_RULE + marker, 1)
+
+
+# "Files: a.py, src/**" (or "Scope:"), up to the end of the line. A "(AC-1)"
+# after it is not a path.
+_FILES_RE = re.compile(r"(?:^|(?<=[\s(*_]))(?:files?|scope)\s*:\s*\**\s*([^\n]*)", re.IGNORECASE)
+_SCOPE_TOKEN_RE = re.compile(r"^[\w.*?/\-\[\]{}@+~]+$")
+_NOT_A_PATH = frozenset({"and", "or", "none", "n/a", "etc", "-"})
+_MAX_SCOPE_ENTRIES = 50
+
+
+def parse_task_files(item: str | None) -> list[str]:
+    """The file scope a plan task declares (``Files: a.py, src/**``), or ``[]``.
+
+    Several ``Files:`` segments are joined. Backticks, quotes and trailing
+    punctuation are dropped; acceptance-criterion ids (``AC-1``) and words
+    that are not paths are ignored. ``[]`` means "no scope declared", which
+    the scheduler treats as overlapping every other task.
+    """
+    if not item:
+        return []
+    out: list[str] = []
+    for match in _FILES_RE.finditer(item):
+        text = match.group(1)
+        cut = re.search(r"\s\(", text)
+        if cut:
+            text = text[: cut.start()]
+        for raw in re.split(r"[,\s;]+", text):
+            token = raw.strip("`'\"").rstrip(".:)")
+            if (
+                not token
+                or token.lower() in _NOT_A_PATH
+                or re.fullmatch(r"AC-\d+", token, re.IGNORECASE)
+                or not _SCOPE_TOKEN_RE.match(token)
+            ):
+                continue
+            if token not in out:
+                out.append(token[:300])
+    return out[:_MAX_SCOPE_ENTRIES]

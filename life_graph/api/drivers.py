@@ -19,6 +19,7 @@ from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.dev import tasks as _dev_tasks
 from life_graph.services.dev.continuation import ContinueError, continue_task
+from life_graph.services.dev.dependencies import DependencyError
 from life_graph.services.dev.review_stages import latest_per_stage
 from life_graph.storage.database import async_session
 
@@ -328,6 +329,16 @@ class DevTaskCreate(BaseModel):
             "default: the driver's own limit."
         ),
     )
+    depends_on: list[str] | None = Field(
+        None,
+        max_length=20,
+        description=(
+            "Dev-task ids this task waits for (Phase 4b): it stays queued until "
+            "each one's change is waiting for approval, its PR is open or merged, "
+            "or it handed off on its branch; a dependency that fails cancels it. "
+            "Unknown ids or a cycle: 422."
+        ),
+    )
 
 
 @router.post(
@@ -360,19 +371,23 @@ async def create_dev_task(body: DevTaskCreate, request: Request):
             status_code=400,
             detail=f"Persona {body.persona_name!r} has no driver and cannot run dev tasks",
         )
-    task = await dev_tasks.create_dev_task(
-        async_session,
-        tenant_id,
-        instruction=body.instruction,
-        project=project,
-        persona_name=body.persona_name,
-        task_type="plan" if body.plan_only else "code_change",
-        spec_first=body.spec_first or body.plan_only,
-        verify_chain=["no_diff_in_plan"] if body.plan_only else None,
-        start=not body.queue,
-        timeout_seconds=body.timeout_seconds,
-        properties={"requested_by": resolver(request)},
-    )
+    try:
+        task = await dev_tasks.create_dev_task(
+            async_session,
+            tenant_id,
+            instruction=body.instruction,
+            project=project,
+            persona_name=body.persona_name,
+            task_type="plan" if body.plan_only else "code_change",
+            spec_first=body.spec_first or body.plan_only,
+            verify_chain=["no_diff_in_plan"] if body.plan_only else None,
+            start=not body.queue,
+            timeout_seconds=body.timeout_seconds,
+            properties={"requested_by": resolver(request)},
+            **({"depends_on": body.depends_on} if body.depends_on else {}),
+        )
+    except DependencyError as exc:
+        raise HTTPException(status_code=422, detail=f"{exc.code}: {exc}") from exc
     return success_response(data=task)
 
 

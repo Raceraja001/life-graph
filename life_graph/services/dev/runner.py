@@ -196,7 +196,8 @@ class DevTaskRunner:
                 await self._cancel_all()
 
     async def housekeep(self, *, now: float | None = None) -> None:
-        """Release parked tasks that are due; now and then sweep kept worktrees.
+        """Release parked tasks that are due, settle dependencies and teams;
+        now and then sweep kept worktrees.
 
         Never raises: a failure here only delays a resume or a cleanup.
         """
@@ -208,6 +209,18 @@ class DevTaskRunner:
             await dev_tasks.release_parked(self._sf)
         except Exception:
             logger.warning("Releasing parked dev tasks failed", exc_info=True)
+        # Phase 4b: lift the holds whose dependencies finished (or cancel the
+        # ones whose dependency failed), and move parallel plans along.
+        from life_graph.services.dev import dependencies, teams
+
+        try:
+            await teams.reconcile(self._sf)
+        except Exception:
+            logger.warning("Reconciling parallel plans failed", exc_info=True)
+        try:
+            await dependencies.release_dependencies(self._sf)
+        except Exception:
+            logger.warning("Releasing dev-task dependencies failed", exc_info=True)
         clock = asyncio.get_running_loop().time() if now is None else now
         if clock - self._last_sweep < SWEEP_SECONDS and self._last_sweep:
             return
