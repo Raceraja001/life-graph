@@ -808,7 +808,13 @@ class PostgresMemoryStore:
     # ── Touch ─────────────────────────────────────────────────
 
     async def touch(self, memory_id: uuid.UUID) -> None:
-        """Increment access_count and set last_accessed = now()."""
+        """Increment access_count and set last_accessed = now().
+
+        Reading a memory is not editing it, so ``updated_at`` keeps its value.
+        The column's ``onupdate`` would otherwise stamp it, and Stage 2 change
+        detection (services/memory/changes.py) would count a used memory as
+        edited.
+        """
         async with async_session() as session:
             await session.execute(
                 update(Memory)
@@ -819,6 +825,8 @@ class PostgresMemoryStore:
                 .values(
                     access_count=Memory.access_count + 1,
                     last_accessed=datetime.now(UTC),
+                    # Access only, not an edit: keep the stamp ``onupdate`` would move.
+                    updated_at=Memory.updated_at,
                 )
             )
             await session.commit()
@@ -827,7 +835,8 @@ class PostgresMemoryStore:
         """Record an access against several memories in one statement.
 
         Recall surfaces up to five memories at a time; touching them
-        individually would be five round trips for bookkeeping.
+        individually would be five round trips for bookkeeping. Like
+        :meth:`touch`, it leaves ``updated_at`` alone.
 
         Returns the number of rows updated.
         """
@@ -844,6 +853,8 @@ class PostgresMemoryStore:
                 .values(
                     access_count=Memory.access_count + 1,
                     last_accessed=datetime.now(UTC),
+                    # Access only, not an edit: keep the stamp ``onupdate`` would move.
+                    updated_at=Memory.updated_at,
                 )
             )
             await session.commit()
