@@ -106,6 +106,10 @@ class ImpactScorer:
                     .values(
                         impact_score=new_score,
                         impact_confidence=new_confidence,
+                        # Scoring how useful a recalled memory was is not an
+                        # edit of it: keep the stamp the column's onupdate
+                        # would move (Stage 2 would count it as an edit).
+                        updated_at=Memory.updated_at,
                     )
                 )
                 await db.execute(update_stmt)

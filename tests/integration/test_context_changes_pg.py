@@ -30,6 +30,7 @@ from life_graph.services.memory.changes import (
 )
 from life_graph.services.memory.snapshot import DEFAULT_BUDGET, ContextSnapshot
 from life_graph.storage.database import async_session
+from life_graph.storage.postgres import PostgresMemoryStore
 from tests.integration.conftest import skip_on_db_error
 
 NOW = datetime.now(UTC)
@@ -409,5 +410,37 @@ async def test_a_temporary_chat_is_never_a_baseline():
         with tenant_scope(tenant):
             found = await find_baseline(current.id)
         assert found.baseline is not None and found.baseline.task_id == str(plain.id)
+    finally:
+        await _cleanup(tenant)
+
+
+@skip_on_db_error
+async def test_a_memory_used_since_the_last_turn_is_not_an_edit():
+    """D9: touch / touch_many count the access but leave updated_at alone,
+    so a memory recalled last turn is not a ``cosmetic`` edit this turn."""
+    tenant = _tenant("used")
+    try:
+        used = _mem(tenant, "the team standup is at 9:30")
+        stamp = used.updated_at
+        await _add(used)
+        conv = await _conversation(tenant)
+        t = NOW - timedelta(hours=1)
+        await _turn(tenant, conv, at=t, compact=_compact(t, [used]))
+        store = PostgresMemoryStore()
+        with tenant_scope(tenant):
+            assert await store.touch_many([used.id]) == 1
+            await store.touch(used.id)
+        async with async_session() as s:
+            live = await s.get(Memory, used.id)
+        assert live.access_count == 2 and live.last_accessed is not None
+        assert live.updated_at == stamp
+        later = datetime.now(UTC)
+        current = await _turn(tenant, conv, at=later - timedelta(seconds=1))
+        snap = _snap_of([live], later)
+        with tenant_scope(tenant):
+            result = await detect(snap, current.id, now=later)
+        assert result.insufficient is False
+        assert result.changes == ()
+        assert "cosmetic" not in dict(result.suppressed)
     finally:
         await _cleanup(tenant)
