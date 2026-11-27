@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
+Generated `2026-11-27 19:05 UTC` from `race/automation-teams` @ `b642f876`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 
 | | |
 |---|---|
-| HTTP operations | **423** across 362 paths, 48 tags |
-| Database tables | **92** |
-| Migrations | **64** (head: `064_agent_accounts`) |
-| Event types | **84** |
+| HTTP operations | **429** across 368 paths, 48 tags |
+| Database tables | **94** |
+| Migrations | **65** (head: `066_dev_task_groups_pr_watches`) |
+| Event types | **95** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
-| Scheduled jobs | **36** |
-| Config settings | **351** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6406** in 674 files |
+| Scheduled jobs | **37** |
+| Config settings | **359** (prefix `LIFE_GRAPH_`) |
+| Test functions | **6484** in 680 files |
 | Dashboard pages | **23** |
-| Python | 557 files, 161,198 lines |
+| Python | 567 files, 164,447 lines |
 
 ---
 
 ## HTTP API
 
-423 operations, grouped by OpenAPI tag.
+429 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -79,6 +79,47 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 | GET | `/api/v1/study/due` | Due Cards |
 | POST | `/api/v1/study/generate` | Generate Cards |
 | GET | `/api/v1/study/progress` | Study Progress |
+
+### `drivers` — 36
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/drivers` | List registered drivers |
+| POST | `/api/v1/kernel/drivers/arena` | Start an arena race (owner) |
+| GET | `/api/v1/kernel/drivers/arena/{arena_id}` | An arena race, its racers side by side |
+| POST | `/api/v1/kernel/drivers/arena/{arena_id}/pick` | Pick the arena's winner (owner) |
+| GET | `/api/v1/kernel/drivers/compute` | Where queued coding work runs right now: local GPU, free cloud model, or later |
+| PUT | `/api/v1/kernel/drivers/compute/presence` | Set the active/away switch (auto clears it) |
+| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
+| GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
+| GET | `/api/v1/kernel/drivers/night-shift` | What the coding engines did: merged, waiting for you and why, failed and why |
+| GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
+| GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
+| GET | `/api/v1/kernel/drivers/pr-watch` | Watched pull requests of the PR feedback loop |
+| POST | `/api/v1/kernel/drivers/pr-watch/poll` | Check every watched PR now (owner) |
+| POST | `/api/v1/kernel/drivers/pr-watch/{task_id}/stop` | Stop watching a task's PR (owner) |
+| POST | `/api/v1/kernel/drivers/projects/bootstrap` | Idea to app: scaffold, version, register and optionally plan a new app |
+| POST | `/api/v1/kernel/drivers/projects/{project_id}/findings` | Report a production failure; queues a fix task (de-duplicated) |
+| GET | `/api/v1/kernel/drivers/scorecards` | Per driver and model: success, bounces, merges, cost |
+| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
+| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
+| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
+| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
+| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
+| GET | `/api/v1/kernel/drivers/tasks/parked` | Dev tasks parked until a plan limit resets |
+| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/cancel` | Cancel a queued or running dev task |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/continue` | Continue a finished dev task in its own session and worktree (owner) |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/events` | The task's live session events after a sequence number (long-poll) |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/events/stream` | The task's live session as Server-Sent Events (resumes from Last-Event-ID) |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/resume` | Resume a parked dev task now, without waiting for its reset (owner) |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/review-stages` | Every review-stage result of a dev task, and the latest per stage |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/risk` | The risk report of a dev task's change |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
+| GET | `/api/v1/kernel/drivers/templates` | App templates a new project can start from |
 
 ### `autonomy` — 34
 
@@ -157,41 +198,6 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 | GET | `/api/v1/jarvis/turns/{task_id}/trace` | How one reply was made: memories, tools, where it ran |
 | POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
 | POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
-
-### `drivers` — 30
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/kernel/drivers` | List registered drivers |
-| GET | `/api/v1/kernel/drivers/compute` | Where queued coding work runs right now: local GPU, free cloud model, or later |
-| PUT | `/api/v1/kernel/drivers/compute/presence` | Set the active/away switch (auto clears it) |
-| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
-| GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
-| GET | `/api/v1/kernel/drivers/night-shift` | What the coding engines did: merged, waiting for you and why, failed and why |
-| GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
-| GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
-| POST | `/api/v1/kernel/drivers/projects/bootstrap` | Idea to app: scaffold, version, register and optionally plan a new app |
-| POST | `/api/v1/kernel/drivers/projects/{project_id}/findings` | Report a production failure; queues a fix task (de-duplicated) |
-| GET | `/api/v1/kernel/drivers/scorecards` | Per driver and model: success, bounces, merges, cost |
-| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
-| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
-| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
-| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
-| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
-| GET | `/api/v1/kernel/drivers/tasks/parked` | Dev tasks parked until a plan limit resets |
-| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
-| POST | `/api/v1/kernel/drivers/tasks/{task_id}/cancel` | Cancel a queued or running dev task |
-| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
-| POST | `/api/v1/kernel/drivers/tasks/{task_id}/continue` | Continue a finished dev task in its own session and worktree (owner) |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/events` | The task's live session events after a sequence number (long-poll) |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/events/stream` | The task's live session as Server-Sent Events (resumes from Last-Event-ID) |
-| POST | `/api/v1/kernel/drivers/tasks/{task_id}/resume` | Resume a parked dev task now, without waiting for its reset (owner) |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/review-stages` | Every review-stage result of a dev task, and the latest per stage |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/risk` | The risk report of a dev task's change |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
-| GET | `/api/v1/kernel/drivers/templates` | App templates a new project can start from |
 
 ### `kernel` — 30
 
@@ -701,7 +707,7 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 
 ## Database tables
 
-92 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+94 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -728,6 +734,7 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 | `conversations` | 6 | ✓ | `027_conversations` |
 | `cross_system_syncs` | 20 | ✓ | `017_agent_networks` |
 | `dev_task_events` | 9 | ✓ | `060_dev_task_events` |
+| `dev_task_groups` | 10 | ✓ | `066_dev_task_groups_pr_watches` |
 | `device_pairing_codes` | 5 | ✓ | `052_devices` |
 | `devices` | 7 | ✓ | `052_devices` |
 | `documents` | 15 | ✓ | `045_documents` |
@@ -766,6 +773,7 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 | `notifications` | 14 | ✓ | `013_projects_notifications` |
 | `optimization_runs` | 28 | ✓ | `015_self_improving` |
 | `page_monitors` | 17 | ✓ | `047_page_monitors` |
+| `pr_watches` | 15 | ✓ | `066_dev_task_groups_pr_watches` |
 | `preferences` | 21 | ✓ | `014_personal_ai` |
 | `procedures` | 14 | ✓ | `—` |
 | `projects` | 18 | ✓ | `013_projects_notifications` |
@@ -802,9 +810,9 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 
 ## Events
 
-84 event types on the async EventBus.
+95 event types on the async EventBus.
 
-**Task** (16) — `agent:task:cancelled` · `agent:task:child_failed` · `agent:task:children_complete` · `agent:task:completed` · `agent:task:delegated` · `agent:task:failed` · `agent:task:handoff` · `driver:task:bounced` · `driver:task:continued` · `driver:task:parked` · `driver:task:unparked` · `kernel:task:cancelled` · `kernel:task:completed` · `kernel:task:failed` · `kernel:task:spawned` · `kernel:task:timeout`
+**Task** (18) — `agent:task:cancelled` · `agent:task:child_failed` · `agent:task:children_complete` · `agent:task:completed` · `agent:task:delegated` · `agent:task:failed` · `agent:task:handoff` · `driver:task:bounced` · `driver:task:continued` · `driver:task:dependencies_met` · `driver:task:dependency_failed` · `driver:task:parked` · `driver:task:unparked` · `kernel:task:cancelled` · `kernel:task:completed` · `kernel:task:failed` · `kernel:task:spawned` · `kernel:task:timeout`
 
 **Memory** (7) — `memory:approved` · `memory:created` · `memory:deleted` · `memory:pending` · `memory:rejected` · `memory:retrieved` · `memory:updated`
 
@@ -812,11 +820,17 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 
 **Decision** (4) — `capture:decision:candidate` · `judgment:decision:challenged` · `judgment:decision:recorded` · `judgment:decision:superseded`
 
+**Team** (4) — `driver:team:awaiting_approval` · `driver:team:failed` · `driver:team:integrating` · `driver:team:started`
+
 **Workflow** (4) — `agent:workflow:completed` · `agent:workflow:failed` · `agent:workflow:started` · `agent:workflow:step_completed`
 
 **Approval** (3) — `approval:requested` · `approval:resolved` · `driver:approval:filed`
 
+**Pr** (3) — `driver:pr_watch:feedback` · `driver:pr_watch:needs_you` · `driver:pr_watch:stopped`
+
 **Preference** (3) — `preference:challenged` · `preference:created` · `preference:updated`
+
+**Arena** (2) — `driver:arena:created` · `driver:arena:decided`
 
 **Autonomous** (2) — `autonomy:action:completed` · `autonomy:action:pending`
 
@@ -935,7 +949,7 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 
 ## Scheduled jobs
 
-36 ARQ cron jobs (times are UTC).
+37 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -946,6 +960,7 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 | `deliver_queued_watcher_notifications` | daily at (settings.brief_hour_utc - 1) % 24:40 | `life_graph.workers.watcher_queue.deliver_queued_watcher_notifications` |
 | `distill_idle_conversations` | every 15 min | `life_graph.workers.distill.distill_idle_conversations` |
 | `failure_pattern_mining` | 02:30 | `life_graph.workers.tasks.failure_pattern_mining` |
+| `poll_pr_feedback` | hourly at :02,:07,:12,:17,:22,:27,:32,:37,:42,:47,:52,:57 | `life_graph.workers.tasks.poll_pr_feedback` |
 | `purge_connector_items` | 04:40 | `life_graph.workers.tasks.purge_connector_items` |
 | `purge_telegram_pairing_codes` | 04:30 | `life_graph.workers.telegram.purge_telegram_pairing_codes` |
 | `purge_temporary_chats` | hourly at :27 | `life_graph.workers.temporary_chats.purge_temporary_chats` |
@@ -1062,9 +1077,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-64 revisions, head `064_agent_accounts`.
+65 revisions, head `066_dev_task_groups_pr_watches`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies` · `064_agent_accounts`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies` · `064_agent_accounts` · `066_dev_task_groups_pr_watches`
 
 ---
 
@@ -1074,16 +1089,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 517 | 5358 |
+| `tests/unit/` | 523 | 5436 |
 | `tests/integration/` | 156 | 1036 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **674** | **6406** |
+| **total** | **680** | **6484** |
 
 ---
 
 ## Configuration
 
-351 settings, all overridable by environment variable.
+359 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1274,6 +1289,14 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_ACCOUNTS_SUBSCRIPTION_MAX_SHARE` | `0.9` |
 | `LIFE_GRAPH_DRIVER_CONTINUE_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_CONTINUE_KEEP_HOURS` | `24` |
+| `LIFE_GRAPH_DRIVER_TEAM_MAX_PARALLEL` | `1` |
+| `LIFE_GRAPH_DRIVER_PR_FEEDBACK_ENABLED` | `False` |
+| `LIFE_GRAPH_DRIVER_PR_FEEDBACK_POLL_MINUTES` | `10` |
+| `LIFE_GRAPH_DRIVER_PR_FEEDBACK_MAX_ROUNDS` | `3` |
+| `LIFE_GRAPH_DRIVER_PR_FEEDBACK_ON_FAILING_CHECKS` | `True` |
+| `LIFE_GRAPH_DRIVER_PR_FEEDBACK_ON_REVIEW_COMMENTS` | `True` |
+| `LIFE_GRAPH_DRIVER_PR_FEEDBACK_ON_CONFLICTS` | `True` |
+| `LIFE_GRAPH_DRIVER_ARENA_ENABLED` | `False` |
 | `LIFE_GRAPH_AUTO_PLAN_MAX_TASKS` | `3` |
 | `LIFE_GRAPH_POST_DEPLOY_SMOKE_TIMEOUT` | `300` |
 | `LIFE_GRAPH_BOOTSTRAP_ROOT` | `''` |
