@@ -1,0 +1,90 @@
+{
+  "about": "Floors for the hashing arm, recorded from a real run: what the context layer does today, weak categories included. Not a target.",
+  "arm": "hashing",
+  "by_category": {
+    "O": {
+      "precision": 0.3158,
+      "recall": 0.3571,
+      "current_vs_historical": 0.7727,
+      "temporal": 0.6071,
+      "relationship_both_ends": 0.5,
+      "conflict_recall": 0.0,
+      "provenance_coverage": 1.0,
+      "origin_accuracy": 1.0,
+      "field_accuracy": 0.2857,
+      "abstention_accuracy": 0.9
+    },
+    "A": {
+      "precision": 0.1818,
+      "recall": 0.625,
+      "provenance_coverage": 1.0,
+      "origin_accuracy": 1.0,
+      "field_accuracy": 1.0,
+      "abstention_accuracy": 1.0
+    },
+    "B": {
+      "precision": 0.2982,
+      "recall": 0.8571,
+      "current_vs_historical": 0.8333,
+      "temporal": 0.8333,
+      "relationship_both_ends": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "origin_accuracy": 1.0,
+      "field_accuracy": 0.0,
+      "abstention_accuracy": 1.0
+    },
+    "C": {
+      "precision": 0.2807,
+      "recall": 0.6667,
+      "current_vs_historical": 1.0,
+      "temporal": 1.0,
+      "conflict_recall": 0.5,
+      "provenance_coverage": 1.0,
+      "origin_accuracy": 1.0,
+      "field_accuracy": 1.0,
+      "abstention_accuracy": 1.0
+    },
+    "D": {
+      "precision": 0.2826,
+      "recall": 0.75,
+      "current_vs_historical": 1.0,
+      "temporal": 1.0,
+      "relationship_both_ends": 1.0,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "origin_accuracy": 1.0,
+      "abstention_accuracy": 1.0
+    },
+    "E": {
+      "precision": 0.2432,
+      "recall": 0.8333,
+      "current_vs_historical": 0.8571,
+      "temporal": 0.75,
+      "relationship_both_ends": 1.0,
+      "provenance_coverage": 1.0,
+      "origin_accuracy": 1.0,
+      "abstention_accuracy": 1.0
+    },
+    "F": {
+      "precision": 0.3684,
+      "recall": 0.8,
+      "temporal": 0.0,
+      "relationship_both_ends": 0.6667,
+      "conflict_recall": 1.0,
+      "provenance_coverage": 1.0,
+      "origin_accuracy": 1.0,
+      "abstention_accuracy": 1.0
+    },
+    "G": {
+      "precision": 0.2,
+      "recall": 1.0,
+      "conflict_recall": 0.0,
+      "provenance_coverage": 1.0,
+      "origin_accuracy": 1.0,
+      "field_accuracy": 1.0,
+      "abstention_accuracy": 0.8333
+    }
+  },
+  "change_detection_recall": 0.2857
+}
