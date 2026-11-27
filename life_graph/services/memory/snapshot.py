@@ -71,7 +71,22 @@ Each item (:class:`ContextItem`) carries:
 ``conflicts`` pairs records that disagree, both sides by reference, never
 merged or resolved: a memory and the one it superseded, a pending
 contradiction approval touching an included memory, a decision and the one it
-superseded.
+superseded, and two included memories joined by a typed ``CONTRADICTS`` link
+(``linked_contradiction``; sides in the link's direction, roles ``source`` and
+``target``; one conflict per pair, whichever way the link points).
+
+``relations`` are the other typed links (services/memory/links.py: BECAUSE,
+EVIDENCED_BY, RELATED_TO, SUPERSEDES, LEADS_TO, …) whose both ends are
+included memories: ``{from, to, type, strength}``, references and the link's
+own type and strength only, never content. They are read once, after the
+budget has chosen the items, by tenant (D6,
+docs/audits/2026-11-26-m8-context-quality-evaluation.md). The learned
+``ASSOCIATED`` links are not relations: they already show as the
+``neighbour`` reason. A link to a memory that is not an item (another
+tenant's included: its id is never an item) is never shown. Relations and
+linked contradictions play no part in ``insufficient`` or ``missing``: the
+sufficiency check reads only the items' own words, so a link alone never
+makes a question supported.
 
 ``exclusions`` counts what was held back and why: ``expired`` (valid time
 ended), ``not_yet_valid``, ``superseded``, ``pending_only`` (awaiting review),
@@ -111,8 +126,8 @@ and like the query they are not in the compact (trace) form.
 ``embed`` (the query embedding), ``retrieve`` (retrieve(): search, entity
 links, neighbours, day summaries), ``exclusions`` (the second search),
 ``conflicts`` (supersession and contradiction reads), ``decisions``,
-``intentions`` and ``total``. A stage that did not run is absent. Timings are
-numbers only, never content, and they are not part of the snapshot's identity:
+``intentions``, ``relations`` (the typed-link read) and ``total``. A stage
+that did not run is absent. Timings are numbers only, never content, and they are not part of the snapshot's identity:
 they are left out of equality, and a determinism check must leave them out too
 (:func:`without_timings`).
 
@@ -152,7 +167,7 @@ from life_graph import runtime
 from life_graph.core import evidence as ev
 from life_graph.core.tenant import get_current_tenant_id, tenant_scope
 from life_graph.core.trust import is_excluded_from_agents
-from life_graph.models.db import Approval, Decision, Intention, Memory
+from life_graph.models.db import Approval, Decision, Intention, Memory, MemoryLink
 from life_graph.services.memory import retrieval, sufficiency
 from life_graph.services.memory.context import search_text
 from life_graph.storage.database import async_session
@@ -229,8 +244,16 @@ TIMING_STAGES = (
     "conflicts",
     "decisions",
     "intentions",
+    "relations",
     "total",
 )
+
+#: The learned link type: shown as the ``neighbour`` reason, never as a relation.
+LEARNED_LINK = "ASSOCIATED"
+#: The typed link that is a disagreement: a conflict, not a relation.
+CONTRADICTS = "CONTRADICTS"
+#: Conflict kind of two included memories joined by a CONTRADICTS link.
+LINKED_CONTRADICTION = "linked_contradiction"
 
 #: Format of :meth:`ContextSnapshot.compact` (2: reference_time, fp, rec).
 COMPACT_FORMAT = 2
@@ -338,8 +361,35 @@ class ConflictSide:
 
 
 @dataclass(frozen=True)
+class ContextRelation:
+    """A typed link between two included memories: references, type and strength only."""
+
+    from_ref: SourceRef
+    to_ref: SourceRef
+    type: str  # the memory_links link_type (BECAUSE, LEADS_TO, …)
+    strength: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "from": self.from_ref.to_dict(),
+            "to": self.to_ref.to_dict(),
+            "type": self.type,
+            "strength": self.strength,
+        }
+
+    def compact(self) -> dict[str, Any]:
+        return {
+            "from": self.from_ref.key(),
+            "to": self.to_ref.key(),
+            "type": self.type,
+            "strength": self.strength,
+        }
+
+
+@dataclass(frozen=True)
 class ContextConflict:
-    kind: str  # supersession | pending_contradiction | decision_supersession
+    # supersession | pending_contradiction | decision_supersession | linked_contradiction
+    kind: str
     sides: tuple[ConflictSide, ...]
     approval_id: str | None = None
 
@@ -371,6 +421,8 @@ class ContextSnapshot:
     abstention_reason: str | None = None
     #: The question's terms (and words of terms) no included item supports.
     missing: tuple[str, ...] = ()
+    #: Typed links between included memories, CONTRADICTS and ASSOCIATED aside.
+    relations: tuple[ContextRelation, ...] = ()
     #: (stage, milliseconds) in TIMING_STAGES order; not part of equality.
     timings_ms: tuple[tuple[str, float], ...] = field(default=(), compare=False)
 
@@ -387,6 +439,7 @@ class ContextSnapshot:
             },
             "items": [i.to_dict() for i in self.items],
             "conflicts": [c.to_dict() for c in self.conflicts],
+            "relations": [r.to_dict() for r in self.relations],
             "exclusions": dict(self.exclusions),
             "insufficient": self.insufficient,
             "abstain": self.abstain,
@@ -407,7 +460,9 @@ class ContextSnapshot:
         (services/memory/changes.py); none of it is record text. ``due`` per
         item and ``abstain`` / ``abstention_reason`` were added later without
         a new format number: a reader of format 2 ignores keys it does not
-        know, and an older trace simply lacks them.
+        know, and an older trace simply lacks them. ``relations`` (refs, link
+        type and strength) and the ``linked_contradiction`` conflict kind came
+        the same way.
         """
         return {
             "v": COMPACT_FORMAT,
@@ -439,6 +494,7 @@ class ContextSnapshot:
                 }
                 for c in self.conflicts
             ],
+            "relations": [r.compact() for r in self.relations],
             "exclusions": dict(self.exclusions),
             "insufficient": self.insufficient,
             "abstain": self.abstain,
@@ -990,6 +1046,78 @@ def _dedupe_conflicts(conflicts: list[ContextConflict]) -> tuple[ContextConflict
     return tuple(sorted(seen.values(), key=_conflict_key))
 
 
+async def _typed_links(tenant_id: str, ids: list[uuid.UUID]) -> list[tuple[Any, ...]]:
+    """(source id, target id, link type, strength) of this tenant's typed links
+    whose both ends are in *ids*; the learned ASSOCIATED links left out. One query."""
+    if len(ids) < 2:
+        return []
+    stmt = (
+        select(
+            MemoryLink.source_memory_id,
+            MemoryLink.target_memory_id,
+            MemoryLink.link_type,
+            MemoryLink.strength,
+        )
+        .where(MemoryLink.tenant_id == tenant_id)
+        .where(MemoryLink.source_memory_id.in_(ids), MemoryLink.target_memory_id.in_(ids))
+        .where(MemoryLink.link_type != LEARNED_LINK)
+        .order_by(MemoryLink.source_memory_id, MemoryLink.target_memory_id, MemoryLink.link_type)
+    )
+    async with async_session() as s:
+        return [tuple(r) for r in (await s.execute(stmt)).all()]
+
+
+def links_to_context(
+    rows: list[tuple[Any, ...]], items: list[ContextItem]
+) -> tuple[list[ContextRelation], list[ContextConflict]]:
+    """(relations, linked contradictions) from typed-link *rows* between *items*.
+
+    A row whose ends are not both memory items, a self-link and an ASSOCIATED
+    row are dropped here too, whatever the read returned. CONTRADICTS becomes
+    one ``linked_contradiction`` conflict per pair (both sides, nothing
+    merged); every other type is a relation. Sorted, so the same links give
+    the same snapshot whatever order they were read in.
+    """
+    status_of = {i.source_ref.id: i.status for i in items if i.source_ref.kind == "memory"}
+    relations: dict[tuple[str, str, str], ContextRelation] = {}
+    conflicts: dict[frozenset[str], ContextConflict] = {}
+    for source, target, link_type, strength in sorted(rows, key=lambda r: tuple(map(str, r[:3]))):
+        a, b, kind = str(source), str(target), str(link_type)
+        if a == b or a not in status_of or b not in status_of or kind == LEARNED_LINK:
+            continue
+        if kind == CONTRADICTS:
+            conflicts.setdefault(
+                frozenset((a, b)),
+                ContextConflict(
+                    LINKED_CONTRADICTION,
+                    (
+                        ConflictSide(SourceRef("memory", a), "source", status_of[a]),
+                        ConflictSide(SourceRef("memory", b), "target", status_of[b]),
+                    ),
+                ),
+            )
+            continue
+        relations.setdefault(
+            (a, b, kind),
+            ContextRelation(
+                SourceRef("memory", a),
+                SourceRef("memory", b),
+                kind,
+                round(float(strength or 0.0), 4),
+            ),
+        )
+    return [relations[k] for k in sorted(relations)], list(conflicts.values())
+
+
+async def _relations(parts: _Parts, tenant_id: str, kept: list[ContextItem]) -> None:
+    """The typed links between the memories the budget kept (D6)."""
+    ids = [uuid.UUID(i.source_ref.id) for i in kept if i.source_ref.kind == "memory"]
+    rows = await _typed_links(tenant_id, ids)
+    relations, conflicts = links_to_context(rows, kept)
+    parts.relations += relations
+    parts.conflicts += conflicts
+
+
 # ── Assembly ──────────────────────────────────────────────────
 
 
@@ -997,6 +1125,7 @@ def _dedupe_conflicts(conflicts: list[ContextConflict]) -> tuple[ContextConflict
 class _Parts:
     items: list[ContextItem] = field(default_factory=list)
     conflicts: list[ContextConflict] = field(default_factory=list)
+    relations: list[ContextRelation] = field(default_factory=list)
     excluded: dict[str, int] = field(default_factory=dict)
     sources: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -1271,6 +1400,11 @@ async def assemble_context(
             await _decisions(parts, tenant_id, query, ref, as_of, budget)
         with parts.timed("intentions"):
             await _intentions(parts, tenant_id, query, ref, as_of, budget)
+        kept, used, over = apply_budget(parts.items, budget)
+        # Typed links only between what the budget kept: a relation never
+        # points at something the snapshot does not hold.
+        with parts.timed("relations"):
+            await _relations(parts, tenant_id, kept)
     except Exception as exc:  # noqa: BLE001 — a partial view must not pass as context
         logger.warning("Context snapshot: a read failed (%s)", type(exc).__name__)
         return ContextSnapshot(
@@ -1278,7 +1412,6 @@ async def assemble_context(
             explanation="Reading the records failed, so no context was assembled.",
             timings_ms=timings(),
         )
-    kept, used, over = apply_budget(parts.items, budget)
     parts.exclude("over_budget", over)
     suff = check_sufficiency(query, kept, parts)
     return ContextSnapshot(
@@ -1293,6 +1426,7 @@ async def assemble_context(
         sources=tuple(parts.sources),
         abstain=parts.abstain,
         abstention_reason=parts.abstention_reason,
+        relations=tuple(parts.relations),
         timings_ms=timings(),
     )
 
@@ -1347,6 +1481,7 @@ __all__ = [
     "Budget",
     "ContextConflict",
     "ContextItem",
+    "ContextRelation",
     "ContextSnapshot",
     "SourceRef",
     "assemble_context",
