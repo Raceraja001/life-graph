@@ -528,3 +528,164 @@ operator lists it in `driver_host_env_passthrough`.
 - [x] Registration (`drivers/setup.py`), `billing` attribute, selection tiebreak, config flags
 - [x] Unit tests with fixture event streams and a fake CLI binary
 - [ ] Record real fixtures once the owner signs in (`codex login`, `gemini`)
+
+## Phase 3b (2026-11-27): accounts, pool, limits, resume
+
+> **Status: Part 1 built, fixture-tested.** Migration `064_agent_accounts.py`;
+> `services/agent_accounts/` (`catalog`, `env`, `homes`, `identity`, `pool`, `limits`,
+> `service`), `drivers/accounts_hook.py`, `api/agent_accounts.py`; resume paths in
+> `drivers/cli_driver.py`, `codex.py`, `gemini.py`, `claude_code.py`. Everything is **off
+> by default** (`driver_accounts_enabled=false`): with it off, or with no enabled account
+> for a driver, every driver runs on the host's single login exactly as in 3a. No CLI was
+> signed in on 2026-11-27, so no account run, resume or Codex probe has run against a
+> real login; flags were verified with each CLI's `--help` and bundle only. Part 2
+> (re-dispatch on a rate limit, parking, `continue_task`, budget D4) is designed below and
+> not built. Rebuilt from race-app's `AGENT_CONNECTIONS.md`, `AGENT_ACCOUNTS_USAGE.md`,
+> `agents/connections/**` and `agents/limits/**` (the owner's code).
+
+### Requirements
+
+- GIVEN `driver_accounts_enabled` is false WHEN any driver runs THEN the accounts table is
+  never read and the run is unchanged (the hook returns an empty lease).
+- GIVEN it is on and the driver has no **enabled** account THEN the run is unchanged (the
+  owner disabling every account turns that driver's pool off).
+- GIVEN enabled accounts WHEN a run starts THEN the first one in pool order (`priority`,
+  then age, then name) that is not cooling down is used: the CLI runs with its home
+  variable pointing at that account's own directory, and an API-key account's key is
+  resolved from the vault for that one process.
+- GIVEN every enabled account is cooling down THEN the run is refused with
+  `exit_status=rate_limited` and `metadata.failure = {kind: rate_limited, resets_at:
+  <earliest cooldown end>}` (what part 2 parks on). Never a silent fallback to the default
+  login (CHARTER invariant 5): a database error, a home outside the root, a group-readable
+  home, a symlinked home, a missing or revoked key all refuse as `account_unavailable`.
+- GIVEN a run on an account fails `rate_limited` THEN the account's `cooldown_until` is the
+  CLI's `resets_at` when it is in the future and within 8 days, else now +
+  `driver_accounts_default_cooldown_minutes`; `metadata.account.next` names the account a
+  retry would use (or `{state: cooling, retry_at}`, or null). An `auth` failure sets
+  `last_error` (with the sign-in hint) and no cooldown; only `rate_limited` moves on.
+- GIVEN a run reports plan windows THEN the latest reading of each window is stored per
+  account (`agent_account_limits`, source `run`): Codex from 3a's `metadata.rate_limits`
+  (5-hour / weekly picked by window duration), Claude from `rate_limit_event` lines in its
+  own `stream-json` output. **Claude's OAuth usage is never polled (owner decision U4).**
+  Gemini reports no windows.
+- GIVEN `driver_accounts_codex_probe_enabled` and an owner's `?refresh=true` THEN a Codex
+  subscription account's windows are read with `codex app-server` (`initialize` →
+  `account/read` → `account/rateLimits/read`; no prompt, nothing spent), at most once per
+  5 minutes per account (429 + `Retry-After`).
+- GIVEN the API THEN no route returns a key, its length, its vault handle or reference, the
+  raw identity, its hash, or the home path — except `GET .../home`, which is owner only.
+- GIVEN a resume (`driver.resume(packet, workdir, session_id, prompt)`) THEN the CLI
+  continues that session with the prompt on stdin / `-p`, memories and preferences are not
+  added, a value that is not a session id is refused (`bad_session`), and a sandboxed
+  claude_code run refuses (`resume_unsupported`: the container's config dir is thrown away).
+
+### Verified CLI facts (installed, 2026-11-27, not signed in)
+
+| CLI | Home variable | API key variable | Vertex | Resume |
+|---|---|---|---|---|
+| Claude Code 2.1.328 | `CLAUDE_CONFIG_DIR` | `ANTHROPIC_API_KEY` | `CLAUDE_CODE_USE_VERTEX=1`, `ANTHROPIC_VERTEX_PROJECT_ID`, `CLOUD_ML_REGION` | `claude -p <prompt> --resume <session-id>` (`-r, --resume [value]`) |
+| codex-cli 0.172.0 | `CODEX_HOME` | `CODEX_API_KEY` (binary: "run `codex login` or set CODEX_API_KEY") | — | `codex exec [--json --color never -s MODE] resume [--ignore-user-config -c ...] <SESSION_ID> -` — `resume` takes no `-s`/`--color` (they parse before it), so the sandbox is also `-c sandbox_mode="MODE"` |
+| gemini-cli 0.71.1 | `GEMINI_CLI_HOME` (replaces the dir `.gemini/` lives under) | `GEMINI_API_KEY` | `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` | `--resume <uuid>` (also `latest` / index; only a UUID is passed). Sessions are per project dir: same workdir and home |
+
+`CODEX_HOME` and `GEMINI_CLI_HOME` joined `CLAUDE_CONFIG_DIR` in the host env allowlist
+(`drivers/host_exec.py`): locations, not credentials. Gemini's sign-in check now honours
+`GEMINI_CLI_HOME`.
+
+### Data
+
+`agent_accounts` (064): `id, tenant_id, driver (claude_code|codex|gemini|opencode), name
+(unique per tenant+driver), kind (subscription|api_key|vertex), home_dir, secret_ref (a
+vault_secrets id), secret_set_at, identity_masked, identity_hash (HMAC-SHA256 under a key
+derived from the vault key; unique per tenant+driver when set), enabled, priority,
+cooldown_until, last_error (scrubbed, 200 chars), last_used_at, properties (JSONB:
+vertex project/region, model), created_at, updated_at`.
+`agent_account_limits` (064): `account_id (cascade), window, used_percent, window_minutes,
+resets_at, status (allowed|warning|rejected), source (run|probe), observed_at`, unique
+`(account_id, window)`.
+
+Supported kinds: claude_code subscription/api_key/vertex; codex subscription/api_key;
+gemini subscription/api_key/vertex; opencode none yet (parked, its login location is
+unverified). Homes: `<driver_accounts_home_root>/<tenant>/<driver>/<id>`, every level
+0700, created by the server; an API key is stored in the vault with `secret_type=token`
+and `allowed_origins` = the provider's API origin, so its handle resolves nowhere else.
+A run's environment = the host allowlist, minus every credential variable of that driver
+(so `driver_host_env_passthrough` cannot leak a default key into an account run), plus the
+account overlay; an overlay name not on the driver×kind allowlist is refused.
+
+### API (`/api/v1/kernel/agent-accounts`)
+
+| Route | Who | Body → response `data` |
+|---|---|---|
+| `GET ?driver=` | tenant | → `{accounts: Account[]}` in pool order |
+| `GET /limits?driver=` | tenant | → `{accounts: Limits[]}` |
+| `GET /{id}` | tenant | → `Account` (404 for another tenant's id or a malformed one) |
+| `GET /{id}/limits?refresh=` | tenant; `refresh=true` owner | → `Limits` (+ `refresh: {kind, reason?, observed_at?}`) |
+| `GET /{id}/home` | owner | → `{id, driver, home_dir, env: {CODEX_HOME: …}, login_command: ["codex","login"]}` |
+| `POST` | owner | `{driver, name, kind, enabled?, priority?, identity?, properties?}` (unknown fields → 422, so a key cannot ride along) → 201 `Account`; 400 driver/kind/name/properties, 409 name or identity taken |
+| `PATCH /{id}` | owner | `{name?, enabled?, priority?, identity? ("" clears), properties?}` → `Account` |
+| `POST /{id}/enable`, `/{id}/disable` | owner | → `Account` |
+| `POST /{id}/cooldown/reset` | owner | → `Account` (cooldown and last_error cleared) |
+| `PUT /{id}/secret` | owner | `{value}` → `Account` with `has_secret: true`; write-only into the vault, the previous key revoked; 400 for a non-api_key account |
+| `DELETE /{id}/secret` | owner | → `Account` (key revoked, ciphertext destroyed) |
+| `PUT /pool/{driver}` | owner | `{order: [id, …]}` → `{driver, accounts}`; named ids first (priorities 10, 20, …), the rest keep their order; 400 unknown or repeated ids |
+| `DELETE /{id}?wipe_home=` | owner | → `{id, deleted, home_removed}`; its key is revoked |
+
+`Account`: `{id, driver, name, kind, enabled, priority, identity (masked), has_secret,
+secret_set_at, has_home, properties, status (ready|cooling_down|error|disabled),
+cooldown_until, last_error, last_used_at, created_at, updated_at}`.
+`Limits`: `{account_id, driver, name, windows: [{window, used_percent, window_minutes,
+resets_at, status, source, observed_at}], observed_at, unavailable_reason?}`.
+Owner = `api/approval_identity.owner_only` (an owner key, a paired phone, or auth off).
+Run metadata gains `account: {id, name, kind, env: [names], cooldown_until?, next?}`.
+
+### Sign-in stays on the host (race-app)
+
+life-graph never logs a CLI in. race-app's PTY runs `login_command` from `GET .../home`
+with `env` set (`CLAUDE_CONFIG_DIR=<home> claude auth login`, `CODEX_HOME=<home> codex
+login`, `GEMINI_CLI_HOME=<home> gemini`); the CLI writes its login into the home and
+life-graph only ever points the next run at it.
+
+### Part 2 hooks (not built; after merge with race/autonomy-policy)
+
+1. **Re-dispatch on a rate limit.** In the dispatcher, after `_run_driver` (and the
+   bounce), when `result.metadata.failure.kind == "rate_limited"` and
+   `result.metadata.account.next.id` is set: dispatch once more on the same packet and
+   worktree (the driver's hook will pick `next` itself, the cooled account now being
+   skipped), at most once per pool account per task, prompt = original instruction +
+   "a previous attempt was interrupted by a rate limit; inspect the current changes in
+   this worktree and continue" (race-app §9.3). Sessions are per home, so this is a new
+   session, not a resume. Never on `auth`/`other`.
+2. **Park until reset.** When the failure is `rate_limited` and there is no next account
+   (`next` null or `{state: cooling}`; or the refusal with `account_pool.state=cooling`),
+   set the task to a `parked` state with `properties.resume_at = failure.resets_at` instead
+   of failed; the runner re-queues it at that time (a scheduler check, in
+   `services/dev/tasks.py`, which this part did not touch).
+3. **`continue_task(task_id, feedback)`** (service function in `services/dev/`): load the
+   task's last run metadata (`driver`, `session_id`, `account.id`, `workdir`), require that
+   the worktree was kept (today `remove_worktree` runs after every dispatch: part 2 must
+   keep it for tasks that may be continued, or land the branch and re-create a worktree on
+   it — a Gemini session is bound to the directory path, Codex and Claude sessions to the
+   home), build a packet whose `project_context.path` is that worktree with
+   `isolation=False`, and call `driver.resume(packet, workdir, session_id, feedback,
+   account_id=account.id)`; then run the same verify/land chain as a dispatch. Refuse when
+   the session or worktree is gone (fall back to a fresh dispatch with the feedback).
+4. **Subscription budget (risk D4).** Subscription runs report $0, so the Governor's monthly
+   cap does not see them. Part 2: count runs and tokens per account per window from
+   `agent_account_limits` + run metadata, and refuse (or park) an unattended dispatch when
+   an account is above a configured share of its window (e.g. ≥ 90 % of `five_hour`), so
+   nightly work cannot exhaust the owner's interactive quota. An API-key account's real
+   spend is in `metadata.cost_usd` (claude) and should be booked to the Governor as `api`
+   billing: `ClaudeCodeDriver.billing` still reads `driver_claude_code_auth`, not the
+   account's kind.
+
+### Tasks
+
+- [x] Migration 064, models `AgentAccount` / `AgentAccountLimit`
+- [x] `services/agent_accounts/*`: catalog, env overlay + allowlist, homes, identity, pool,
+      limits (Codex windows + app-server probe ported from stablyai/orca, Claude passive),
+      service
+- [x] `drivers/accounts_hook.py`; codex/gemini (via `cli_driver`) and claude_code use it
+- [x] Resume: `codex exec resume`, `gemini --resume`, `claude --resume`; `driver.resume()`
+- [x] API + owner gates; unit tests (fakes, fake CLIs, fake app-server)
+- [ ] Part 2: re-dispatch, park, `continue_task`, budget D4 (above)
+- [ ] Record a real account run, resume and probe once the owner signs a CLI in
