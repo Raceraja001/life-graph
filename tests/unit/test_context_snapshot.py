@@ -684,3 +684,102 @@ async def test_no_abstention_when_retrieve_says_nothing(wired):
     wired["found"] = [_mem("a note")]
     snap = await assemble_context("q", now=NOW)
     assert (snap.abstain, snap.abstention_reason, snap.insufficient) == (False, None, False)
+
+
+# ── The sufficiency check: is any item about the question? (D7, G3, O10) ──
+
+
+async def test_a_question_no_item_is_about_is_insufficient_and_says_what_is_missing(wired):
+    """G3: search always returns something; "scored 68%" is not a credit score."""
+    wired["found"] = [_mem("The owner scored 68% on her first AWS practice test.")]
+    snap = await assemble_context("What is my credit score?", now=NOW)
+    assert len(snap.items) == 1 and snap.abstain is False
+    assert snap.insufficient is True
+    assert snap.missing == ("credit",)
+    assert "No included record is about the question's terms: 'credit'." in snap.explanation
+    assert snap.to_dict()["missing"] == ["credit"]
+
+
+async def test_an_answerable_question_stays_sufficient_despite_a_contradiction_flag(wired):
+    """A1: retrieve flags "without sugar" as contradictory; the item still answers."""
+    wired["result"] = retrieval.RetrievalResult(
+        [_mem("The owner prefers filter coffee without sugar in the morning.")],
+        abstain=True,
+        abstention_reason="contradictory_evidence",
+    )
+    snap = await assemble_context("How do I take my coffee?", now=NOW)
+    assert snap.insufficient is False and snap.missing == ()
+
+
+async def test_tags_and_fact_type_count_as_an_items_words(wired):
+    text_ = "I was promoted to senior backend engineer at Kovai Logistics."
+    wired["found"] = [_mem(text_, tags=["work", "job"])]
+    tagged = await assemble_context("What is my current job title?", now=NOW)
+    assert tagged.insufficient is False
+    wired["found"] = [_mem(text_, properties={"fact_type": "job_change"})]
+    typed = await assemble_context("What is my current job title?", now=NOW)
+    assert typed.insufficient is False
+    wired["found"] = [_mem(text_)]
+    bare = await assemble_context("What is my current job title?", now=NOW)
+    assert bare.insufficient is True and bare.missing == ("job",)
+
+
+async def test_the_check_reads_the_full_text_not_the_clipped_content(wired):
+    long_text = "x " * 400 + "my passport number is on file"
+    wired["found"] = [_mem(long_text)]
+    snap = await assemble_context("passport", budget=Budget(item_chars=50), now=NOW)
+    assert "passport" not in snap.items[0].content
+    assert snap.insufficient is False
+
+
+async def test_a_question_about_what_is_missing_is_insufficient_and_names_the_gaps(wired):
+    """O10: no record says what a reliable recommendation needs; report the gaps."""
+    wired["found"] = [_mem("Home loan statement: EMI of 42,000 a month to SBI.")]
+    snap = await assemble_context(
+        "What information is missing before you can reliably recommend whether I "
+        "should take a second home loan?",
+        now=NOW,
+    )
+    assert snap.insufficient is True
+    assert snap.missing == ("second",)
+    assert snapshot.GAPS_NOTE in snap.explanation
+    assert "No included record covers: 'second' (in 'second home loan')." in snap.explanation
+
+
+async def test_a_gap_question_with_every_term_covered_is_still_insufficient(wired):
+    wired["found"] = [_mem("Our second home loan would be with SBI.")]
+    snap = await assemble_context("What is missing for a second home loan?", now=NOW)
+    assert snap.insufficient is True and snap.missing == ()
+    assert "does not show nothing else is needed" in snap.explanation
+
+
+async def test_standing_items_count_only_through_their_own_words(wired):
+    """O3: a due intention answers "commitments" by its kind; it never answers
+    an unrelated question just by being listed."""
+    wired["found"] = [_mem("The owner likes filter coffee.")]
+    wired["due"] = [_intention(trigger_time=NOW + timedelta(days=1))]
+    asked = await assemble_context("Which of my commitments are still not done?", now=NOW)
+    assert asked.insufficient is False
+    unrelated = await assemble_context("What is my blood group?", now=NOW)
+    assert unrelated.insufficient is True and unrelated.missing == ("blood group",)
+
+
+async def test_a_due_intention_answers_deadlines_and_a_decision_answers_decide(wired):
+    wired["found"] = [_mem("The owner likes filter coffee.")]
+    wired["due"] = [_intention("Send the runbook", trigger_time=NOW + timedelta(days=1))]
+    assert (await assemble_context("Which deadlines are coming up?", now=NOW)).insufficient is False
+    wired["due"] = [_intention("Send the runbook", trigger_time=None, context_match=None)]
+    no_due = await assemble_context("Which deadlines are coming up?", now=NOW)
+    assert no_due.insufficient is True
+    wired["due"] = []
+    wired["current_decisions"] = [_decision("decided", title="Use a Postgres queue")]
+    assert (await assemble_context("What did I decide recently?", now=NOW)).insufficient is False
+
+
+async def test_missing_terms_stay_out_of_the_compact_form(wired):
+    wired["found"] = [_mem("a note about the garden")]
+    snap = await assemble_context("What is my quokkaword?", now=NOW)
+    assert snap.missing == ("quokkaword",)
+    compact = snap.compact()
+    assert "missing" not in compact
+    assert "quokkaword" not in json.dumps(compact)
