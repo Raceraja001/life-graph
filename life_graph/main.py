@@ -298,6 +298,13 @@ async def _step_event_subscribers(app: FastAPI, report: StartupReport) -> None:
         approval_notification_handler.subscribe()
         logger.info("Approval-filed notifications enabled")
 
+    # Startup — wire dev automation notices (breaker tripped, digest) -> notification/push/Telegram
+    with startup_step(report, "dev_automation_notices"):
+        from life_graph.services.dev.automation.wiring import notice_handler
+
+        notice_handler.subscribe()
+        logger.info("Dev automation notices enabled")
+
     # Startup — wire advisory runs -> notifications/push
     with startup_step(report, "findings_bridge"):
         from life_graph.services.findings_bridge import findings_bridge_handler
@@ -825,6 +832,7 @@ if settings.is_full_profile:
 
     # The phone app (docs/design/12_android_app_plan.md): pairing, and the only
     # endpoints a device token opens.
+    from life_graph.api import dev_automation as dev_automation_api
     from life_graph.api import devices as devices_api
     from life_graph.api import drivers as drivers_api
     from life_graph.api import evidence as evidence_api
@@ -871,6 +879,7 @@ if settings.is_full_profile:
     v1_router.include_router(connectors_api.router)
     v1_router.include_router(drivers_api.router)
     v1_router.include_router(agent_accounts_api.router)
+    v1_router.include_router(dev_automation_api.router)
     v1_router.include_router(approvals_api.router)
     v1_router.include_router(push_api.router)
     v1_router.include_router(conversations_api.router)

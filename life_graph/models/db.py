@@ -38,6 +38,14 @@ from life_graph.models.agents import (
 )
 from life_graph.models.authorization import Capability, StandingRuleRecord
 from life_graph.models.base import _EMBED_DIM, Base, _utcnow
+from life_graph.models.dev_automation import (
+    DevAutomationBreaker,
+    DevAutomationSettings,
+    DevBacklogItem,
+    DevIntakeSource,
+    DevSchedule,
+    DevScheduleRun,
+)
 from life_graph.models.judgment import (
     CalibrationSnapshot,
     Challenge,
@@ -131,6 +139,12 @@ __all__ = [
     "VaultSecret",
     "AgentAccount",
     "AgentAccountLimit",
+    "DevAutomationSettings",
+    "DevIntakeSource",
+    "DevBacklogItem",
+    "DevSchedule",
+    "DevScheduleRun",
+    "DevAutomationBreaker",
 ]
 
 # NOTE: The Era-8 autonomy models (AutoAction, ApprovalQueueEntry, AuditLogEntry,

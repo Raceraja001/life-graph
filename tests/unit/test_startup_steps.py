@@ -37,6 +37,8 @@ BEFORE_THE_SPLIT = [
     "push_delivery",
     "telegram_delivery",
     "approval_notifications",
+    # Added 2026-11-27 (Phase 4a): dev automation notices (breaker, digest).
+    "dev_automation_notices",
     "findings_bridge",
     "autonomous_action_bridges",
     "agent_drivers",

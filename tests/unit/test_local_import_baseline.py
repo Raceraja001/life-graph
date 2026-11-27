@@ -58,7 +58,9 @@ BASELINE = {
     "integrations": 25,
     "jobs": 5,
     "kernel": 24,
-    "main": 46,
+    # 46 -> 47 (Phase 4a): the dev-automation notice handler's startup step
+    # imports what it wires, like every other startup step.
+    "main": 47,
     "mcp_server": 1,
     "runtime": 53,
     "self_improving": 59,
@@ -74,7 +76,9 @@ BASELINE = {
     "storage": 7,
     "tools": 101,
     "watchers": 28,
-    "workers": 104,
+    # 104 -> 105 (Phase 4a): WorkerSettings.on_startup subscribes the
+    # dev-automation notice handler inside its guarded try, like its siblings.
+    "workers": 105,
 }
 
 

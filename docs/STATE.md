@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
+Generated `2026-11-27 18:54 UTC` from `race/automation-intake` @ `0e22e8d3`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 
 | | |
 |---|---|
-| HTTP operations | **423** across 362 paths, 48 tags |
-| Database tables | **92** |
-| Migrations | **64** (head: `064_agent_accounts`) |
-| Event types | **84** |
+| HTTP operations | **434** across 372 paths, 49 tags |
+| Database tables | **98** |
+| Migrations | **65** (head: `065_dev_automation`) |
+| Event types | **85** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
-| Scheduled jobs | **36** |
+| Scheduled jobs | **37** |
 | Config settings | **351** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6406** in 674 files |
+| Test functions | **6487** in 680 files |
 | Dashboard pages | **23** |
-| Python | 557 files, 161,198 lines |
+| Python | 573 files, 165,106 lines |
 
 ---
 
 ## HTTP API
 
-423 operations, grouped by OpenAPI tag.
+434 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -376,6 +376,22 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
 
+### `dev-automation` — 11
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/automation/backlog` | Backlog items, newest first |
+| POST | `/api/v1/kernel/automation/backlog/{item_id}/skip` | Skip a new or failed backlog item (owner) |
+| POST | `/api/v1/kernel/automation/backlog/{item_id}/start` | Start a backlog item now (owner) |
+| GET | `/api/v1/kernel/automation/breakers` | Circuit breaker states, tripped first |
+| POST | `/api/v1/kernel/automation/breakers/{key}/reset` | Reset a circuit breaker (owner) |
+| GET | `/api/v1/kernel/automation/digest/preview` | The morning digest as it would be sent now |
+| POST | `/api/v1/kernel/automation/intake/poll` | Poll every enabled source now (owner) |
+| POST | `/api/v1/kernel/automation/schedules/{job_id}/run` | Run a scheduled job now (owner) |
+| GET | `/api/v1/kernel/automation/schedules/{job_id}/runs` | A job's handled slots, newest first |
+| GET | `/api/v1/kernel/automation/settings` | The automation settings (intake, schedules, digest, breaker) |
+| PUT | `/api/v1/kernel/automation/settings` | Replace the automation settings (owner) |
+
 ### `procedures` — 7
 
 | Method | Path | Summary |
@@ -701,7 +717,7 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 
 ## Database tables
 
-92 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+98 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -727,6 +743,12 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 | `conversation_messages` | 8 | ✓ | `027_conversations` |
 | `conversations` | 6 | ✓ | `027_conversations` |
 | `cross_system_syncs` | 20 | ✓ | `017_agent_networks` |
+| `dev_automation_breakers` | 10 | ✓ | `065_dev_automation` |
+| `dev_automation_settings` | 6 | ✓ | `065_dev_automation` |
+| `dev_backlog` | 14 | ✓ | `065_dev_automation` |
+| `dev_intake_sources` | 15 | ✓ | `065_dev_automation` |
+| `dev_schedule_runs` | 11 | ✓ | `065_dev_automation` |
+| `dev_schedules` | 13 | ✓ | `065_dev_automation` |
 | `dev_task_events` | 9 | ✓ | `060_dev_task_events` |
 | `device_pairing_codes` | 5 | ✓ | `052_devices` |
 | `devices` | 7 | ✓ | `052_devices` |
@@ -802,7 +824,7 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 
 ## Events
 
-84 event types on the async EventBus.
+85 event types on the async EventBus.
 
 **Task** (16) — `agent:task:cancelled` · `agent:task:child_failed` · `agent:task:children_complete` · `agent:task:completed` · `agent:task:delegated` · `agent:task:failed` · `agent:task:handoff` · `driver:task:bounced` · `driver:task:continued` · `driver:task:parked` · `driver:task:unparked` · `kernel:task:cancelled` · `kernel:task:completed` · `kernel:task:failed` · `kernel:task:spawned` · `kernel:task:timeout`
 
@@ -841,6 +863,8 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 **Verification** (2) — `driver:verification:failed` · `driver:verification:passed`
 
 **Watcher** (2) — `watcher:completed` · `watcher:failed`
+
+**Automation** (1) — `dev:automation:notice`
 
 **Bias** (1) — `judgment:bias:detected`
 
@@ -935,7 +959,7 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 
 ## Scheduled jobs
 
-36 ARQ cron jobs (times are UTC).
+37 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -972,6 +996,7 @@ Generated `2026-11-27 18:04 UTC` from `race/migration` @ `36f42ef5`
 | `sweep_stuck_captures` | hourly at :07,:22,:37,:52 | `life_graph.workers.capture_sweep.sweep_stuck_captures` |
 | `sync_connectors` | every 5 min | `life_graph.workers.tasks.sync_connectors` |
 | `sync_dev_task_prs` | every 15 min | `life_graph.workers.tasks.sync_dev_task_prs` |
+| `tick_dev_automation` | every minute | `life_graph.workers.dev_automation.tick_dev_automation` |
 | `tick_scheduled_jobs` | every minute | `life_graph.workers.tasks.tick_scheduled_jobs` |
 | `write_daily_episodes` | hourly at :41 | `life_graph.workers.episodes.write_daily_episodes` |
 | `write_due_notifications` | hourly at :04,:19,:34,:49 | `life_graph.workers.due_notifications.write_due_notifications` |
@@ -1029,6 +1054,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `connector-tasks` | Unclassified | — |
 | `connectors` | Unclassified | — |
 | `dashboard-pwa` | Built | `dashboard/app/(mobile)/m/page.tsx` |
+| `dev-automation` | Built | `life_graph/workers/dev_automation.py` |
 | `device-access` | Unclassified | — |
 | `era4-personal-ai` | Built | `life_graph/api/advisor.py` |
 | `era5-self-improving` | Built | `life_graph/self_improving/prompt_resolver.py` |
@@ -1062,9 +1088,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-64 revisions, head `064_agent_accounts`.
+65 revisions, head `065_dev_automation`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies` · `064_agent_accounts`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies` · `064_agent_accounts` · `065_dev_automation`
 
 ---
 
@@ -1074,10 +1100,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 517 | 5358 |
+| `tests/unit/` | 523 | 5439 |
 | `tests/integration/` | 156 | 1036 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **674** | **6406** |
+| **total** | **680** | **6487** |
 
 ---
 
