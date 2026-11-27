@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 from life_graph.api.responses import success_response
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.services.dev import tasks as _dev_tasks
+from life_graph.services.dev.review_stages import latest_per_stage
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -689,6 +691,43 @@ async def get_dev_task_diff(task_id: str):
     if data is None:
         raise HTTPException(status_code=404, detail="No landed change for this dev task")
     return success_response(data=data)
+
+
+@router.get(
+    "/tasks/{task_id}/review-stages",
+    summary="Every review-stage result of a dev task, and the latest per stage",
+)
+async def get_dev_task_review_stages(task_id: str):
+    """The owner's review stages as they ran on this task's last dispatch
+    (docs/specs/agent-drivers.md, "Autonomy policy"): ``results`` in order,
+    re-reviews after a review-fix round included (``fix_round`` > 0), and
+    ``latest`` one per stage. 404 when the task ran no stage."""
+    _task_uuid(task_id)
+    async with async_session() as session:
+        data = await _dev_tasks.get_dev_task(session, get_current_tenant_id(), task_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Dev task not found")
+    results = data.get("review_stages")
+    if not results:
+        raise HTTPException(status_code=404, detail="No review stage ran for this dev task")
+    return success_response(
+        data={"task_id": task_id, "results": results, "latest": latest_per_stage(results)}
+    )
+
+
+@router.get("/tasks/{task_id}/risk", summary="The risk report of a dev task's change")
+async def get_dev_task_risk(task_id: str):
+    """Block/warn findings with file and line for the change the task landed
+    (services/dev/risk_report.py). Matched values are never stored. 404 when
+    the task landed nothing (no report)."""
+    _task_uuid(task_id)
+    async with async_session() as session:
+        data = await _dev_tasks.get_dev_task(session, get_current_tenant_id(), task_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Dev task not found")
+    if not data.get("risk_report"):
+        raise HTTPException(status_code=404, detail="No risk report for this dev task")
+    return success_response(data={"task_id": task_id, **data["risk_report"]})
 
 
 # ── Plans, scorecards, failures (docs/specs/agent-observability.md) ──

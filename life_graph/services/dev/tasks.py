@@ -583,6 +583,11 @@ async def get_dev_task(session: AsyncSession, tenant_id: str, task_id: str) -> d
     approvals = await _approvals_by_task(session, tenant_id, [task_id])
     data = serialize(task, approvals.get(task_id, []))
     data["verification"] = await _verification_summary(session, tenant_id, pk)
+    # The owner's review stages and the change's risk report, when this run
+    # produced them (drivers/review_stages.py); null otherwise.
+    props = task.properties or {}
+    data["review_stages"] = props.get("review_stages")
+    data["risk_report"] = props.get("risk_report")
     return data
 
 

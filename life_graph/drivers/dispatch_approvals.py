@@ -282,6 +282,7 @@ class ApprovalFilingMixin:
         auto_merge: bool = False,
         base_branch: str | None = None,
         change_policy: dict | None = None,
+        autonomy: dict | None = None,
     ) -> None:
         """File a ``driver_pr`` approval for a landed branch.
 
@@ -301,6 +302,11 @@ class ApprovalFilingMixin:
         ``auto_merge`` is stored in the payload (not acted on here) so the
         trust check runs at merge-approval time, whichever path files it —
         a human approving ``driver_pr`` normally, or :meth:`_auto_open_pr`.
+
+        ``autonomy`` (review-stage verdicts, the risk counts, fix rounds) is
+        stored in the payload as ``autonomy`` for the owner's conditions
+        (services/dev/autonomy_policy.py); absent, conditions that need it
+        refuse.
         """
         try:
             from life_graph.models.db import Approval
@@ -350,6 +356,8 @@ class ApprovalFilingMixin:
                 "change": change,
                 **landing,
             }
+            if autonomy:
+                payload["autonomy"] = autonomy
             from life_graph.services.dev.local_merge import pr_mode
 
             # In local mode approving is the merge (services/approvals.py), so say that.
@@ -499,8 +507,13 @@ class ApprovalFilingMixin:
         driver_name: str,
         v_results: list[VerifierResult],
         session: AsyncSession,
+        attempts: int = 1,
     ) -> None:
-        """Create an approval queue entry for tasks that need human review."""
+        """Create an approval queue entry for tasks that need human review.
+
+        *attempts* is how many re-dispatches the task had (1 = the bounce;
+        more when the owner enabled verify-fix rounds).
+        """
         try:
             from life_graph.autonomy.models import ApprovalQueueEntry
 
@@ -522,9 +535,14 @@ class ApprovalFilingMixin:
             else:
                 failures = ", ".join(r.verifier for r in v_results if not r.passed)
                 action_name = "driver_verification_failed"
+                after = (
+                    "one bounce"
+                    if attempts <= 1
+                    else f"one bounce and {attempts - 1} verify-fix round(s)"
+                )
                 detail = (
                     f"Driver '{driver_name}' failed verification for task {task_id} "
-                    f"after one bounce. Failures: {failures}"
+                    f"after {after}. Failures: {failures}"
                 )
             entry = ApprovalQueueEntry(
                 tenant_id=tenant_id,

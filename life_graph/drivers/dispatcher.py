@@ -12,6 +12,13 @@ Limits:
 One-bounce rule:
 - Failed verification → re-dispatch once with failure report
 - Second failure → needs_human in approval queue
+
+Owner-enabled fix rounds (docs/specs/agent-drivers.md, "Autonomy policy",
+2026-11-27): with ``verify_fix_rounds`` > 0 a still-failing bounce gets up to
+that many more rounds, and with review stages a stage's objection may go back
+to the author for up to ``review_fix_rounds`` rounds -- each budget- and
+kill-switch-gated and recorded as a verification attempt. Default 0 = the
+one-bounce rule above, unchanged. Rounds never approve anything.
 """
 
 from __future__ import annotations
@@ -55,6 +62,7 @@ from life_graph.drivers.plan_spec import (  # noqa: F401  (re-exported)
     _parse_tasks,
 )
 from life_graph.drivers.registry import driver_registry
+from life_graph.drivers.review_stages import AutonomyRoundsMixin
 from life_graph.drivers.verify_chain import (  # noqa: F401  (re-exported)
     DEFAULT_VERIFY_CHAIN,
     _resolve_verify_chain,
@@ -70,6 +78,7 @@ from life_graph.drivers.workdir import (
     worktree_intact,
 )
 from life_graph.services.dev import task_events
+from life_graph.services.dev.autonomy_policy import NEUTRAL, EffectivePolicy
 from life_graph.services.dev.change_policy import policy_from_project
 from life_graph.services.dev.verifiers import (  # noqa: F401  (failure_text: re-exported)
     BOUNCE_TASK_MARKER,
@@ -270,9 +279,23 @@ class _DispatchRun:
     # replaced by the bounce's own re-verification, so the independent
     # completion gate never weighs a superseded attempt's checks.
     verifier_results: list[VerifierResult] = field(default_factory=list)
+    # The owner's autonomy policy for this task (services/dev/autonomy_policy.py):
+    # NEUTRAL unless a policy row exists, which is today's behaviour exactly.
+    policy: EffectivePolicy = NEUTRAL
+    # The verification attempt the next re-dispatch records (1 = first pass,
+    # 2 = the bounce, 3+ = owner-enabled fix rounds).
+    next_attempt: int = 2
+    # What this dispatch's driver calls cost so far (the per-task cap for rounds).
+    spent_usd: float = 0.0
+    # How the last re-dispatch ended: passed | verify_failed | driver_failed | tampered.
+    bounce_outcome: str | None = None
+    # Every review-stage result, in order (properties.review_stages).
+    review_results: list[dict] = field(default_factory=list)
+    # What the approval payload carries for the owner's conditions ("autonomy").
+    autonomy: dict = field(default_factory=dict)
 
 
-class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
+class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin):
     """Selects driver, enforces limits, runs verification, manages one-bounce.
 
     The dispatcher is the central orchestrator for sending tasks to
@@ -608,6 +631,11 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         ).first()
         return row is not None
 
+    @staticmethod
+    async def _worktree_diff(workdir: Any) -> str:
+        """The worktree's diff (read through this module, so it can be patched)."""
+        return await diff_against_head(workdir)
+
     # ── dispatch_task steps, in pipeline order ──────────────────────────
 
     @staticmethod
@@ -664,6 +692,12 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                     return
                 props = dict(task.properties or {})
                 props["checkpoints"] = run.tracker.to_dict()
+                last_stage = run.tracker.checkpoints[-1].stage if run.tracker.checkpoints else None
+                if last_stage == "prepared":
+                    # A new dispatch: an earlier run's review results and risk
+                    # report do not describe this one (drivers/review_stages.py).
+                    props.pop("review_stages", None)
+                    props.pop("risk_report", None)
                 task.properties = props
                 await session.commit()
             last = run.tracker.checkpoints[-1] if run.tracker.checkpoints else None
@@ -736,6 +770,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         if run.acceptance_tests and "acceptance_tests_pass" not in verify_chain:
             verify_chain = [*verify_chain, "acceptance_tests_pass"]
         run.verify_chain = verify_chain
+
+        # Step 2b': the owner's rounds and review stages for this project.
+        run.policy = await self._load_autonomy_policy(run)
 
         # Step 2c: opt-in workdir isolation — only when the caller asked
         # for it AND a real project path resolved. A no-op flag on a
@@ -856,6 +893,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
 
         # Book the actual spend into the Governor's ledger.
         await governor.record(run.tenant_id, BudgetCategory.DRIVER, result.cost_usd)
+        run.spent_usd += float(result.cost_usd or 0.0)
 
         # Secondary per-task guard (the Governor is the primary budget gate).
         if result.cost_usd > run.cost_cap_usd:
@@ -1127,7 +1165,16 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         )
 
     async def _bounce_or_escalate(self, run: _DispatchRun, v_results: list[VerifierResult]) -> None:
-        """Step 6, a check failed: the one-bounce rule, then needs_human."""
+        """Step 6, a check failed: the one-bounce rule, then needs_human.
+
+        With the owner's ``verify_fix_rounds`` > 0, a bounce whose re-check
+        still fails gets up to that many more rounds, each with the latest
+        failing output, each gated on the kill switch, the budget and the
+        per-task cost cap (:meth:`_round_allowed`) and recorded as the next
+        verification attempt. A round whose driver run itself failed ends the
+        rounds (they fix checks; they are not retries). 0 rounds = exactly
+        the one bounce, as before.
+        """
         driver = run.driver
         await self._emit(
             EventType.VERIFICATION_FAILED,
@@ -1138,19 +1185,50 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             },
         )
 
-        # Bounce: re-dispatch once with failure context
-        bounce_result = await self._bounce_task(
-            tenant_id=run.tenant_id,
-            task_id=run.task_id,
-            driver=driver,
-            packet=run.packet,
-            workdir=run.workdir,
-            failure_report=v_results,
-            session=run.session,
-            verify_chain=run.verify_chain,
-            acceptance_tests=run.acceptance_tests,
-            run=run,
-        )
+        extra = run.policy.verify_fix_rounds
+        rounds_run = 0
+        stop_reason: str | None = None
+        failures = v_results
+        while True:
+            attempt = run.next_attempt
+            run.next_attempt += 1
+            # Bounce: re-dispatch with failure context
+            bounce_result = await self._bounce_task(
+                tenant_id=run.tenant_id,
+                task_id=run.task_id,
+                driver=driver,
+                packet=run.packet,
+                workdir=run.workdir,
+                failure_report=failures,
+                session=run.session,
+                verify_chain=run.verify_chain,
+                acceptance_tests=run.acceptance_tests,
+                run=run,
+                attempt=attempt,
+            )
+            if bounce_result is not None or rounds_run >= extra:
+                break
+            if run.bounce_outcome != "verify_failed":
+                stop_reason = "the fix round's driver run failed"
+                break
+            allowed, why = await self._round_allowed(run)
+            if not allowed:
+                stop_reason = why
+                break
+            rounds_run += 1
+            failures = list(run.verifier_results)
+            task_events.emit(
+                run.tenant_id, run.task_id, "round",
+                f"verify-fix round {rounds_run} of {extra}",
+                data={"kind": "verify_fix", "round": rounds_run, "of": extra,
+                      "attempt": run.next_attempt}, source="dispatcher",
+            )  # fmt: skip
+        if extra:
+            run.autonomy["verify_fix"] = {
+                "rounds": rounds_run,
+                "allowed": extra,
+                "stopped": stop_reason,
+            }
 
         if bounce_result is not None:
             run.result = bounce_result
@@ -1162,21 +1240,31 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             # replaced run.verifier_results with its own re-verification).
             await self._observe_files_changed(run)
             return
-        # Second failure → needs_human
+        # The last failure → needs_human. With no extra rounds this is the
+        # first attempt's report, exactly as before.
+        report = v_results if rounds_run == 0 else (run.verifier_results or v_results)
         result = run.result
+        metadata: dict[str, Any] = {
+            "needs_human": True,
+            "verification_failures": [asdict(r) for r in report if not r.passed],
+        }
+        error = "Verification failed after bounce — needs human review"
+        if rounds_run:
+            metadata["verify_fix_rounds"] = rounds_run
+            error = (
+                f"Verification failed after the bounce and {rounds_run} verify-fix "
+                f"round(s) — needs human review"
+            )
         run.result = DriverResult(
             success=False,
             output=result.output,
-            error="Verification failed after bounce — needs human review",
+            error=error,
             cost_usd=result.cost_usd,
             duration_ms=result.duration_ms,
-            metadata={
-                "needs_human": True,
-                "verification_failures": [asdict(r) for r in v_results if not r.passed],
-            },
+            metadata=metadata,
         )
         await self._create_approval_entry(
-            run.tenant_id, run.task_id, driver.name, v_results, run.session
+            run.tenant_id, run.task_id, driver.name, report, run.session, attempts=1 + rounds_run
         )
 
     async def _file_plan_spec(self, run: _DispatchRun) -> None:
@@ -1228,6 +1316,10 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             {"task_id": run.task_id, "driver": driver.name},
         )
         await self._end_transaction(run.session)  # an LLM review follows
+        if run.policy.review_stages:
+            # The owner's ordered stages replace the single default review.
+            await self._run_review_stages(run)
+            return
         diff_text = await diff_against_head(run.workdir)
         verdict = await self._reviewer.review(run.task_type, run.instruction, diff_text)
         if not (verdict.ran and not verdict.approved):
@@ -1289,6 +1381,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         ):
             return
         await self._end_transaction(run.session)  # git commit + branch follow
+        # Read before the commit below: afterwards the worktree has no diff.
+        await self._record_risk_report(run)
         landed_branch = await preserve_verified_work(
             worktree=run.worktree,
             repo_path=run.worktree_origin,
@@ -1322,6 +1416,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             auto_merge=bool(ctx.get("auto_merge")),
             base_branch=ctx.get("base_branch") or None,
             change_policy=policy_from_project(ctx),
+            autonomy=self._autonomy_payload(run),
         )
 
     async def _finish_dispatch(self, run: _DispatchRun) -> None:
@@ -1475,8 +1570,13 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         verify_chain: list[str],
         acceptance_tests: list[str] | None = None,
         run: _DispatchRun | None = None,
+        attempt: int = 2,
     ) -> DriverResult | None:
         """Re-dispatch once with failure context appended to instruction.
+
+        *attempt* is the verification attempt this re-dispatch records: 2 for
+        the bounce, 3+ for an owner-enabled fix round (which also books its
+        spend with the Governor; the bounce's booking is unchanged).
 
         Returns:
             DriverResult if bounce succeeded verification, None if it also failed;
@@ -1532,7 +1632,12 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         bounce_result = await driver.dispatch(
             bounced_packet, workdir, timeout=_driver_timeout(driver, run)
         )
-        await self._emit_steps(tenant_id, task_id, driver.name, 2, bounce_result)
+        await self._emit_steps(tenant_id, task_id, driver.name, attempt, bounce_result)
+        if run is not None:
+            run.spent_usd += float(bounce_result.cost_usd or 0.0)
+            run.bounce_outcome = "driver_failed"
+        if attempt > 2:
+            await governor.record(tenant_id, BudgetCategory.DRIVER, bounce_result.cost_usd)
 
         if not bounce_result.success:
             return None
@@ -1545,6 +1650,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             run.result = bounce_result
             await self._check_worktree_link(run)
             if run.result.metadata.get("worktree_tampered"):
+                run.bounce_outcome = "tampered"
                 return run.result
 
         # Re-verify -- against the same acceptance tests as the first attempt,
@@ -1566,7 +1672,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             autofix = await mechanical_autofix(workdir, task_context)
             if autofix.get("fixed") and autofix.get("candidates"):
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
-        await self._record_verification(tenant_id, task_id, 2, v_results, session)
+        await self._record_verification(tenant_id, task_id, attempt, v_results, session)
 
         if run is not None:
             # These supersede the pre-bounce verdicts: they are the checks that
@@ -1574,12 +1680,16 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             run.verifier_results = list(v_results)
 
         if verifier_chain.all_passed(v_results):
+            if run is not None:
+                run.bounce_outcome = "passed"
             await self._emit(
                 EventType.VERIFICATION_PASSED,
                 {"task_id": task_id, "driver": driver.name, "bounce": True},
             )
             return bounce_result
 
+        if run is not None:
+            run.bounce_outcome = "verify_failed"
         return None
 
     async def _record_verification(
@@ -1590,7 +1700,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         v_results: list[VerifierResult],
         session: AsyncSession,
     ) -> None:
-        """Persist one verifier-chain run (attempt 2 is the post-bounce re-check).
+        """Persist one verifier-chain run (attempt 2 is the post-bounce re-check;
+        3+ are owner-enabled fix rounds, docs/specs/agent-drivers.md).
 
         ``verification_runs.task_id`` references ``agent_tasks``, so a run is
         recorded only for dispatches that have a task row (dashboard dev tasks);
