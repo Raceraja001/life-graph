@@ -87,11 +87,25 @@ memories it returned (retrieval.RetrievalResult): ``contradictory_evidence``
 
 ``insufficient`` is True when memory could not be searched, when nothing
 passed, when only the question-independent items (``due_intention``,
-``current_decision``) are there, or when retrieve says the memory evidence is
-unresolvable and no decision or intention matched the question either. A
-contradiction alone does not make it insufficient: a memory that disagrees
-often is the answer ("you are not looking for a new job"), so it is reported
-in ``abstain`` and the explanation instead. ``explanation`` says which.
+``current_decision``) are there, when retrieve says the memory evidence is
+unresolvable and no decision or intention matched the question either, or
+when the sufficiency check (services/memory/sufficiency.py, words only, no
+model) finds that no included item is about the question's subject: none
+supports any of the question's terms (a longer term such as "credit score"
+needs two of its words in one item, so "scored 68% on a practice test" is not
+support). A question-independent item counts there only through its own
+words and kind ("commitment", "decision", "deadline"), never by being listed.
+A question that asks what is missing ("what information is missing before
+you can recommend ...?") is always insufficient: no record says what a
+reliable answer needs. A contradiction alone does not make it insufficient: a
+memory that disagrees often is the answer ("you are not looking for a new
+job"), so it is reported in ``abstain`` and the explanation instead.
+``explanation`` says which.
+
+``missing`` lists the question's terms that no included item supports, then
+the words of a supported longer term that its best item lacks ("second" of
+"second home loan"). They are the question's own words, never record text,
+and like the query they are not in the compact (trace) form.
 
 ``timings_ms`` is how long each stage took, in milliseconds (``time.monotonic``):
 ``embed`` (the query embedding), ``retrieve`` (retrieve(): search, entity
@@ -139,7 +153,7 @@ from life_graph.core import evidence as ev
 from life_graph.core.tenant import get_current_tenant_id, tenant_scope
 from life_graph.core.trust import is_excluded_from_agents
 from life_graph.models.db import Approval, Decision, Intention, Memory
-from life_graph.services.memory import retrieval
+from life_graph.services.memory import retrieval, sufficiency
 from life_graph.services.memory.context import search_text
 from life_graph.storage.database import async_session
 
@@ -355,6 +369,8 @@ class ContextSnapshot:
     abstain: bool = False
     #: Its reason: "contradictory_evidence" | "unresolvable_missing_evidence" | None.
     abstention_reason: str | None = None
+    #: The question's terms (and words of terms) no included item supports.
+    missing: tuple[str, ...] = ()
     #: (stage, milliseconds) in TIMING_STAGES order; not part of equality.
     timings_ms: tuple[tuple[str, float], ...] = field(default=(), compare=False)
 
@@ -375,6 +391,7 @@ class ContextSnapshot:
             "insufficient": self.insufficient,
             "abstain": self.abstain,
             "abstention_reason": self.abstention_reason,
+            "missing": list(self.missing),
             "explanation": self.explanation,
             "content_chars": self.content_chars,
             "sources": list(self.sources),
@@ -630,6 +647,27 @@ def intention_item(
         fingerprint=fingerprint(i.id, getattr(i, "content", "")),
         due=_iso(intention_due(i)),
     )
+
+
+def memory_support_text(m: Any) -> str:
+    """A memory's words for the sufficiency check: its full text, tags and fact type."""
+    tags = " ".join(t for t in (getattr(m, "tags", None) or []) if isinstance(t, str))
+    fact_type = _props(m).get("fact_type")
+    kind = fact_type.replace("_", " ") if isinstance(fact_type, str) else ""
+    return f"{ev.citation_text(m)} {tags} {kind}"
+
+
+def decision_support_text(d: Any, item: ContextItem) -> str:
+    """A decision's words: title, reasoning, domain tags and the words for its kind."""
+    tags = " ".join(t for t in (getattr(d, "domain_tags", None) or []) if isinstance(t, str))
+    due = sufficiency.DUE_WORDS if item.due else ""
+    return f"{decision_text(d)} {tags} {sufficiency.KIND_WORDS[DECISION]} {due}"
+
+
+def intention_support_text(i: Any, item: ContextItem) -> str:
+    """An intention's words: its text and the words for its kind (and "due" when due)."""
+    due = sufficiency.DUE_WORDS if item.due else ""
+    return f"{getattr(i, 'content', '') or ''} {sufficiency.KIND_WORDS['intention']} {due}"
 
 
 def exclusion_reason(
@@ -965,6 +1003,12 @@ class _Parts:
     timings: dict[str, float] = field(default_factory=dict)
     abstain: bool = False
     abstention_reason: str | None = None
+    #: Item key -> the words the sufficiency check reads (full text and labels).
+    support: dict[str, str] = field(default_factory=dict)
+
+    def add(self, item: ContextItem, support_text: str) -> None:
+        self.items.append(item)
+        self.support[item.source_ref.key()] = support_text
 
     def exclude(self, reason: str, n: int = 1) -> None:
         if n:
@@ -1016,7 +1060,8 @@ async def _memories(
             parts.exclude("pending_only")
         else:
             kept.append(m)
-    parts.items += [memory_item(m, ref, budget) for m in kept]
+    for m in kept:
+        parts.add(memory_item(m, ref, budget), memory_support_text(m))
     parts.sources.append("memories")
     # Near matches that did not make it, by reason: a second search over
     # every status with the same embedding (no model call).
@@ -1051,7 +1096,9 @@ async def _decisions(
             parts.exclude("superseded")
         elif d.status == "discarded":
             parts.exclude("discarded")
-    parts.items += [decision_item(d, ref, budget) for d in current]
+    for d in current:
+        item = decision_item(d, ref, budget)
+        parts.add(item, decision_support_text(d, item))
     # The latest current decisions too, whatever the query's words; a keyword
     # match keeps its own reason.
     matched = {d.id for d in current}
@@ -1060,7 +1107,9 @@ async def _decisions(
         for d in await _current_decisions(tenant_id, ref, as_of)
         if d.id not in matched and d.status in DECISION_LABEL
     ]
-    parts.items += [decision_item(d, ref, budget, CURRENT_DECISION) for d in standing]
+    for d in standing:
+        item = decision_item(d, ref, budget, CURRENT_DECISION)
+        parts.add(item, decision_support_text(d, item))
     by_id = {d.id: d for d in current + standing}
     for old in await _superseded_decisions(tenant_id, list(by_id)):
         new = by_id[old.superseded_by]
@@ -1080,11 +1129,15 @@ async def _intentions(
     parts: _Parts, tenant_id: str, query: str, ref: datetime, as_of: datetime | None, budget: Budget
 ) -> None:
     rows = await _open_intentions(tenant_id, query, ref, as_of)
-    parts.items += [intention_item(i, ref, budget) for i in rows]
+    for i in rows:
+        item = intention_item(i, ref, budget)
+        parts.add(item, intention_support_text(i, item))
     # Open intentions due soon or overdue too, whatever the query's words.
     matched = {i.id for i in rows}
     due = [i for i in await _due_intentions(tenant_id, ref, as_of) if i.id not in matched]
-    parts.items += [intention_item(i, ref, budget, DUE_INTENTION) for i in due]
+    for i in due:
+        item = intention_item(i, ref, budget, DUE_INTENTION)
+        parts.add(item, intention_support_text(i, item))
     parts.sources.append("intentions")
 
 
@@ -1101,16 +1154,45 @@ ABSTENTION_NOTE = {
 }
 
 
-def is_insufficient(kept: list[ContextItem], parts: _Parts) -> bool:
+def check_sufficiency(
+    query: str, kept: list[ContextItem], parts: _Parts
+) -> sufficiency.Sufficiency:
+    """The sufficiency check over the items that made the budget (their full words)."""
+    texts = [parts.support.get(i.source_ref.key(), i.content) for i in kept]
+    return sufficiency.assess(query, texts)
+
+
+def is_insufficient(
+    kept: list[ContextItem], parts: _Parts, suff: sufficiency.Sufficiency | None = None
+) -> bool:
     """Whether *kept* is not enough to answer from (see the module docstring)."""
     answering = [i for i in kept if i.reason not in STANDING_REASONS]
     if not answering:
+        return True
+    if suff is not None and (suff.asks_for_gaps or suff.unsupported):
         return True
     thin = parts.abstain and parts.abstention_reason == THIN_EVIDENCE
     return thin and all(i.source_ref.kind == "memory" for i in answering)
 
 
-def _explain(kept: list[ContextItem], parts: _Parts) -> str:
+GAPS_NOTE = "The question asks what is missing, and no record says what a reliable answer needs."
+
+
+def _explain_sufficiency(suff: sufficiency.Sufficiency) -> str:
+    """Fixed words plus the question's own terms (never record text)."""
+    gaps = suff.describe_missing()
+    if suff.asks_for_gaps:
+        if gaps:
+            return f" {GAPS_NOTE} No included record covers: {gaps}."
+        return f" {GAPS_NOTE} Every term of the question has a record; that does not show nothing else is needed."
+    if suff.unsupported:
+        return f" No included record is about the question's terms: {gaps}."
+    return f" No included record covers: {gaps}." if gaps else ""
+
+
+def _explain(
+    kept: list[ContextItem], parts: _Parts, suff: sufficiency.Sufficiency | None = None
+) -> str:
     if not kept:
         return NOTHING_MATCHED
     counts: dict[str, int] = {}
@@ -1132,6 +1214,8 @@ def _explain(kept: list[ContextItem], parts: _Parts) -> str:
         text_ += f" Held back {held} near match{'es' if held != 1 else ''}."
     if parts.abstain and parts.abstention_reason in ABSTENTION_NOTE:
         text_ += f" {ABSTENTION_NOTE[parts.abstention_reason]}"
+    if suff is not None:
+        text_ += _explain_sufficiency(suff)
     for note in parts.notes:
         text_ += f" {note}"
     return text_
@@ -1196,13 +1280,15 @@ async def assemble_context(
         )
     kept, used, over = apply_budget(parts.items, budget)
     parts.exclude("over_budget", over)
+    suff = check_sufficiency(query, kept, parts)
     return ContextSnapshot(
         **base,
         items=tuple(kept),
         conflicts=_dedupe_conflicts(parts.conflicts),
         exclusions=tuple(sorted(parts.excluded.items())),
-        insufficient=is_insufficient(kept, parts),
-        explanation=_explain(kept, parts),
+        insufficient=is_insufficient(kept, parts, suff),
+        explanation=_explain(kept, parts, suff),
+        missing=suff.missing,
         content_chars=used,
         sources=tuple(parts.sources),
         abstain=parts.abstain,

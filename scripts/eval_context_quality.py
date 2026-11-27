@@ -493,6 +493,7 @@ def score_snapshot(q: dict[str, Any], snap: Any, world: World, other: World, tok
         "forbidden_as_current": sorted(included & forbidden),
         "noise": sorted(included - ok - forbidden),
         "insufficient": snap.insufficient,
+        "missing": list(getattr(snap, "missing", ())),
         "reasons": _reasons(snap),
     }
     t_checks = q.get("temporal", {})
