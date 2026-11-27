@@ -79,6 +79,8 @@ def no_models(monkeypatch):
     monkeypatch.setattr(snapshot, "_matching_decisions", empty)
     monkeypatch.setattr(snapshot, "_superseded_decisions", empty)
     monkeypatch.setattr(snapshot, "_open_intentions", empty)
+    monkeypatch.setattr(snapshot, "_current_decisions", empty)
+    monkeypatch.setattr(snapshot, "_due_intentions", empty)
     with tenant_scope("t-local"):
         yield
 

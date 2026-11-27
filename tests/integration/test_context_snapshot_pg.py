@@ -227,6 +227,106 @@ async def test_decisions_and_open_intentions(stand_ins):
 
 
 @skip_on_db_error
+async def test_due_intentions_and_current_decisions_whatever_the_words(stand_ins):
+    """D2/D3 (docs/audits/2026-11-26-m8-context-quality-evaluation.md): a
+    question that shares no word with a commitment or a decision still gets
+    the open intentions due soon (or overdue) and the latest current
+    decisions, each with a machine-readable due time; other tenants' never."""
+    tenant, other, word = _tenant("due"), _tenant("due_b"), _word()
+    own = await _memory(tenant, f"{word} keeps a priorities list")
+    soon = Intention(
+        id=uuid.uuid4(),
+        tenant_id=tenant,
+        content="Send the runbook to Suresh",
+        trigger_type="time",
+        trigger_time=NOW + timedelta(days=2),
+    )
+    overdue = Intention(
+        id=uuid.uuid4(),
+        tenant_id=tenant,
+        content="Call the plumber",
+        trigger_type="time",
+        trigger_time=NOW - timedelta(days=1),
+    )
+    due_by = NOW + timedelta(days=5)
+    promise = Intention(
+        id=uuid.uuid4(),
+        tenant_id=tenant,
+        content="Pay the school fee",
+        trigger_type="nudge",
+        context_match={"due_by": due_by.isoformat()},
+        expires_at=due_by + timedelta(days=2),
+    )
+    far = Intention(
+        id=uuid.uuid4(),
+        tenant_id=tenant,
+        content="Renew the passport",
+        trigger_type="time",
+        trigger_time=NOW + timedelta(days=40),
+    )
+    done = Intention(
+        id=uuid.uuid4(),
+        tenant_id=tenant,
+        content="Submit the self-review",
+        trigger_time=NOW + timedelta(days=1),
+        status="completed",
+    )
+    review = NOW + timedelta(days=20)
+    decided = Decision(
+        id=uuid.uuid4(),
+        tenant_id=tenant,
+        title="Use a Postgres job queue",
+        status="decided",
+        source="explicit",
+        decided_at=NOW - timedelta(days=3),
+        review_at=review,
+    )
+    dropped = Decision(
+        id=uuid.uuid4(), tenant_id=tenant, title="Buy a second car", status="discarded"
+    )
+    theirs = Intention(
+        id=uuid.uuid4(),
+        tenant_id=other,
+        content="Send their runbook",
+        trigger_time=NOW + timedelta(days=1),
+    )
+    their_decision = Decision(id=uuid.uuid4(), tenant_id=other, title="Theirs", status="decided")
+    await _add(soon, overdue, promise, far, done, decided, dropped, theirs, their_decision)
+
+    with tenant_scope(tenant):
+        snap = await assemble_context(f"what are {word} current priorities")
+    by_id = {i.source_ref.id: i for i in snap.items}
+    assert _ids(snap) == {str(own.id)}
+    assert _ids(snap, "intention") == {str(soon.id), str(overdue.id), str(promise.id)}
+    assert {by_id[str(x.id)].reason for x in (soon, overdue, promise)} == {"due_intention"}
+    assert by_id[str(soon.id)].due == soon.trigger_time.isoformat()
+    assert by_id[str(promise.id)].due == due_by.isoformat()
+    assert _ids(snap, "decision") == {str(decided.id)}
+    dec = by_id[str(decided.id)]
+    assert dec.reason == "current_decision" and dec.due == review.isoformat()
+    assert snap.insufficient is False
+    blob = str(snap.to_dict())
+    assert str(theirs.id) not in blob and str(their_decision.id) not in blob
+
+
+@skip_on_db_error
+async def test_only_standing_items_leave_an_unrelated_question_insufficient(stand_ins):
+    tenant = _tenant("due_only")
+    await _add(
+        Intention(
+            id=uuid.uuid4(),
+            tenant_id=tenant,
+            content="Send the runbook to Suresh",
+            trigger_time=NOW + timedelta(days=1),
+        )
+    )
+    with tenant_scope(tenant):
+        snap = await assemble_context(f"what is my {_word()} blood group")
+    assert [i.reason for i in snap.items] == ["due_intention"]
+    assert snap.insufficient is True
+
+
+@skip_on_db_error
 async def test_hostile_rows_are_held_back(stand_ins):
     tenant, word = _tenant("host"), _word()
     hostile = await _memory(

@@ -126,6 +126,8 @@ async def test_shadow_on_adds_references_only_and_leaves_the_prompt(monkeypatch,
             # built by hand) and the recorded time; still no content.
             "fp": "",
             "rec": None,
+            # Added later in format 2: when it is due (None for a memory).
+            "due": None,
         }
     ]
     assert shadow["v"] == 2 and shadow["reference_time"] == "2026-11-20T12:00:00+00:00"
