@@ -102,6 +102,7 @@ DEVICE_ALLOWLIST: tuple[Allowed, ...] = (
     _get("/kernel/tasks/{task_id}", "tasks"),
     _get("/kernel/drivers/tasks", "dev tasks"),
     _get("/kernel/drivers/tasks/stats", "dev tasks"),
+    _get("/kernel/drivers/tasks/parked", "dev tasks"),
     _get("/kernel/drivers/tasks/{task_id}", "dev tasks"),
     _get("/kernel/drivers/tasks/{task_id}/steps", "dev tasks"),
     _get("/kernel/drivers/night-shift", "dev tasks"),

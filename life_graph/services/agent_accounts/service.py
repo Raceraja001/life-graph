@@ -97,6 +97,9 @@ def home_info(row: AgentAccount) -> dict[str, Any]:
         "id": str(row.id),
         "driver": row.driver,
         "home_dir": row.home_dir,
+        # The accounts root (absolute, normalised): race-app's sign-in terminal
+        # checks a home lies under it before running the login there.
+        "home_root": str(homes.root()),
         "env": {env_var: row.home_dir} if env_var and row.home_dir else {},
         "login_command": LOGIN_COMMAND.get(row.driver, []) if row.kind == "subscription" else [],
     }
@@ -146,6 +149,18 @@ async def get_limits(
 ) -> list[AgentAccountLimit]:
     stmt = select(AgentAccountLimit).where(
         AgentAccountLimit.tenant_id == tenant_id, AgentAccountLimit.account_id == account_id
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def limits_for(
+    session: AsyncSession, tenant_id: str, account_ids: list[Any]
+) -> list[AgentAccountLimit]:
+    """The latest window readings of several accounts, in one query."""
+    if not account_ids:
+        return []
+    stmt = select(AgentAccountLimit).where(
+        AgentAccountLimit.tenant_id == tenant_id, AgentAccountLimit.account_id.in_(account_ids)
     )
     return list((await session.execute(stmt)).scalars().all())
 

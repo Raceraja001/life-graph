@@ -92,6 +92,20 @@ class DriverSettings(BaseModel):
     # no prompt sent) when GET .../limits?refresh=true asks. Off: only the
     # windows the last run reported are shown. Claude is never polled (U4).
     driver_accounts_codex_probe_enabled: bool = False
+    # Subscription budget (risk D4, Phase 3b part 2): an unattended run skips
+    # a subscription account whose latest plan window (agent_account_limits)
+    # is at or above this share of its limit, falling to the next account;
+    # every account over it refuses the run as rate_limited until the window
+    # resets (which parks the task when the owner's wait_for_reset is on).
+    # Only applies with driver_accounts_enabled. 1.0 = never skip.
+    driver_accounts_subscription_max_share: float = 0.9
+    # continue_task (Phase 3b part 2): keep a dispatch's worktree and CLI
+    # session so the owner (or race-app's PR-feedback loop) can continue the
+    # task in place. Off: every worktree is removed after its dispatch, as
+    # before. On: a kept worktree is removed once its task has no open PR
+    # (or pending PR approval) and it is older than driver_continue_keep_hours.
+    driver_continue_enabled: bool = False
+    driver_continue_keep_hours: int = 24
     # A plan approves itself only for a project with auto_approve_plans set,
     # at most this many tasks, and every other rule in services/dev/plan_policy.py.
     auto_plan_max_tasks: int = 3

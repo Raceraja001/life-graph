@@ -23,6 +23,12 @@ when ``worker``. Everything else only writes rows and wakes it:
   driver's process group or container (drivers/claude_code.py,
   drivers/opencode.py, services/dev/sandbox.py, task_runtime teardown), and
   the row is marked ``cancelled``.
+- **Parked tasks and kept worktrees** (Phase 3b part 2): before each fill the
+  runner puts parked tasks whose plan limit reset back on the queue
+  (:func:`~life_graph.services.dev.tasks.release_parked`), and every
+  ``SWEEP_SECONDS`` removes kept worktrees past their retention
+  (:func:`~life_graph.services.dev.tasks.sweep_kept_worktrees`). Both read only
+  rows, so a restart resumes them where they were.
 - **Wake-ups**: in-process via :func:`notify_runner`; across processes via
   Postgres ``NOTIFY lg_dev_tasks``. Polling every ``QUEUE_POLL_SECONDS`` stays
   as the fallback, so a lost notification only delays a task.
@@ -58,6 +64,8 @@ logger = logging.getLogger(__name__)
 NOTIFY_CHANNEL = "lg_dev_tasks"
 # Consecutive lease-heartbeat failures before they are logged as a warning.
 HEARTBEAT_WARN_AFTER = 3
+# How often kept continue_task worktrees are checked against their retention.
+SWEEP_SECONDS = 15 * 60
 
 _local_runner: DevTaskRunner | None = None
 
@@ -126,6 +134,7 @@ class DevTaskRunner:
         run_task: RunFn | None = None,
         listen: bool = True,
         lock_alive: Callable[[], Awaitable[bool]] | None = None,
+        housekeeping: bool = True,
     ) -> None:
         from life_graph.services.dev import tasks as dev_tasks
 
@@ -146,6 +155,8 @@ class DevTaskRunner:
         self._cancel_wake = asyncio.Event()
         self._stopping = False
         self._bg: list[asyncio.Task] = []
+        self._housekeeping = housekeeping
+        self._last_sweep = 0.0
 
     # ── Public ────────────────────────────────────────────────
 
@@ -169,6 +180,7 @@ class DevTaskRunner:
         logger.info("Dev-task runner %s started (max %d concurrent)", self.id, self.max)
         try:
             while not self._stopping:
+                await self.housekeep()
                 await self.fill()
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self._wake.wait(), timeout=QUEUE_POLL_SECONDS)
@@ -182,6 +194,28 @@ class DevTaskRunner:
             if not self._stopping:
                 self._stop_background()
                 await self._cancel_all()
+
+    async def housekeep(self, *, now: float | None = None) -> None:
+        """Release parked tasks that are due; now and then sweep kept worktrees.
+
+        Never raises: a failure here only delays a resume or a cleanup.
+        """
+        if not self._housekeeping or self._stopping:
+            return
+        from life_graph.services.dev import tasks as dev_tasks
+
+        try:
+            await dev_tasks.release_parked(self._sf)
+        except Exception:
+            logger.warning("Releasing parked dev tasks failed", exc_info=True)
+        clock = asyncio.get_running_loop().time() if now is None else now
+        if clock - self._last_sweep < SWEEP_SECONDS and self._last_sweep:
+            return
+        self._last_sweep = clock
+        try:
+            await dev_tasks.sweep_kept_worktrees(self._sf)
+        except Exception:
+            logger.warning("Sweeping kept dev-task worktrees failed", exc_info=True)
 
     async def fill(self) -> int:
         """Claim tasks until the limits are reached or nothing is runnable."""

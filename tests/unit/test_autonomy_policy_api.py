@@ -170,9 +170,20 @@ async def test_owner_puts_and_reads_the_global_policy(client, store):
     r = await client.put("/api/v1/autonomy/policy", json=GLOBAL, headers=_as(OWNER_KEY))
     assert r.status_code == 200, r.text
     data = r.json()["data"]
-    assert data["global"]["policy"] == GLOBAL
+    # Stored with every field; the run-health ones (Phase 3b part 2) default off.
+    assert data["global"]["policy"] == {
+        **GLOBAL,
+        "max_nudges": 0,
+        "max_stall_retries": 0,
+        "wait_for_reset": False,
+    }
     assert data["global"]["updated_by"] == "owner"  # the server's, not the body's
-    assert store.rows[("raja", "global")].policy == GLOBAL
+    assert store.rows[("raja", "global")].policy == {
+        **GLOBAL,
+        "max_nudges": 0,
+        "max_stall_retries": 0,
+        "wait_for_reset": False,
+    }
 
     r = await client.get("/api/v1/autonomy/policy", headers=_as(SERVICE_KEY))
     assert r.json()["data"]["global"]["policy"]["daily_auto_approval_cap"] == 5

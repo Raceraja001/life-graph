@@ -837,7 +837,8 @@ operator lists it in `driver_host_env_passthrough`.
 
 ## Phase 3b (2026-11-27): accounts, pool, limits, resume
 
-> **Status: Part 1 built, fixture-tested.** Migration `064_agent_accounts.py`;
+> **Status: Part 1 and part 2 built, fixture-tested** (part 2: see
+> [Phase 3b part 2](#phase-3b-part-2-2026-11-27)). Migration `064_agent_accounts.py`;
 > `services/agent_accounts/` (`catalog`, `env`, `homes`, `identity`, `pool`, `limits`,
 > `service`), `drivers/accounts_hook.py`, `api/agent_accounts.py`; resume paths in
 > `drivers/cli_driver.py`, `codex.py`, `gemini.py`, `claude_code.py`. Everything is **off
@@ -845,8 +846,8 @@ operator lists it in `driver_host_env_passthrough`.
 > for a driver, every driver runs on the host's single login exactly as in 3a. No CLI was
 > signed in on 2026-11-27, so no account run, resume or Codex probe has run against a
 > real login; flags were verified with each CLI's `--help` and bundle only. Part 2
-> (re-dispatch on a rate limit, parking, `continue_task`, budget D4) is designed below and
-> not built. Rebuilt from race-app's `AGENT_CONNECTIONS.md`, `AGENT_ACCOUNTS_USAGE.md`,
+> (re-dispatch on a rate limit, parking, `continue_task`, budget D4, run health) is built:
+> see its own section below. Rebuilt from race-app's `AGENT_CONNECTIONS.md`, `AGENT_ACCOUNTS_USAGE.md`,
 > `agents/connections/**` and `agents/limits/**` (the owner's code).
 
 ### Requirements
@@ -926,7 +927,7 @@ account overlay; an overlay name not on the driver×kind allowlist is refused.
 | `GET /limits?driver=` | tenant | → `{accounts: Limits[]}` |
 | `GET /{id}` | tenant | → `Account` (404 for another tenant's id or a malformed one) |
 | `GET /{id}/limits?refresh=` | tenant; `refresh=true` owner | → `Limits` (+ `refresh: {kind, reason?, observed_at?}`) |
-| `GET /{id}/home` | owner | → `{id, driver, home_dir, env: {CODEX_HOME: …}, login_command: ["codex","login"]}` |
+| `GET /{id}/home` | owner | → `{id, driver, home_dir, home_root, env: {CODEX_HOME: …}, login_command: ["codex","login"]}` — `home_root` is `driver_accounts_home_root`, absolute and normalised (`~` expanded, symlinks resolved), so a client can check `home_dir` lies under it |
 | `POST` | owner | `{driver, name, kind, enabled?, priority?, identity?, properties?}` (unknown fields → 422, so a key cannot ride along) → 201 `Account`; 400 driver/kind/name/properties, 409 name or identity taken |
 | `PATCH /{id}` | owner | `{name?, enabled?, priority?, identity? ("" clears), properties?}` → `Account` |
 | `POST /{id}/enable`, `/{id}/disable` | owner | → `Account` |
@@ -951,7 +952,7 @@ with `env` set (`CLAUDE_CONFIG_DIR=<home> claude auth login`, `CODEX_HOME=<home>
 login`, `GEMINI_CLI_HOME=<home> gemini`); the CLI writes its login into the home and
 life-graph only ever points the next run at it.
 
-### Part 2 hooks (not built; after merge with race/autonomy-policy)
+### Part 2 hooks (the design; built as specified in "Phase 3b part 2" below)
 
 1. **Re-dispatch on a rate limit.** In the dispatcher, after `_run_driver` (and the
    bounce), when `result.metadata.failure.kind == "rate_limited"` and
@@ -993,5 +994,184 @@ life-graph only ever points the next run at it.
 - [x] `drivers/accounts_hook.py`; codex/gemini (via `cli_driver`) and claude_code use it
 - [x] Resume: `codex exec resume`, `gemini --resume`, `claude --resume`; `driver.resume()`
 - [x] API + owner gates; unit tests (fakes, fake CLIs, fake app-server)
-- [ ] Part 2: re-dispatch, park, `continue_task`, budget D4 (above)
+- [x] Part 2: re-dispatch, park, `continue_task`, budget D4 (see "Phase 3b part 2")
 - [ ] Record a real account run, resume and probe once the owner signs a CLI in
+
+## Phase 3b part 2 (2026-11-27)
+
+> **Status: Built, fixture-tested.** Branch `race/migration`. Code: `drivers/run_health.py`
+> (dispatcher mixin: rotation, stall retries, nudges, park decision, spend booking, worktree
+> retention), `drivers/continue_run.py` (`continue_dispatch`), `services/dev/continuation.py`
+> (`continue_task`), `services/agent_accounts/budget.py` (D4), `drivers/accounts_hook.py`
+> (`unattended`, `preview`, `billing_of`), parking in `services/dev/tasks.py` and the runner's
+> `housekeep()` (`services/dev/runner.py`). **No migration**: `agent_tasks.status` has no
+> check constraint (`parked` is a new value), and every new record lives in
+> `agent_tasks.properties` or on approvals. Everything is **off by default**; with the
+> defaults a dispatch makes exactly one driver call and books, fails and cleans up exactly as
+> before. Not yet run against a signed-in CLI (as part 1). Rebuilt from race-app's
+> `TEAMWORK.md` §3, `providers/local/{run-health,park-manager,engine-control}.ts`.
+
+### Requirements
+
+**Re-dispatch on a rate limit** (needs `driver_accounts_enabled`)
+- GIVEN a driver run fails with `metadata.failure.kind == "rate_limited"` AND
+  `metadata.account.next.id` is set AND that account has not run this task yet THEN the
+  dispatcher runs once more in the **same worktree**, pinned to that account
+  (`ContextPacket.account_id`), with the prompt *"A previous attempt at this task was
+  interrupted by a rate limit. Inspect the current changes in this working tree and continue
+  …"*, a hand-off note (the previous attempt's last agent messages, newest kept, ≤ 1500
+  characters) and the original task. A new session (sessions live in an account's home).
+- At most **one attempt per account per task** (`run.accounts_tried`). Never on `auth` or
+  `other` failures. The kill switch and the per-task cost cap are checked first (and the
+  Governor, unless the next account is a subscription one).
+- Applies to every driver call of a dispatch (first run, bounce, fix rounds, nudges,
+  continuations). Each switch is its own attempt: the interrupted run's steps are recorded
+  under its attempt, the new run under the next (`run.next_attempt`).
+- Recorded: task event `round` (`data.kind = rate_limit_switch`, `from`, `to`, `attempt`,
+  `handoff_chars`), EventBus `driver:account:switched` and `driver:run_health:round`, and
+  `payload.autonomy.run_health[]` on the PR approval.
+
+**Park until reset** (owner policy `wait_for_reset`, default false)
+- GIVEN the final result is still `rate_limited` (no next account, the pool all cooling,
+  every account over its D4 share, or a CLI limit without accounts) AND `wait_for_reset`
+  THEN `metadata.park = {resets_at, resume_at, reason, budget?}`: `resets_at` = the earliest
+  of the account's `cooldown_until` / `failure.resets_at`, `next.retry_at`,
+  `account_pool.retry_at` still in the future (else now + `driver_accounts_default_cooldown_minutes`);
+  `resume_at = resets_at + 60 s`. The task becomes **`parked`** (status; `properties.park`
+  adds `parked_at`, `count`; `properties.parks` counts parks), not failed;
+  `completed_at` stays null. At most `MAX_PARKS_PER_TASK = 5` parks, then it fails as before.
+- The runner's loop (`DevTaskRunner.housekeep`, before every fill, i.e. each wake-up or
+  ≤ 60 s) calls `release_parked`: a parked task whose `resume_at` passed goes back to
+  `queued` (`properties.unparked = {at, resume_at, note}`) and runs as a fresh dispatch
+  (new worktree; its WIP, kill-switch and budget checks apply). Rows are the only state, so
+  a restart resumes parks on time. A paused tenant's tasks stay parked.
+- Default off: a rate-limited task fails as before (and the free-cloud re-queue in
+  `_after_queued_run` is unchanged).
+- `parked` counts as open (duplicate check), is cancellable (cancelled at once), has stage
+  `parked`, and is not a terminal status for the event stream.
+
+**Run health** (owner policy, default 0)
+- `max_nudges` (0–3): an edit task (`code`, `code_change`) whose run succeeded, changed no
+  file, and whose output is plan-only or a question (≥ 2 list items, or a `?`) gets *"You
+  described the plan but changed no files. Carry it out now; don't ask for confirmation."* —
+  a resume of its session (a re-dispatch with the text prepended when there is none) — then
+  the tamper and file checks run again; out of nudges → today's "changed no files" failure.
+  An `empty` answer is not nudged.
+- `max_stall_retries` (0–3): a driver call that timed out (`exit_status == "timeout"`) is
+  retried after 10 s × 2ⁿ (cap 5 min) as *"Your previous run stopped responding. Continue
+  from the current state of the worktree."* (resume, else re-dispatch). Gated before the wait
+  and again after it.
+- Each round is gated by `_round_allowed` (kill switch, per-task cost cap, Governor — the
+  Governor skipped for a subscription-account run), recorded as the next attempt with a task
+  event `round` (`nudge` / `stall_retry`; `stall_wait` before the backoff), EventBus
+  `driver:run_health:round`, and `payload.autonomy.run_health[]`. A refused round emits a
+  `round` event with `skipped: true` and the reason. Rounds never approve.
+
+**`continue_task(task_id, feedback, reason)`** (`driver_continue_enabled`, default false)
+- Retention: with the flag on, a dispatch's worktree is **kept** (not removed) when the run
+  left a CLI session, the worktree is intact, the run did not park, and the task row exists;
+  `properties.continuation = {worktree, origin, driver, session_id, account_id, branch,
+  base_commit, verify_chain, rounds, kept_at, keep_until}`. The runner sweeps kept worktrees
+  every 15 min (`sweep_kept_worktrees`): removed once the task is not queued/running/parked,
+  its PR is not open or awaiting approval (stage not `awaiting_pr` / `pr_open` /
+  `awaiting_merge`) and `keep_until` (`kept_at + driver_continue_keep_hours`) passed; all of
+  them when the flag is off.
+- `continue_task` refuses (409 unless noted, nothing changes): `continue_disabled`,
+  `not_found` (404), `no_feedback` (422), `busy` (queued/running/parked), `not_continuable`
+  (cancelled, or PR merged/closed), `no_session`, `no_workdir` (gone or not intact),
+  `resume_unsupported`, `paused` (kill switch). Otherwise it queues the task (`start_now`,
+  `interactive`, `properties.continue_request = {feedback ≤ 8000, reason ≤ 200, requested_at}`).
+- The runner then calls `TaskDispatcher.continue_dispatch`: WIP check, the packet with the
+  worktree as its path (`isolation=False`), the budget gate (interactive), `driver.resume`
+  on the **same session and account** with the feedback, then the normal chain: tamper and
+  file checks (with nudges), the verifier chain (bounce, fix rounds, review stages), landing,
+  the PR approval, stats. Landing commits on top of `lg/task-<id>` (same branch).
+- **Single approval path**: the approval describes the change from the task's first
+  `base_commit` (the whole branch, as its PR shows it). A **pending** `driver_pr` approval of
+  the task is updated in place; once its PR is open a new `driver_pr` approval is filed
+  ("Update PR: …", `payload.continuation = {round, previous_approval, pr_url}`): approving
+  it pushes the branch into the **same** PR (`open_pull_request` finds it by branch), never a
+  second PR. A pending `driver_merge` of the task is rejected (`resolved_by = "system:
+  continued"`): it names the old head, which `merge_pull_request` would refuse anyway. The
+  worktree is kept again for the next round (`rounds` + 1).
+
+**Subscription budget (risk D4)** (needs `driver_accounts_enabled`)
+- An **unattended** run (`packet.unattended = not interactive`) skips a subscription account
+  whose fullest live window reading (`agent_account_limits`; a reading counts until its
+  `resets_at`, or 5 h after `observed_at` when it has none) is ≥
+  `driver_accounts_subscription_max_share` × 100 %, falling to the next account in pool
+  order. None left → refused `exit_status=subscription_budget`, `failure = {kind:
+  rate_limited, reason: subscription_budget, resets_at: earliest window reset}`,
+  `account_pool = {state: over_budget, retry_at}` → parks when `wait_for_reset`, else fails.
+  A pinned (resumed/rotated) account over its share refuses the same way. Attended runs and
+  a share of 1.0 are never budgeted.
+- The $ Governor applies to api-billed runs only: the budget gate previews the account
+  (`accounts_hook.preview`) and does not consult the Governor for a subscription account (or
+  when every account is over budget — the driver refuses); spend of a run on a subscription
+  account is not booked (`metadata.account` present and `metadata.billing ==
+  "subscription"`). API-key and Vertex accounts stay under the dollar cap. Without accounts
+  every run books exactly as before.
+- `metadata.billing` follows the chosen account's kind (`subscription` → `subscription`,
+  `api_key`/`vertex` → `api`) for codex/gemini and **claude_code** (whose static `billing`
+  attribute, used for driver selection, still reads `driver_claude_code_auth`).
+- The decision is a task event `budget` (account, kind, window share, skipped accounts and
+  why), and `metadata.account.budget` on the result.
+
+### Settings
+
+| Where | Name | Default | Meaning |
+|---|---|---|---|
+| autonomy policy (global; project `null` = global) | `max_nudges` | 0 | 0–3 nudges per dispatch |
+| autonomy policy | `max_stall_retries` | 0 | 0–3 stall retries per driver call chain |
+| autonomy policy | `wait_for_reset` | false | park instead of fail on a plan limit |
+| env `LIFE_GRAPH_DRIVER_ACCOUNTS_SUBSCRIPTION_MAX_SHARE` | `driver_accounts_subscription_max_share` | 0.9 | D4 share (only with accounts on) |
+| env `LIFE_GRAPH_DRIVER_CONTINUE_ENABLED` | `driver_continue_enabled` | false | keep worktrees; allow continue_task |
+| env `LIFE_GRAPH_DRIVER_CONTINUE_KEEP_HOURS` | `driver_continue_keep_hours` | 24 | retention after the last run (PR open keeps longer) |
+
+Re-dispatch on a rate limit has no switch of its own: it is part of `driver_accounts_enabled`
+(off by default). The policy fields appear in `GET /autonomy/policy` bodies,
+`effective` and `limits.bounds` (`max_nudges`, `max_stall_retries`: `{min: 0, max: 3}`).
+
+### API
+
+| Route | Who | Body → `data` |
+|---|---|---|
+| `POST /kernel/drivers/tasks/{id}/continue` | owner | `{feedback (1..8000), reason? (≤200)}` (unknown fields 422) → the task (`status: queued`); 409 `"<code>: <message>"`, 404 |
+| `POST /kernel/drivers/tasks/{id}/resume` | owner | → the task + `resumed: true` (front of the queue); 409 when not parked, 404 |
+| `GET /kernel/drivers/tasks/parked` | tenant (also a paired phone) | → `{tasks: [task…], count}`, soonest `resume_at` first |
+| `GET /kernel/drivers/tasks[/{id}]` (existing) | tenant | each task gains `park` (when parked) and `continuation: {driver, branch, rounds, kept_at, keep_until} \| null` (no paths) |
+
+### Events
+
+EventBus: `driver:account:switched` (`tenant_id, task_id, driver, from_account,
+to_account`), `driver:run_health:round` (`tenant_id, task_id, kind, attempt, …`),
+`driver:task:parked` (`tenant_id, task_id, resume_at, reason`), `driver:task:unparked`
+(`tenant_id, task_id, by: schedule|owner`), `driver:task:continued` (`tenant_id, task_id,
+reason, driver`). Task events: `round` (`rate_limit_switch`, `stall_wait`, `stall_retry`,
+`nudge`, `park`, `continue`; `skipped` with a reason), `budget`, and `status` `parked` /
+`queued` with `unparked` or `continue` data.
+
+### What race-app's UI needs
+
+Settings → Autonomy: the three run-health fields (global and per project, `null` = inherit).
+Task view: status/stage `parked` with `park.resume_at` ("waiting for the plan limit to reset
+at HH:MM"), a **Resume now** button (`POST …/resume`), and a parked list
+(`GET …/tasks/parked`); the `round` and `budget` timeline events; **Request changes** / the
+PR-feedback loop call `POST …/continue` (show `continuation.rounds`, `keep_until`, and the
+409 reason, falling back to a new task on `no_session` / `no_workdir`).
+
+### Not in part 2
+
+A parked task re-runs from a fresh worktree (the interrupted attempt's uncommitted work is
+not carried over). Driver-backed reviewers; PR-feedback polling itself (race-app calls
+continue). Integration tests against Postgres and recorded runs of signed-in CLIs.
+
+### Tasks
+
+- [x] `drivers/run_health.py`: `_drive` (rotation, stall retries), nudges, park decision, `_book_spend`, retention
+- [x] Autonomy policy fields `max_nudges`, `max_stall_retries`, `wait_for_reset`
+- [x] `parked` status, `release_parked` / `resume_parked` / `list_parked`, runner `housekeep`
+- [x] `continue_task` + `continue_dispatch`, kept worktrees + sweep, continuation approvals
+- [x] D4: `services/agent_accounts/budget.py`, `acquire(unattended)`, `preview`, billing per account
+- [x] API, events, unit tests (`test_run_health.py`, `test_phase3b_part2.py`, `test_phase3b_part2_api.py`)
+- [ ] Integration test against Postgres; a real rotation, park and continue on signed-in CLIs

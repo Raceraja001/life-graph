@@ -65,7 +65,12 @@ BASELINE = {
     # +11 / api -14: the chat turn moved from api/kernel.py (M16). 621 -> 622:
     # services/agent_accounts/limits.py imports drivers.codex inside the probe
     # (codex -> cli_driver -> accounts_hook -> limits is a cycle at import).
-    "services": 622,
+    # 622 -> 626 (Phase 3b part 2): services/dev/tasks.py imports core.events
+    # (_emit_bus), services.dev.runner (resume_parked wakes it; runner imports
+    # tasks) and drivers.dispatcher (sweep_kept_worktrees; the dispatcher
+    # pulls in the driver stack) lazily, as its other event/runner calls do;
+    # runner.housekeep imports tasks lazily like its __init__ does.
+    "services": 626,
     "storage": 7,
     "tools": 101,
     "watchers": 28,

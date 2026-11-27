@@ -23,6 +23,7 @@ import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, func, or_, select, text
@@ -33,6 +34,7 @@ from life_graph.config import settings
 from life_graph.drivers.dispatch_stats import MAX_WIP_PER_PROJECT, MAX_WIP_PER_TENANT
 from life_graph.drivers.execution_guard import recover_interrupted_dispatch
 from life_graph.models.db import AgentTask, Approval, VerificationRun
+from life_graph.services.dev import task_events
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import (
@@ -49,8 +51,12 @@ AGENT_NAME = "dev_task"
 QUEUE_MODE = "queue"
 # A task in one of these is still to run; the same instruction for the same
 # project again is a duplicate, not a second job. (A script that re-posted
-# its backlog on every run queued 979 copies on 2026-10-19.)
-OPEN_STATUSES = ("queued", "running")
+# its backlog on every run queued 979 copies on 2026-10-19.) A parked task
+# (waiting for a plan limit to reset, Phase 3b part 2) is still to run.
+OPEN_STATUSES = ("queued", "running", "parked")
+PARKED = "parked"
+# A task parks at most this many times; the next rate limit fails it as before.
+MAX_PARKS_PER_TASK = 5
 
 
 def instruction_key(instruction: str) -> str:
@@ -251,6 +257,10 @@ async def _run(
         # a second interruption never loops on it.
         resume = props.pop("resume_action", None)
         resume_point = _resume_point(props.get("checkpoints")) if resume == "land_only" else None
+        # continue_task (services/dev/continuation.py) queued this run: resume
+        # the task's own session in its kept worktree instead of dispatching.
+        continue_request = props.pop("continue_request", None)
+        continuation = dict(props.get("continuation") or {}) if continue_request else None
         # A previous attempt's stage trail must not decide this attempt's
         # recovery: if this run crashed before its first checkpoint flush,
         # the old "finished, failed" trail would mark it failed unrun.
@@ -263,7 +273,24 @@ async def _run(
     try:
         dispatcher = TaskDispatcher(session_factory=session_factory, event_bus=event_bus)
         result = None
-        if resume_point is not None:
+        if continue_request is not None:
+            async with session_factory() as session:
+                result = await dispatcher.continue_dispatch(
+                    tenant_id=tenant_id,
+                    task_id=task_id,
+                    instruction=instruction,
+                    task_type=task_type,
+                    project_id=project_id,
+                    persona_name=persona_name,
+                    session=session,
+                    saved=continuation or {},
+                    feedback=str(continue_request.get("feedback") or ""),
+                    reason=continue_request.get("reason"),
+                    acceptance_tests=acceptance_tests,
+                    timeout_seconds=timeout_seconds,
+                )
+                await session.commit()
+        elif resume_point is not None:
             # Verified (or landed) before the restart: finish from there, with
             # no second agent run, when the kept worktree/branch allows it.
             try:
@@ -308,6 +335,8 @@ async def _run(
                 )
                 await session.commit()
         status = "completed" if result.success else "failed"
+        if not result.success and (result.metadata or {}).get("park"):
+            status = PARKED  # the owner's wait_for_reset: back once the limit resets
         error = result.error
         result_data = {
             "success": result.success,
@@ -325,9 +354,22 @@ async def _run(
     # queued after that would never be shown.
     from life_graph.services.dev import task_events
 
+    park: dict | None = None
+    if status == PARKED:
+        async with session_factory() as session:
+            task = await session.get(AgentTask, pk)
+            parks = int((task.properties or {}).get("parks") or 0) + 1
+        park = dict((result_data.get("metadata") or {}).get("park") or {})
+        if parks > MAX_PARKS_PER_TASK:
+            status = "failed"
+            error = f"{error} (parked {MAX_PARKS_PER_TASK} times already; not parking again)"
+            park = None
+        else:
+            park.update({"parked_at": datetime.now(UTC).isoformat(), "count": parks})
     task_events.emit(
         tenant_id, task_id, "status", status,
-        data={"error": (error or "")[:500]} if error else None,
+        data={"error": (error or "")[:500], **({"park": park} if park else {})}
+        if error else None,
     )  # fmt: skip
     await task_events.flush()
     async with session_factory() as session:
@@ -335,9 +377,34 @@ async def _run(
         task.status = status
         task.error = error
         task.result = result_data
-        task.completed_at = datetime.now(UTC)
-        task.status_history = _history(task, status, error)
+        props = {k: v for k, v in (task.properties or {}).items() if k != "park"}
+        if park is not None:
+            props["park"] = park
+            props["parks"] = park["count"]
+            task.completed_at = None
+            note = f"{error} -- resumes at {park.get('resume_at')}"
+        else:
+            task.completed_at = datetime.now(UTC)
+            note = error
+        task.properties = props
+        task.status_history = _history(task, status, note)
         await session.commit()
+    if park is not None:
+        await _emit_bus(
+            "TASK_PARKED",
+            {"tenant_id": tenant_id, "task_id": task_id, "resume_at": park.get("resume_at"),
+             "reason": park.get("reason")},
+        )  # fmt: skip
+
+
+async def _emit_bus(name: str, payload: dict[str, Any]) -> None:
+    """Fire an EventBus event (best-effort: a dev task never fails on it)."""
+    from life_graph.core.events import EventType, event_bus
+
+    try:
+        await event_bus.emit(getattr(EventType, name), payload, source="dev_tasks")
+    except Exception:
+        logger.debug("Could not emit %s", name, exc_info=True)
 
 
 def _resume_point(trail: dict | None) -> dict | None:
@@ -639,9 +706,17 @@ async def _approvals_by_task(
     return out
 
 
+def _created_key(approval: Approval) -> datetime:
+    created = getattr(approval, "created_at", None)
+    if created is None:
+        return datetime.min.replace(tzinfo=UTC)
+    return created if created.tzinfo else created.replace(tzinfo=UTC)
+
+
 def _stage(task: AgentTask, approvals: list[Approval]) -> str:
     """One word for where the task is in the pipeline, for the UI."""
-    by_kind = {a.kind: a for a in approvals}
+    # Newest last: a continued task can have more than one approval per kind.
+    by_kind = {a.kind: a for a in sorted(approvals, key=_created_key)}
     merge, pr = by_kind.get("driver_merge"), by_kind.get("driver_pr")
     outcome = (pr.payload or {}).get("outcome") if pr is not None else None
     if outcome == "merged":
@@ -652,7 +727,7 @@ def _stage(task: AgentTask, approvals: list[Approval]) -> str:
         return {"approved": "merged", "rejected": "pr_open"}.get(merge.status, "awaiting_merge")
     if pr is not None:
         return {"approved": "pr_open", "rejected": "pr_rejected"}.get(pr.status, "awaiting_pr")
-    if task.status in ("queued", "running"):
+    if task.status in ("queued", "running", PARKED):
         return task.status
     if (task.result or {}).get("metadata", {}).get("landed_branch"):
         return "landed"  # verified branch, but no PR approval was filed
@@ -748,6 +823,23 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "timeout_seconds": props.get("timeout_seconds"),
         # Why a queued task has not started (claim-time WIP limits).
         "waiting": props.get("waiting") if task.status == "queued" else None,
+        # Waiting for a plan limit to reset (Phase 3b part 2): resume_at, reason.
+        "park": props.get("park") if task.status == PARKED else None,
+        # Whether continue_task can resume this task's session (no paths here).
+        "continuation": _continuation_view(props.get("continuation")),
+    }
+
+
+def _continuation_view(record: dict | None) -> dict | None:
+    """What a viewer may see of a kept worktree/session: when, how often, which driver."""
+    if not isinstance(record, dict) or not record.get("session_id"):
+        return None
+    return {
+        "driver": record.get("driver"),
+        "branch": record.get("branch"),
+        "rounds": record.get("rounds") or 0,
+        "kept_at": record.get("kept_at"),
+        "keep_until": record.get("keep_until"),
     }
 
 
@@ -1399,6 +1491,212 @@ async def _after_queued_run(
     )
 
 
+# ── Parked tasks (Phase 3b part 2) ──────────────────────────────
+#
+# A task whose driver run stayed rate limited with no agent account left, on
+# a policy with ``wait_for_reset``, is ``parked`` (not failed) with
+# ``properties.park = {resume_at, resets_at, reason, parked_at, count}``. The
+# runner's loop (services/dev/runner.py) calls :func:`release_parked` before
+# each claim: a park whose ``resume_at`` passed goes back to ``queued`` and
+# runs like any queued task (a fresh dispatch: its kill-switch, WIP and budget
+# checks apply). The row is the state, so a restart loses nothing.
+
+
+def _park_due(task: AgentTask, now: datetime) -> bool:
+    resume = ((task.properties or {}).get("park") or {}).get("resume_at")
+    if not isinstance(resume, str):
+        return True  # a park with no time: resume rather than wait forever
+    try:
+        when = datetime.fromisoformat(resume.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return (when if when.tzinfo else when.replace(tzinfo=UTC)) <= now
+
+
+def _unpark(task: AgentTask, note: str, *, now: datetime, start_now: bool = False) -> None:
+    props = dict(task.properties or {})
+    park = props.pop("park", None) or {}
+    props["unparked"] = {"at": now.isoformat(), "resume_at": park.get("resume_at"), "note": note}
+    if start_now:
+        props["start_now"] = True
+    task.properties = props
+    task.status = "queued"
+    task.error = None
+    task.started_at = None
+    task.completed_at = None
+    task.status_history = _history(task, "queued", note)
+
+
+async def release_parked(
+    session_factory: async_sessionmaker[AsyncSession], *, now: datetime | None = None
+) -> list[str]:
+    """Put every parked dev task whose reset time passed back on the queue.
+
+    Install-wide like the claim (one runner per database); each row keeps its
+    tenant. A paused tenant's tasks stay parked until autonomy resumes (the
+    kill switch stops automatic resumes). Returns the ids released.
+    """
+    now = now or datetime.now(UTC)
+    released: list[tuple[str, str, Any]] = []
+    async with session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(AgentTask)
+                    .where(_kind_filter(), AgentTask.status == PARKED)
+                    .order_by(AgentTask.properties["park"]["resume_at"].astext)
+                    .limit(_QUEUE_SCAN_LIMIT)
+                    .with_for_update(skip_locked=True)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        due = [t for t in rows if _park_due(t, now)]
+        paused = {t for t in {r.tenant_id for r in due} if await autonomy_stopped(t)}
+        for task in due:
+            if task.tenant_id in paused:
+                continue
+            resume_at = ((task.properties or {}).get("park") or {}).get("resume_at")
+            _unpark(task, "plan limit reset; resuming", now=now)
+            released.append((str(task.id), task.tenant_id, resume_at))
+        await session.commit()
+    for task_id, tenant_id, resume_at in released:
+        task_events.emit(
+            tenant_id, task_id, "status", "queued",
+            data={"unparked": True, "resume_at": resume_at}, source="runner",
+        )  # fmt: skip
+        await _emit_bus(
+            "TASK_UNPARKED", {"tenant_id": tenant_id, "task_id": task_id, "by": "schedule"}
+        )
+    if released:
+        logger.info("Released %d parked dev task(s)", len(released))
+    return [r[0] for r in released]
+
+
+async def resume_parked(
+    session_factory: async_sessionmaker[AsyncSession], tenant_id: str, task_id: str
+) -> dict[str, Any] | None:
+    """The owner's "resume now": a parked task goes to the front of the queue.
+
+    Ignores the reset time (the owner knows, e.g. after adding an account).
+    Returns None for no such task of this tenant; ``resumed: False`` with its
+    status when it is not parked.
+    """
+    from life_graph.services.dev.runner import notify_runner
+
+    pk = uuid.UUID(task_id)
+    async with session_factory() as session:
+        task = (
+            await session.execute(
+                select(AgentTask)
+                .where(AgentTask.id == pk, AgentTask.tenant_id == tenant_id, _kind_filter())
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if task is None:
+            return None
+        if task.status != PARKED:
+            return {"id": task_id, "status": task.status, "resumed": False}
+        _unpark(task, "resumed by the owner", now=datetime.now(UTC), start_now=True)
+        await session.commit()
+        data = serialize(task, [])
+    task_events.emit(
+        tenant_id, task_id, "status", "queued", data={"unparked": True, "by": "owner"},
+        source="api",
+    )  # fmt: skip
+    await _emit_bus("TASK_UNPARKED", {"tenant_id": tenant_id, "task_id": task_id, "by": "owner"})
+    await notify_runner()
+    return {**data, "resumed": True}
+
+
+async def list_parked(session: AsyncSession, tenant_id: str) -> list[dict[str, Any]]:
+    """This tenant's parked dev tasks, soonest resume first."""
+    rows = (
+        (
+            await session.execute(
+                select(AgentTask)
+                .where(AgentTask.tenant_id == tenant_id, _kind_filter(), AgentTask.status == PARKED)
+                .order_by(AgentTask.properties["park"]["resume_at"].astext)
+                .limit(200)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [serialize(t, []) for t in rows]
+
+
+# ── Kept worktrees (continue_task, Phase 3b part 2) ─────────────────
+
+# A kept worktree stays while its task's PR is open or awaiting approval.
+_OPEN_PR_STAGES = frozenset({"awaiting_pr", "pr_open", "awaiting_merge"})
+
+
+def _keep_expired(record: dict, now: datetime) -> bool:
+    raw = record.get("keep_until")
+    try:
+        until = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return (until if until.tzinfo else until.replace(tzinfo=UTC)) <= now
+
+
+async def sweep_kept_worktrees(
+    session_factory: async_sessionmaker[AsyncSession], *, now: datetime | None = None
+) -> int:
+    """Remove kept worktrees past the retention rule; how many were removed.
+
+    Kept while the task's PR is open (or its PR approval pending), or for
+    ``driver_continue_keep_hours`` after the last run; never while the task is
+    queued, running or parked. With ``driver_continue_enabled`` off every
+    kept worktree goes. Install-wide like the runner; approvals are read per
+    tenant.
+    """
+    from life_graph.drivers.dispatcher import _discard_worktree
+
+    now = now or datetime.now(UTC)
+    removed = 0
+    async with session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(AgentTask)
+                    .where(
+                        _kind_filter(),
+                        AgentTask.properties.has_key("continuation"),
+                        AgentTask.status.notin_(OPEN_STATUSES),
+                    )
+                    .limit(200)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_tenant: dict[str, list[AgentTask]] = {}
+        for task in rows:
+            by_tenant.setdefault(task.tenant_id, []).append(task)
+        for tenant_id, tasks in by_tenant.items():
+            approvals = await _approvals_by_task(session, tenant_id, [str(t.id) for t in tasks])
+            for task in tasks:
+                record = (task.properties or {}).get("continuation") or {}
+                stage = _stage(task, approvals.get(str(task.id), []))
+                if settings.driver_continue_enabled and (
+                    stage in _OPEN_PR_STAGES or not _keep_expired(record, now)
+                ):
+                    continue
+                if record.get("worktree") and record.get("origin"):
+                    await _discard_worktree(Path(record["worktree"]), record["origin"])
+                props = {k: v for k, v in (task.properties or {}).items() if k != "continuation"}
+                props["continuation_removed_at"] = now.isoformat()
+                task.properties = props
+                removed += 1
+        await session.commit()
+    if removed:
+        logger.info("Removed %d kept dev-task worktree(s)", removed)
+    return removed
+
+
 TASK_DIFF_MAX_CHARS = 200_000
 
 
@@ -1489,7 +1787,7 @@ async def run_queue(
         set_local_runner(None)
 
 
-CANCELLABLE = ("queued", "running")
+CANCELLABLE = ("queued", "running", PARKED)
 
 
 async def cancel_running_for_tenant(
@@ -1582,10 +1880,17 @@ async def _request_cancel(
             return None
         if task.status not in CANCELLABLE:
             return {"id": task_id, "status": task.status, "cancel": "not_cancellable"}
-        if task.status == "queued":
+        if task.status in ("queued", PARKED):
+            note = (
+                "cancelled before it started"
+                if task.status == "queued"
+                else "cancelled while parked"
+            )
+            if task.status == PARKED:
+                task.properties = {k: v for k, v in (task.properties or {}).items() if k != "park"}
             task.status = "cancelled"
             task.completed_at = datetime.now(UTC)
-            task.status_history = _history(task, "cancelled", "cancelled before it started")
+            task.status_history = _history(task, "cancelled", note)
             await session.commit()
             return {"id": task_id, "status": "cancelled", "cancel": "done"}
         now = datetime.now(UTC).isoformat()

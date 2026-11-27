@@ -323,6 +323,7 @@ class ClaudeCodeDriver:
 
     name = "claude_code"
     max_concurrency = 2
+    supports_resume = True
 
     def __init__(self, binary: str | None = None) -> None:
         self._binary = binary or getattr(settings, "driver_claude_code_bin", "claude")
@@ -358,7 +359,7 @@ class ClaudeCodeDriver:
     ) -> DriverResult:
         """Continue session *session_id* with *prompt*: ``claude -p <prompt> --resume <id>``.
 
-        Phase 3b, not wired into dev tasks yet. Host mode only: a task-runtime
+        Used by continue_task and run-health rounds (Phase 3b part 2). Host mode only: a task-runtime
         container's config dir is thrown away after each run, so there is no
         session to resume there (refused as ``resume_unsupported``). With
         accounts on, pass the *account_id* the session ran on (its home holds
@@ -473,7 +474,12 @@ class ClaudeCodeDriver:
                     metadata={"exit_status": "refused_host_web"},
                 )
 
-        lease = await accounts_hook.acquire(self.name, packet.tenant_id, account_id=_account_id)
+        lease = await accounts_hook.acquire(
+            self.name,
+            packet.tenant_id,
+            account_id=_account_id or packet.account_id,
+            unattended=packet.unattended,
+        )
         if lease.refusal is not None:
             lease.refusal.duration_ms = int((time.monotonic() - start) * 1000)
             return lease.refusal
@@ -548,6 +554,11 @@ class ClaudeCodeDriver:
             extra_md: dict = {"rate_limits": windows} if windows else {}
             if resume_id:
                 extra_md["resumed_from"] = resume_id
+            if lease.active:
+                # The account's kind, not driver_claude_code_auth: an API-key or
+                # Vertex account is billed per use, a subscription login is not
+                # (risk D4; the dispatcher books only api-billed spend then).
+                extra_md["billing"] = lease.billing(self.billing)
             if not success:
                 rejected = bool(limit_info) and limit_info.get("status") == "rejected"
                 extra_md["failure"] = classify_failure(

@@ -174,6 +174,7 @@ class SubscriptionCliDriver:
     name: ClassVar[str] = ""
     billing: ClassVar[str] = "subscription"
     max_concurrency: ClassVar[int] = 1  # one subscription's limits (accounts: Phase 3b)
+    supports_resume: ClassVar[bool] = True
     login_hint: ClassVar[str] = ""
 
     def __init__(self, binary: str | None = None) -> None:
@@ -291,7 +292,7 @@ class SubscriptionCliDriver:
         account_id: object = None,
         now: datetime | None = None,
     ) -> DriverResult:
-        """Continue session *session_id* with *prompt* (Phase 3b; not wired yet).
+        """Continue session *session_id* with *prompt* (Phase 3b: continue_task, run health).
 
         Runs in the packet's workdir like a dispatch; the session must exist
         in the CLI home it ran in, so with accounts on pass the *account_id*
@@ -336,7 +337,12 @@ class SubscriptionCliDriver:
                 duration_ms=elapsed(),
                 metadata={"exit_status": "not_installed", "driver": self.name},
             )
-        lease = await accounts_hook.acquire(self.name, packet.tenant_id, account_id=account_id)
+        lease = await accounts_hook.acquire(
+            self.name,
+            packet.tenant_id,
+            account_id=account_id or packet.account_id,
+            unattended=packet.unattended,
+        )
         if lease.refusal is not None:
             lease.refusal.duration_ms = elapsed()
             return lease.refusal
@@ -407,7 +413,8 @@ class SubscriptionCliDriver:
             output = "\n\n".join(parsed.texts)[-MAX_OUTPUT_CHARS:]
             metadata: dict = {
                 "driver": self.name,
-                "billing": self.billing,
+                # The account's kind decides it (an API-key login is billed per use).
+                "billing": lease.billing(self.billing),
                 "model": parsed.model or lease.model or self.model or None,
                 "session_id": parsed.session_id,
                 **({"resumed_from": resume[0]} if resume else {}),

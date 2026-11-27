@@ -146,6 +146,15 @@ class EventType(StrEnum):
     # Every step of one driver attempt (drivers/steps.py shape), for the
     # trajectory recorder. Emitted once per attempt, after the attempt ends.
     DRIVER_STEPS = "driver:steps"
+    # Run health (drivers/run_health.py, Phase 3b part 2): a rate-limited run
+    # moved to the next agent account; a nudge / stall retry / account switch
+    # round; a dev task parked until its plan limit resets, resumed from park,
+    # or continued in its own session (continue_task).
+    DRIVER_ACCOUNT_SWITCHED = "driver:account:switched"
+    DRIVER_RUN_HEALTH_ROUND = "driver:run_health:round"
+    TASK_PARKED = "driver:task:parked"
+    TASK_UNPARKED = "driver:task:unparked"
+    TASK_CONTINUED = "driver:task:continued"
 
 
 @dataclass

@@ -64,16 +64,22 @@ class AutonomyRoundsMixin:
             logger.debug("No autonomy policy for task %s", run.task_id, exc_info=True)
             return NEUTRAL
 
-    async def _round_allowed(self, run: _DispatchRun) -> tuple[bool, str | None]:
+    async def _round_allowed(
+        self, run: _DispatchRun, *, subscription: bool = False
+    ) -> tuple[bool, str | None]:
         """Whether one more automatic round may run, and if not, why.
 
         Fail-closed: the kill switch (paused, or unreadable), the per-task cost
-        cap and the Governor all have to say yes.
+        cap and the Governor all have to say yes. *subscription* (the round
+        runs on a subscription account, risk D4) skips the Governor's dollar
+        check: the account hook gates that run on plan-window share instead.
         """
         if await autonomy_stopped(run.tenant_id):
             return False, "autonomy is paused (kill switch)"
         if run.spent_usd >= run.cost_cap_usd:
             return False, f"per-task cost cap reached (${run.spent_usd:.2f})"
+        if subscription:
+            return True, None
         try:
             decision = await governor.authorize(
                 run.tenant_id,
@@ -88,11 +94,11 @@ class AutonomyRoundsMixin:
             return False, f"budget: {decision.reason}"
         return True, None
 
-    async def _persist_task_props(self, run: _DispatchRun, updates: dict[str, Any]) -> None:
+    async def _persist_task_props(self, run: _DispatchRun, updates: dict[str, Any]) -> bool:
         """Merge *updates* into the task row's properties, in its own session.
 
         Best-effort like ``_persist_checkpoint``: a throwaway task id (no row)
-        or a failed write never breaks the dispatch.
+        or a failed write never breaks the dispatch. True when it was written.
         """
         try:
             pk = uuid.UUID(str(run.task_id))
@@ -105,7 +111,7 @@ class AutonomyRoundsMixin:
                     )
                 ).scalar_one_or_none()
                 if task is None:
-                    return
+                    return False
                 props = dict(task.properties or {})
                 for key, value in updates.items():
                     if value is None:
@@ -114,10 +120,12 @@ class AutonomyRoundsMixin:
                         props[key] = value
                 task.properties = props
                 await session.commit()
+                return True
         except Exception:
             logger.debug(
                 "Could not store %s for task %s", list(updates), run.task_id, exc_info=True
             )
+            return False
 
     # ── Review stages ─────────────────────────────────────────
 

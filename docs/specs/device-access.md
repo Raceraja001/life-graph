@@ -75,6 +75,7 @@ service key is unchanged.
 | `GET /api/v1/kernel/tasks/{task_id}` | Tasks | One task. |
 | `GET /api/v1/kernel/drivers/tasks` | Dev tasks | Dev tasks list. |
 | `GET /api/v1/kernel/drivers/tasks/stats` | Dev tasks | Dev task stats. |
+| `GET /api/v1/kernel/drivers/tasks/parked` | Dev tasks | Dev tasks parked until a plan limit resets. |
 | `GET /api/v1/kernel/drivers/tasks/{task_id}` | Dev tasks | One dev task and its stage. |
 | `GET /api/v1/kernel/drivers/tasks/{task_id}/steps` | Dev tasks | A dev task's recorded steps. |
 | `GET /api/v1/kernel/drivers/night-shift` | Dev tasks | The night run: merged, waiting, failed. |

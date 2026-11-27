@@ -20,6 +20,10 @@ What it may do, and what it may not:
 * **Rounds are bounded** (:data:`MAX_FIX_ROUNDS`), budget- and kill-switch
   gated by the dispatcher, recorded as verification attempts, and never
   approve anything. Default 0 = the one-bounce rule, unchanged.
+* **Run health** (Phase 3b part 2): ``max_nudges`` / ``max_stall_retries`` add
+  the same kind of bounded, gated round for a plan-only turn and for a driver
+  timeout, and ``wait_for_reset`` parks a rate-limited task until its plan
+  window resets instead of failing it. All default 0 / off.
 * **No row = no change.** With no policy row for the tenant, every function
   here answers "nothing to add", and the dispatcher behaves as before.
 
@@ -49,6 +53,9 @@ logger = logging.getLogger(__name__)
 
 GLOBAL_SCOPE = "global"
 MAX_FIX_ROUNDS = 3
+# Run-health rounds (Phase 3b part 2, race-app TEAMWORK §3): nudges after a
+# plan-only turn and stall retries after a timeout, each at most this many.
+MAX_RUN_HEALTH_ROUNDS = 3
 MAX_STAGES = 4
 MAX_GLOBS = 50
 MAX_GLOB_LENGTH = 200
@@ -146,6 +153,9 @@ class ProjectAutonomyPolicy(BaseModel):
     review_stages: list[ReviewStage] | None = Field(None, max_length=MAX_STAGES)
     verify_fix_rounds: int | None = Field(None, ge=0, le=MAX_FIX_ROUNDS)
     review_fix_rounds: int | None = Field(None, ge=0, le=MAX_FIX_ROUNDS)
+    max_nudges: int | None = Field(None, ge=0, le=MAX_RUN_HEALTH_ROUNDS)
+    max_stall_retries: int | None = Field(None, ge=0, le=MAX_RUN_HEALTH_ROUNDS)
+    wait_for_reset: bool | None = None
 
     @model_validator(mode="after")
     def _stages_unique(self) -> ProjectAutonomyPolicy:
@@ -165,6 +175,12 @@ class GlobalAutonomyPolicy(BaseModel):
     review_stages: list[ReviewStage] = Field(default_factory=list, max_length=MAX_STAGES)
     verify_fix_rounds: int = Field(0, ge=0, le=MAX_FIX_ROUNDS)
     review_fix_rounds: int = Field(0, ge=0, le=MAX_FIX_ROUNDS)
+    # Run health (Phase 3b part 2): a continuation turn after an edit run that
+    # only described a plan or asked a question; a retry after a driver
+    # timeout (10 s x 2^n, at most 5 min); park on a plan limit until reset.
+    max_nudges: int = Field(0, ge=0, le=MAX_RUN_HEALTH_ROUNDS)
+    max_stall_retries: int = Field(0, ge=0, le=MAX_RUN_HEALTH_ROUNDS)
+    wait_for_reset: bool = False
 
     @model_validator(mode="after")
     def _stages_unique(self) -> GlobalAutonomyPolicy:
@@ -190,6 +206,9 @@ class EffectivePolicy:
     human_stage: bool = False
     verify_fix_rounds: int = 0
     review_fix_rounds: int = 0
+    max_nudges: int = 0
+    max_stall_retries: int = 0
+    wait_for_reset: bool = False
     sources: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -219,6 +238,8 @@ def merge(global_raw: dict | None, project_raw: dict | None) -> EffectivePolicy:
     human = False
     cap: int | None = None
     verify_rounds = review_rounds = 0
+    nudges = stalls = 0
+    wait = False
 
     g: GlobalAutonomyPolicy | None = None
     if global_raw is not None:
@@ -231,13 +252,15 @@ def merge(global_raw: dict | None, project_raw: dict | None) -> EffectivePolicy:
             cap = g.daily_auto_approval_cap
             stages = list(g.review_stages)
             verify_rounds, review_rounds = g.verify_fix_rounds, g.review_fix_rounds
+            nudges, stalls, wait = g.max_nudges, g.max_stall_retries, g.wait_for_reset
             human = any(s.reviewer == HUMAN_REVIEWER for s in g.review_stages)
     if project_raw is not None:
         sources.append("project")
         p = _parse(ProjectAutonomyPolicy, project_raw, "project")
         if p is None:
             conditions.append(("project", corrupt))
-            verify_rounds = review_rounds = 0
+            verify_rounds = review_rounds = nudges = stalls = 0
+            wait = False
             stages = []
         else:
             conditions.append(("project", p.conditions))  # type: ignore[union-attr]
@@ -248,6 +271,12 @@ def merge(global_raw: dict | None, project_raw: dict | None) -> EffectivePolicy:
                 verify_rounds = p.verify_fix_rounds  # type: ignore[union-attr]
             if p.review_fix_rounds is not None:  # type: ignore[union-attr]
                 review_rounds = p.review_fix_rounds  # type: ignore[union-attr]
+            if p.max_nudges is not None:  # type: ignore[union-attr]
+                nudges = p.max_nudges  # type: ignore[union-attr]
+            if p.max_stall_retries is not None:  # type: ignore[union-attr]
+                stalls = p.max_stall_retries  # type: ignore[union-attr]
+            if p.wait_for_reset is not None:  # type: ignore[union-attr]
+                wait = p.wait_for_reset  # type: ignore[union-attr]
     return EffectivePolicy(
         configured=True,
         conditions=tuple(conditions),
@@ -256,6 +285,9 @@ def merge(global_raw: dict | None, project_raw: dict | None) -> EffectivePolicy:
         human_stage=human,
         verify_fix_rounds=min(max(int(verify_rounds), 0), MAX_FIX_ROUNDS),
         review_fix_rounds=min(max(int(review_rounds), 0), MAX_FIX_ROUNDS),
+        max_nudges=min(max(int(nudges), 0), MAX_RUN_HEALTH_ROUNDS),
+        max_stall_retries=min(max(int(stalls), 0), MAX_RUN_HEALTH_ROUNDS),
+        wait_for_reset=bool(wait),
         sources=tuple(sources),
     )
 
@@ -524,6 +556,9 @@ def describe(policy: EffectivePolicy) -> dict[str, Any]:
         "human_stage": policy.human_stage,
         "verify_fix_rounds": policy.verify_fix_rounds,
         "review_fix_rounds": policy.review_fix_rounds,
+        "max_nudges": policy.max_nudges,
+        "max_stall_retries": policy.max_stall_retries,
+        "wait_for_reset": policy.wait_for_reset,
     }
 
 
@@ -558,6 +593,8 @@ def limits() -> dict[str, Any]:
             "review_stages[].focus": {"max_length": MAX_STAGE_FOCUS},
             "verify_fix_rounds": rounds,
             "review_fix_rounds": rounds,
+            "max_nudges": {"min": 0, "max": MAX_RUN_HEALTH_ROUNDS},
+            "max_stall_retries": {"min": 0, "max": MAX_RUN_HEALTH_ROUNDS},
         },
     }
 

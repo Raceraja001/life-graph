@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -150,6 +151,9 @@ def test_reads_carry_no_paths_and_errors_map(client, owner, monkeypatch):
     owner["is"] = True
     home = client.get(f"/kernel/agent-accounts/{row.id}/home").json()["data"]
     assert home["home_dir"] == "/private/home/dir"
+    from life_graph.services.agent_accounts import homes
+
+    assert home["home_root"] == str(homes.root()) and Path(home["home_root"]).is_absolute()
     assert home["env"] == {"CODEX_HOME": "/private/home/dir"}
     assert home["login_command"] == ["codex", "login"]
 

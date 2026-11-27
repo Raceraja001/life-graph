@@ -19,11 +19,16 @@ Fail-closed (CHARTER invariant 5): when accounts are on and configured, a run
 never quietly falls back to the host's default login. A database error, an
 unsafe home or a missing key refuses the run (``exit_status =
 account_unavailable``); every account cooling down refuses it as
-``rate_limited`` with ``resets_at`` = the earliest cooldown end (Phase 3b
-part 2 parks the task until then). Only ``rate_limited`` moves on to the next
-account, and that move (a re-dispatch) is part 2's: :func:`release` only
-puts the account into cooldown and names the next one in
-``metadata.account.next``.
+``rate_limited`` with ``resets_at`` = the earliest cooldown end (the task can
+park until then). Only ``rate_limited`` moves on to the next account: the
+dispatcher re-dispatches on ``metadata.account.next`` (drivers/run_health.py),
+pinning it with ``packet.account_id``; :func:`release` only puts the account
+into cooldown and names the next one.
+
+Subscription budget (risk D4, Phase 3b part 2): an unattended run
+(``packet.unattended``) skips subscription accounts at or above
+``driver_accounts_subscription_max_share`` of a plan window
+(services/agent_accounts/budget.py).
 """
 
 from __future__ import annotations
@@ -35,7 +40,7 @@ from typing import TYPE_CHECKING, Any
 
 from life_graph.config import settings
 from life_graph.drivers.base import DriverResult
-from life_graph.services.agent_accounts import homes, limits, pool, service
+from life_graph.services.agent_accounts import budget, homes, limits, pool, service
 from life_graph.services.agent_accounts.catalog import AccountError
 
 if TYPE_CHECKING:
@@ -72,6 +77,8 @@ class AccountLease:
     model: str | None = None
     env: AccountEnv | None = field(default=None, repr=False)
     refusal: DriverResult | None = None
+    # The subscription-budget decision (D4) for an unattended run, if any.
+    budget: dict | None = None
 
     @property
     def active(self) -> bool:
@@ -85,12 +92,19 @@ class AccountLease:
         """What the result records about the account (no secret, no path)."""
         if not self.active:
             return None
-        return {
+        info = {
             "id": str(self.account_id),
             "name": self.name,
             "kind": self.kind,
             "env": self.env.names(),
         }
+        if self.budget:
+            info["budget"] = self.budget
+        return info
+
+    def billing(self, default: str) -> str:
+        """``subscription`` / ``api`` for this run's account, else *default*."""
+        return billing_of(self.kind, default) if self.active else default
 
 
 def _refuse(driver: str, status: str, error: str, **metadata: Any) -> DriverResult:
@@ -101,14 +115,132 @@ def _refuse(driver: str, status: str, error: str, **metadata: Any) -> DriverResu
     )
 
 
+def billing_of(kind: str | None, default: str) -> str:
+    """How a run on an account of *kind* is paid for: ``subscription`` or ``api``.
+
+    A subscription login is the plan's (risk D4: gated on window share, not
+    dollars); an API key or Vertex project is billed per use (the Governor's
+    dollar cap). No account = the driver's own *default*.
+    """
+    if kind == "subscription":
+        return "subscription"
+    if kind in ("api_key", "vertex"):
+        return "api"
+    return default
+
+
+@dataclass
+class _Selection:
+    """What the pool (and the subscription budget) chose for one run."""
+
+    pick: pool.Pick
+    budget: dict | None = None  # the D4 decision, for the task's events
+    over_budget_until: datetime | None = None  # every account over the share
+
+
+async def _select(
+    session: Any,
+    tenant_id: str,
+    driver: str,
+    *,
+    account_id: Any,
+    unattended: bool,
+    now: datetime,
+) -> _Selection:
+    """The pool pick for one run, with the subscription budget (D4) applied.
+
+    Only an unattended run is budgeted; someone who asked for a run now may
+    spend their own quota.
+    """
+    share = float(settings.driver_accounts_subscription_max_share)
+    if account_id is not None:
+        picked = await _pinned(session, tenant_id, driver, account_id, now)
+        rows = [picked.account] if picked.state == "selected" else []
+    else:
+        rows = await service.list_accounts(session, tenant_id, driver)
+        picked = pool.pick(rows, now)
+    if not unattended or share >= 1.0:
+        return _Selection(picked)
+    subs = [r for r in rows if r.enabled and r.kind == "subscription"]
+    if not subs:
+        return _Selection(picked)
+    limits_rows = await service.limits_for(session, tenant_id, [r.id for r in subs])
+    readings = budget.fullest(subs, limits_rows, now)
+    over = budget.over_share(readings, share)
+    decision: dict[str, Any] = {"share_limit": share}
+    if over:
+        decision["skipped"] = [r.as_dict() for r in over.values()]
+        decision["reason"] = budget.reason(over, share)
+    if account_id is None and over:
+        picked = pool.pick(rows, now, exclude=set(over))
+    elif account_id is not None and picked.state == "selected" and picked.account.id in over:
+        picked = pool.Pick("none")
+    chosen = picked.account if picked.state == "selected" else None
+    if chosen is not None:
+        mine = readings.get(chosen.id)
+        decision["account"] = chosen.name
+        decision["used_percent"] = round(mine.used_percent, 1) if mine else None
+        decision["window"] = mine.window if mine else None
+        return _Selection(picked, decision)
+    if not over:
+        return _Selection(picked, decision)
+    # Every enabled account is over the share or cooling down: refuse until the
+    # first one frees up.
+    until = budget.earliest_reset(over, now, settings.driver_accounts_default_cooldown_minutes)
+    if picked.state == "cooling" and picked.retry_at is not None:
+        until = min(until, picked.retry_at)
+    return _Selection(picked, decision, over_budget_until=until)
+
+
+async def preview(
+    driver: str, tenant_id: str, *, unattended: bool = False, now: datetime | None = None
+) -> dict | None:
+    """What :func:`acquire` would choose, without leasing anything.
+
+    For the dispatcher's budget gate: ``None`` when accounts are off or the
+    driver has no enabled account (today's path), else ``{state, kind, name,
+    budget}`` with state ``selected`` / ``cooling`` / ``over_budget``.
+    Raises nothing: an unreadable pool returns ``{"state": "error"}`` (the
+    driver's own acquire then refuses the run).
+    """
+    if not settings.driver_accounts_enabled:
+        return None
+    now = now or datetime.now(UTC)
+    try:
+        async with _sf()() as session:
+            sel = await _select(
+                session, tenant_id, driver, account_id=None, unattended=unattended, now=now
+            )
+    except Exception:  # noqa: BLE001
+        logger.debug("%s: account preview failed", driver, exc_info=True)
+        return {"state": "error"}
+    if sel.over_budget_until is not None:
+        return {"state": "over_budget", "kind": None, "name": None, "budget": sel.budget}
+    if sel.pick.state == "none":
+        return None
+    if sel.pick.state == "cooling":
+        return {"state": "cooling", "kind": None, "name": None, "budget": sel.budget}
+    row = sel.pick.account
+    return {"state": "selected", "kind": row.kind, "name": row.name, "budget": sel.budget}
+
+
 async def acquire(
-    driver: str, tenant_id: str, *, account_id: Any = None, now: datetime | None = None
+    driver: str,
+    tenant_id: str,
+    *,
+    account_id: Any = None,
+    unattended: bool = False,
+    now: datetime | None = None,
 ) -> AccountLease:
     """The account this run uses (see the module docstring for the rules).
 
     *account_id* pins one account (a resume must run in the home its session
     lives in): it must exist, be enabled and not be cooling down, else the
-    run is refused; the pool is not consulted.
+    run is refused; the pool is not consulted. *unattended* applies the
+    subscription budget (D4, services/agent_accounts/budget.py): accounts over
+    their plan-window share are skipped, and when none is left the run is
+    refused as ``rate_limited`` (``exit_status=subscription_budget``) until the
+    earliest window reset.
     """
     lease = AccountLease(driver=driver, tenant_id=tenant_id)
     if not settings.driver_accounts_enabled:
@@ -116,10 +248,33 @@ async def acquire(
     now = now or datetime.now(UTC)
     try:
         async with _sf()() as session:
-            if account_id is not None:
-                picked = await _pinned(session, tenant_id, driver, account_id, now)
-            else:
-                picked, _pool = await service.choose(session, tenant_id, driver, now)
+            sel = await _select(
+                session,
+                tenant_id,
+                driver,
+                account_id=account_id,
+                unattended=unattended,
+                now=now,
+            )
+            picked = sel.pick
+            lease.budget = sel.budget
+            if sel.over_budget_until is not None:
+                resets = sel.over_budget_until.isoformat().replace("+00:00", "Z")
+                why = (sel.budget or {}).get("reason") or "over the plan-window share"
+                lease.refusal = _refuse(
+                    driver,
+                    "subscription_budget",
+                    f"no {driver} account may run unattended: {why} (resets {resets})",
+                    failure={
+                        "kind": "rate_limited",
+                        "resets_at": resets,
+                        "reason": "subscription_budget",
+                        "message": f"every {driver} account is over its plan-window share",
+                    },
+                    account_pool={"state": "over_budget", "retry_at": resets},
+                    account_budget=sel.budget,
+                )
+                return lease
             if picked.state == "missing":
                 lease.refusal = _refuse(
                     driver,
@@ -222,7 +377,11 @@ async def release(
                 rows = await service.list_accounts(session, lease.tenant_id, lease.driver)
                 nxt = pool.next_after(rows, row.id, now)
                 if nxt.state == "selected":
-                    info["next"] = {"id": str(nxt.account.id), "name": nxt.account.name}
+                    info["next"] = {
+                        "id": str(nxt.account.id),
+                        "name": nxt.account.name,
+                        "kind": nxt.account.kind,
+                    }
                 elif nxt.state == "cooling":
                     info["next"] = {
                         "state": "cooling",

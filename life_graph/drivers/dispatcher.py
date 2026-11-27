@@ -38,6 +38,7 @@ from life_graph.core.budget import BudgetCategory
 from life_graph.core.events import EventBus, EventType
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import ContextPacketBuilder
+from life_graph.drivers.continue_run import ContinueRunMixin
 from life_graph.drivers.dispatch_approvals import (  # noqa: F401  (re-exported)
     AUTO_PR_MERGE_RATE,
     ApprovalFilingMixin,
@@ -63,6 +64,7 @@ from life_graph.drivers.plan_spec import (  # noqa: F401  (re-exported)
 )
 from life_graph.drivers.registry import driver_registry, selection_key
 from life_graph.drivers.review_stages import AutonomyRoundsMixin
+from life_graph.drivers.run_health import RunHealthMixin
 from life_graph.drivers.verify_chain import (  # noqa: F401  (re-exported)
     DEFAULT_VERIFY_CHAIN,
     _resolve_verify_chain,
@@ -293,9 +295,22 @@ class _DispatchRun:
     review_results: list[dict] = field(default_factory=list)
     # What the approval payload carries for the owner's conditions ("autonomy").
     autonomy: dict = field(default_factory=dict)
+    # Run health (drivers/run_health.py, Phase 3b part 2): the latest CLI
+    # session {driver, session_id, account_id}, the accounts this task already
+    # ran on (one attempt per account), and the nudges used.
+    session_ref: dict | None = None
+    accounts_tried: set = field(default_factory=set)
+    nudges: int = 0
+    # continue_task: which continuation this is (0 = a fresh dispatch), the
+    # commit the task's branch started from, and the branch it landed on.
+    continuation_round: int = 0
+    base_commit: str | None = None
+    landed_branch: str | None = None
 
 
-class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin):
+class TaskDispatcher(
+    DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin, RunHealthMixin, ContinueRunMixin
+):
     """Selects driver, enforces limits, runs verification, manages one-bounce.
 
     The dispatcher is the central orchestrator for sending tasks to
@@ -457,6 +472,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
             await self._run_driver(run)
             await self._check_worktree_link(run)
             await self._check_files_changed(run)
+            # Step 4d: still rate limited with no account left -> park (owner opt-in).
+            self._decide_park(run)
 
             # Steps 5-6: Run verifier chain and act on its verdict
             if run.verify_chain and run.result.success:
@@ -479,7 +496,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
             logger.error("Dispatch failed for task %s: %s", task_id, e, exc_info=True)
             raise
         finally:
-            if run.worktree is not None:
+            # Kept for continue_task when that is on (driver_continue_enabled)
+            # and the run left a session to resume; removed otherwise.
+            if run.worktree is not None and not await self._retain_for_continuation(run):
                 # Run the removal from the ORIGIN repo: packet.project_context
                 # ["path"] now points at the worktree itself (see Step 4), and
                 # git refuses to delete a worktree from inside it.
@@ -731,6 +750,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
         )
         # Override the task_id from the caller
         packet.task_id = uuid.UUID(run.task_id) if isinstance(run.task_id, str) else run.task_id
+        # Nobody asked for this run right now: the subscription budget (D4)
+        # applies to its account (read only when agent accounts are on).
+        packet.unattended = not run.interactive
         run.packet = packet
 
         if run.task_type == "plan":
@@ -803,6 +825,22 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
         local (Ollama) cannot spend, so it is never denied.
         """
         driver = run.driver
+        # A run on a subscription account is billed to the plan, not dollars
+        # (risk D4): its unattended runs are gated on window share by the
+        # account hook, so the Governor's dollar cap does not apply. The
+        # decision is a task event either way. None = accounts off (as before).
+        preview = await self._budget_preview(run)
+        if preview is not None and (
+            preview.get("state") == "over_budget"
+            or (preview.get("state") == "selected" and preview.get("kind") == "subscription")
+        ):
+            if run.tracker:
+                run.tracker.record_stage(
+                    "budget_checked",
+                    metadata={"cost_cap_usd": run.cost_cap_usd, "billing": "subscription"},
+                )
+                await self._persist_checkpoint(run)
+            return None
         decision = await governor.authorize(
             run.tenant_id,
             BudgetCategory.DRIVER,
@@ -840,9 +878,53 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
             metadata={"budget_throttled": True, "reason": decision.reason},
         )
 
-    async def _run_driver(self, run: _DispatchRun) -> None:
-        """Step 4: resolve the workdir, run the driver, book what it spent."""
+    async def _run_driver(
+        self, run: _DispatchRun, resume: tuple[str, str, Any] | None = None
+    ) -> None:
+        """Step 4: resolve the workdir, run the driver, book what it spent.
+
+        *resume* (session, prompt, account) continues a kept session in the
+        already-resolved ``run.workdir`` instead (continue_task).
+        """
         packet, driver, task_id = run.packet, run.driver, run.task_id
+        if resume is None:
+            await self._resolve_run_workdir(run)
+        # Rate-limit rotation and stall retries happen inside (run_health.py).
+        result, attempt = await self._drive(
+            run, driver, packet, run.workdir, attempt=1, book_first=True, resume=resume
+        )
+        run.result = result
+        if run.tracker:
+            run.tracker.record_stage(
+                "driver_executed",
+                metadata={
+                    "success": getattr(run.result, "success", False) if run.result else False
+                },
+            )
+            await self._persist_checkpoint(run)
+        await self._emit_steps(run.tenant_id, task_id, driver.name, attempt, result)
+        # Captured here, before later steps replace `run.result` with fresh
+        # DriverResult instances (verification failure, dissent, ...)
+        # that don't carry the original metadata forward — merged back
+        # in at Step 7 regardless of how the task ultimately resolved.
+        run.spec_text = _extract_spec(result.output) if run.spec_first else None
+
+        # Book the actual spend into the Governor's ledger (a subscription
+        # account's run books none: risk D4).
+        await self._book_spend(run, result, governor_too=True)
+
+        # Secondary per-task guard (the Governor is the primary budget gate).
+        if result.cost_usd > run.cost_cap_usd:
+            logger.warning(
+                "Task %s exceeded per-task cost cap: $%.2f > $%.2f",
+                task_id,
+                result.cost_usd,
+                run.cost_cap_usd,
+            )
+
+    async def _resolve_run_workdir(self, run: _DispatchRun) -> None:
+        """Step 4 (first half): the scratch dir or isolated worktree for the run."""
+        packet, task_id = run.packet, run.task_id
         scratch = Path(
             tempfile.mkdtemp(
                 prefix=f"lg_dispatch_{task_id[:8]}_", dir=tenant_scratch_root(run.tenant_id)
@@ -874,35 +956,6 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
                     f"{code_context}\n"
                     "Check these callers before changing a signature or return shape."
                 )
-        result = await driver.dispatch(packet, run.workdir, timeout=_driver_timeout(driver, run))
-        run.result = result
-        if run.tracker:
-            run.tracker.record_stage(
-                "driver_executed",
-                metadata={
-                    "success": getattr(run.result, "success", False) if run.result else False
-                },
-            )
-            await self._persist_checkpoint(run)
-        await self._emit_steps(run.tenant_id, task_id, driver.name, 1, result)
-        # Captured here, before later steps replace `run.result` with fresh
-        # DriverResult instances (verification failure, dissent, ...)
-        # that don't carry the original metadata forward — merged back
-        # in at Step 7 regardless of how the task ultimately resolved.
-        run.spec_text = _extract_spec(result.output) if run.spec_first else None
-
-        # Book the actual spend into the Governor's ledger.
-        await governor.record(run.tenant_id, BudgetCategory.DRIVER, result.cost_usd)
-        run.spent_usd += float(result.cost_usd or 0.0)
-
-        # Secondary per-task guard (the Governor is the primary budget gate).
-        if result.cost_usd > run.cost_cap_usd:
-            logger.warning(
-                "Task %s exceeded per-task cost cap: $%.2f > $%.2f",
-                task_id,
-                result.cost_usd,
-                run.cost_cap_usd,
-            )
 
     async def _check_worktree_link(self, run: _DispatchRun) -> None:
         """Step 4b: the driver must not have swapped the worktree's .git link.
@@ -990,8 +1043,11 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
         import, ruff's autofix removed it as unused, and nothing else was
         ever written.
         """
-        result = run.result
         await self._observe_files_changed(run)
+        # Run health (owner opt-in, max_nudges): an edit run that only described
+        # a plan or asked a question gets "carry it out now" before failing here.
+        await self._nudge_until_changed(run, run.task_type in _CHANGE_REQUIRED_TASK_TYPES)
+        result = run.result
         if run.tracker:
             run.tracker.record_stage("files_checked")
             await self._persist_checkpoint(run)
@@ -1381,6 +1437,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
         ):
             return
         await self._end_transaction(run.session)  # git commit + branch follow
+        # The commit the branch starts from (a continuation keeps the first one).
+        if not run.base_commit:
+            run.base_commit = await _head_sha(run.worktree)
         # Read before the commit below: afterwards the worktree has no diff.
         await self._record_risk_report(run)
         landed_branch = await preserve_verified_work(
@@ -1398,6 +1457,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
             run.tracker.record_stage("landed", metadata={"branch": landed_branch})
             await self._persist_checkpoint(run)
         ctx = run.packet.project_context
+        run.landed_branch = landed_branch
         run.result.metadata = {**(run.result.metadata or {}), "landed_branch": landed_branch}
         await self._create_pr_approval(
             tenant_id=run.tenant_id,
@@ -1417,6 +1477,11 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
             base_branch=ctx.get("base_branch") or None,
             change_policy=policy_from_project(ctx),
             autonomy=self._autonomy_payload(run),
+            continuation=(
+                {"round": run.continuation_round, "base_commit": run.base_commit}
+                if run.continuation_round
+                else None
+            ),
         )
 
     async def _finish_dispatch(self, run: _DispatchRun) -> None:
@@ -1615,6 +1680,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
             persona_system_prompt=packet.persona_system_prompt,
             allowed_tools=packet.allowed_tools,
             persona_model=packet.persona_model,
+            unattended=packet.unattended,
         )
 
         await self._emit(
@@ -1629,14 +1695,14 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin)
         # Re-dispatch. The attempt-1 verification row is committed first: no
         # transaction stays open across the second agent run.
         await self._end_transaction(session)
-        bounce_result = await driver.dispatch(
-            bounced_packet, workdir, timeout=_driver_timeout(driver, run)
+        bounce_result, steps_attempt = await self._drive(
+            run, driver, bounced_packet, workdir, attempt=attempt, book_first=attempt > 2
         )
-        await self._emit_steps(tenant_id, task_id, driver.name, attempt, bounce_result)
+        await self._emit_steps(tenant_id, task_id, driver.name, steps_attempt, bounce_result)
         if run is not None:
-            run.spent_usd += float(bounce_result.cost_usd or 0.0)
+            await self._book_spend(run, bounce_result, governor_too=attempt > 2)
             run.bounce_outcome = "driver_failed"
-        if attempt > 2:
+        elif attempt > 2:
             await governor.record(tenant_id, BudgetCategory.DRIVER, bounce_result.cost_usd)
 
         if not bounce_result.success:

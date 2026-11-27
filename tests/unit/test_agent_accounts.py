@@ -518,7 +518,7 @@ async def test_hook_picks_and_releases_with_cooldown_and_next(accounts_on, home_
     info = result.metadata["account"]
     assert info["name"] == "a" and info["kind"] == "subscription" and info["env"] == ["CODEX_HOME"]
     assert info["cooldown_until"] == "2026-11-27T12:00:00Z"
-    assert info["next"] == {"id": str(b.id), "name": "b"}
+    assert info["next"] == {"id": str(b.id), "name": "b", "kind": "subscription"}
     assert a.cooldown_until == datetime(2026, 11, 27, 12, 0, tzinfo=UTC)
     assert a.home_dir not in repr(result.metadata)
     statements = [sql(s) for s in accounts_hook._sf().sessions[-1].statements]
