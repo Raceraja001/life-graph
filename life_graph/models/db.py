@@ -13,6 +13,7 @@ model has a `tenant_id` column."""
 
 from __future__ import annotations
 
+from life_graph.models.agent_accounts import AgentAccount, AgentAccountLimit
 from life_graph.models.agents import (
     AdvisorSession,
     AgentMessage,
@@ -128,6 +129,8 @@ __all__ = [
     "CalibrationSnapshot",
     "Challenge",
     "VaultSecret",
+    "AgentAccount",
+    "AgentAccountLimit",
 ]
 
 # NOTE: The Era-8 autonomy models (AutoAction, ApprovalQueueEntry, AuditLogEntry,

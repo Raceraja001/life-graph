@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-27 17:26 UTC` from `race/migration` @ `249b8183`
+Generated `2026-11-27 17:28 UTC` from `race/migration` @ `405abf72`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-27 17:26 UTC` from `race/migration` @ `249b8183`
 
 | | |
 |---|---|
-| HTTP operations | **406** across 349 paths, 47 tags |
-| Database tables | **90** |
-| Migrations | **63** (head: `063_autonomy_policies`) |
+| HTTP operations | **420** across 359 paths, 48 tags |
+| Database tables | **92** |
+| Migrations | **64** (head: `064_agent_accounts`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **36** |
-| Config settings | **344** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6295** in 668 files |
+| Config settings | **348** (prefix `LIFE_GRAPH_`) |
+| Test functions | **6353** in 671 files |
 | Dashboard pages | **23** |
-| Python | 542 files, 157,055 lines |
+| Python | 553 files, 159,351 lines |
 
 ---
 
 ## HTTP API
 
-406 operations, grouped by OpenAPI tag.
+420 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -297,6 +297,25 @@ Generated `2026-11-27 17:26 UTC` from `race/migration` @ `249b8183`
 | POST | `/api/v1/connectors/items/{item_id}/remind` | Turn a promise from sent mail into a reminder |
 | GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
 | GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
+
+### `agent-accounts` — 14
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/agent-accounts` | List agent accounts (no secrets, no paths) |
+| POST | `/api/v1/kernel/agent-accounts` | Create an agent account (owner) |
+| GET | `/api/v1/kernel/agent-accounts/limits` | Latest plan-limit windows of every account |
+| PUT | `/api/v1/kernel/agent-accounts/pool/{driver}` | Set a driver's pool order (owner) |
+| DELETE | `/api/v1/kernel/agent-accounts/{account_id}` | Delete an account; its key is revoked (owner) |
+| GET | `/api/v1/kernel/agent-accounts/{account_id}` | One agent account |
+| PATCH | `/api/v1/kernel/agent-accounts/{account_id}` | Change an account's name, order, identity (owner) |
+| POST | `/api/v1/kernel/agent-accounts/{account_id}/cooldown/reset` | End a cooldown now (owner) |
+| POST | `/api/v1/kernel/agent-accounts/{account_id}/disable` | Take the account out of its pool (owner) |
+| POST | `/api/v1/kernel/agent-accounts/{account_id}/enable` | Put the account back in its pool (owner) |
+| GET | `/api/v1/kernel/agent-accounts/{account_id}/home` | The account's CLI home, for sign-in (owner) |
+| GET | `/api/v1/kernel/agent-accounts/{account_id}/limits` | The account's plan-limit windows |
+| DELETE | `/api/v1/kernel/agent-accounts/{account_id}/secret` | Revoke the API key (owner) |
+| PUT | `/api/v1/kernel/agent-accounts/{account_id}/secret` | Set the API key — write-only, into the vault (owner) |
 
 ### `judgment-engine` — 14
 
@@ -679,12 +698,14 @@ Generated `2026-11-27 17:26 UTC` from `race/migration` @ `249b8183`
 
 ## Database tables
 
-90 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+92 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
 | `action_safety_rules` | 18 | ✓ | `018_autonomous_ai` |
 | `advisor_sessions` | 13 | ✓ | `014_personal_ai` |
+| `agent_account_limits` | 10 | ✓ | `064_agent_accounts` |
+| `agent_accounts` | 18 | ✓ | `064_agent_accounts` |
 | `agent_messages` | 18 | ✓ | `017_agent_networks` |
 | `agent_personas` | 23 | ✓ | `—` |
 | `agent_run_steps` | 12 | ✓ | `044_agent_run_steps` |
@@ -1038,9 +1059,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-63 revisions, head `063_autonomy_policies`.
+64 revisions, head `064_agent_accounts`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies` · `064_agent_accounts`
 
 ---
 
@@ -1050,16 +1071,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 511 | 5247 |
+| `tests/unit/` | 514 | 5305 |
 | `tests/integration/` | 156 | 1036 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **668** | **6295** |
+| **total** | **671** | **6353** |
 
 ---
 
 ## Configuration
 
-344 settings, all overridable by environment variable.
+348 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1243,6 +1264,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_GEMINI_BIN` | `'gemini'` |
 | `LIFE_GRAPH_DRIVER_GEMINI_MODEL` | `''` |
 | `LIFE_GRAPH_DRIVER_GEMINI_TIMEOUT_SECONDS` | `1200` |
+| `LIFE_GRAPH_DRIVER_ACCOUNTS_ENABLED` | `False` |
+| `LIFE_GRAPH_DRIVER_ACCOUNTS_HOME_ROOT` | `'~/.local/share/life-graph/agent-homes'` |
+| `LIFE_GRAPH_DRIVER_ACCOUNTS_DEFAULT_COOLDOWN_MINUTES` | `15` |
+| `LIFE_GRAPH_DRIVER_ACCOUNTS_CODEX_PROBE_ENABLED` | `False` |
 | `LIFE_GRAPH_AUTO_PLAN_MAX_TASKS` | `3` |
 | `LIFE_GRAPH_POST_DEPLOY_SMOKE_TIMEOUT` | `300` |
 | `LIFE_GRAPH_BOOTSTRAP_ROOT` | `''` |

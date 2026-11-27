@@ -811,6 +811,7 @@ v1_router.include_router(health_api.router)
 # ── Tier 2: extended domains (profile "full") ──
 if settings.is_full_profile:
     from life_graph.api import advisor as advisor_api
+    from life_graph.api import agent_accounts as agent_accounts_api
     from life_graph.api import agent_context as agent_context_api
     from life_graph.api import agent_messages as agent_messages_api
     from life_graph.api import agent_tasks as agent_tasks_api
@@ -869,6 +870,7 @@ if settings.is_full_profile:
     v1_router.include_router(judgment_api.router)
     v1_router.include_router(connectors_api.router)
     v1_router.include_router(drivers_api.router)
+    v1_router.include_router(agent_accounts_api.router)
     v1_router.include_router(approvals_api.router)
     v1_router.include_router(push_api.router)
     v1_router.include_router(conversations_api.router)

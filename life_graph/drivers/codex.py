@@ -100,6 +100,33 @@ def codex_argv(
     return argv
 
 
+def codex_resume_argv(
+    binary: str, session_id: str, *, read_only: bool, model: str = "", in_git_repo: bool = True
+) -> list[str]:
+    """``codex exec resume <thread> -``: continue a thread (Phase 3b).
+
+    ``codex exec resume --help`` (0.172.0) has no ``-s``/``--color``: the
+    exec-level flags go before ``resume`` (parsed there; verified), and the
+    sandbox is also set as ``-c sandbox_mode=...`` after it, which the
+    resume subcommand does take (checked with codex's config validation).
+    The thread must live in the same ``CODEX_HOME`` it was started in.
+    """
+    mode = "read-only" if read_only else "workspace-write"
+    argv = [binary, "exec", "--json", "--color", "never", "-s", mode, "resume"]
+    argv += ["--ignore-user-config", "-c", f'sandbox_mode="{mode}"']
+    argv += ["-c", 'approval_policy="never"']
+    argv += ["-c", "sandbox_workspace_write.network_access=false"]
+    argv += ["-c", 'web_search="disabled"']
+    for feature in DISABLED_FEATURES:
+        argv += ["-c", f"features.{feature}=false"]
+    if not in_git_repo:
+        argv.append("--skip-git-repo-check")
+    if model:
+        argv += ["-m", model]
+    argv += [session_id, "-"]
+    return argv
+
+
 def rate_limit_snapshot(raw: object) -> tuple[list[dict], bool, list[str]] | None:
     """A Codex ``rate_limits`` snapshot -> (windows, rejected, reset times).
 
@@ -357,11 +384,22 @@ class CodexDriver(SubscriptionCliDriver):
         )
 
     def build_argv(
-        self, binary: str, cwd: Path, *, read_only: bool, scratch: Path
+        self,
+        binary: str,
+        cwd: Path,
+        *,
+        read_only: bool,
+        scratch: Path,
+        model: str = "",
+        resume: str | None = None,
     ) -> tuple[list[str], dict[str, str]]:
-        argv = codex_argv(
-            binary, read_only=read_only, model=self.model, in_git_repo=(cwd / ".git").exists()
-        )
+        in_git = (cwd / ".git").exists()
+        if resume:
+            argv = codex_resume_argv(
+                binary, resume, read_only=read_only, model=model, in_git_repo=in_git
+            )
+        else:
+            argv = codex_argv(binary, read_only=read_only, model=model, in_git_repo=in_git)
         return argv, {}
 
     def new_parser(self) -> CodexEventParser:

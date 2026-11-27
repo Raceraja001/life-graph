@@ -81,9 +81,19 @@ def system_settings() -> dict:
     }
 
 
-def gemini_argv(binary: str, *, read_only: bool, model: str = "") -> list[str]:
-    """The headless ``gemini`` command line for one run (the prompt goes on stdin)."""
+def gemini_argv(
+    binary: str, *, read_only: bool, model: str = "", resume: str | None = None
+) -> list[str]:
+    """The headless ``gemini`` command line for one run (the prompt goes on stdin).
+
+    *resume*: ``--resume <session uuid>`` (0.71.1 accepts ``latest``, an index
+    or a UUID; only a UUID is passed). Sessions are kept per project
+    directory under the CLI home, so a resume must run in the same workdir
+    and the same ``GEMINI_CLI_HOME`` as the session it continues.
+    """
     argv = [binary, "-o", "stream-json"]
+    if resume:
+        argv += ["--resume", resume]
     argv += ["--approval-mode", "plan" if read_only else "auto_edit"]
     argv += ["--allowed-mcp-server-names", NO_MCP_SERVER]
     if model:
@@ -214,19 +224,28 @@ class GeminiDriver(SubscriptionCliDriver):
 
         Existence only; the file is never opened.
         """
-        home = Path(env.get("HOME") or Path.home())
+        # GEMINI_CLI_HOME (an account's home) replaces the directory .gemini/
+        # lives under (homedir() in gemini-cli 0.71.1).
+        home = Path(env.get("GEMINI_CLI_HOME") or env.get("HOME") or Path.home())
         if (home / ".gemini" / "oauth_creds.json").is_file():
             return True
         return any(env.get(name) for name in _KEY_VARIABLES)
 
     def build_argv(
-        self, binary: str, cwd: Path, *, read_only: bool, scratch: Path
+        self,
+        binary: str,
+        cwd: Path,
+        *,
+        read_only: bool,
+        scratch: Path,
+        model: str = "",
+        resume: str | None = None,
     ) -> tuple[list[str], dict[str, str]]:
         settings_file = scratch / "system-settings.json"
         settings_file.write_text(json.dumps(system_settings()))
         os.chmod(settings_file, 0o600)
         env = {"GEMINI_CLI_SYSTEM_SETTINGS_PATH": str(settings_file)}
-        return gemini_argv(binary, read_only=read_only, model=self.model), env
+        return gemini_argv(binary, read_only=read_only, model=model, resume=resume), env
 
     def new_parser(self) -> GeminiEventParser:
         return GeminiEventParser()

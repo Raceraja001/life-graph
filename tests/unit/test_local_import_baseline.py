@@ -51,7 +51,9 @@ BASELINE = {
     "core": 26,
     # 54 -> 56: drivers/setup.py imports the codex and gemini drivers inside
     # register_default_drivers, like the four drivers before them (Phase 3a).
-    "drivers": 56,
+    # 56 -> 57: drivers/accounts_hook.py's _sf() imports storage.database
+    # lazily, like services/dev/task_events.py (no engine at import) (Phase 3b).
+    "drivers": 57,
     "extraction": 10,
     "integrations": 25,
     "jobs": 5,
@@ -60,7 +62,10 @@ BASELINE = {
     "mcp_server": 1,
     "runtime": 53,
     "self_improving": 59,
-    "services": 621,  # +11 / api -14: the chat turn moved from api/kernel.py (M16)
+    # +11 / api -14: the chat turn moved from api/kernel.py (M16). 621 -> 622:
+    # services/agent_accounts/limits.py imports drivers.codex inside the probe
+    # (codex -> cli_driver -> accounts_hook -> limits is a cycle at import).
+    "services": 622,
     "storage": 7,
     "tools": 101,
     "watchers": 28,
