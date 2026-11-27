@@ -78,6 +78,8 @@ class LocalDriver:
     """
 
     name = "local"
+    # How its runs are paid for (drivers/registry.py:selection_key).
+    billing = "local"
     # A local 30B model on a consumer GPU is slow per round; the dispatcher
     # uses this instead of its 300s default.
     dispatch_timeout = 1200

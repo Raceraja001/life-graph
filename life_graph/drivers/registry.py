@@ -14,6 +14,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# How a driver's runs are paid for, cheapest first: on this machine, on a
+# flat subscription (marginal cost $0, but limited), or metered per call.
+BILLING_ORDER: tuple[str, ...] = ("local", "subscription", "api")
+
+
+def billing_of(driver: object) -> str:
+    """A driver's ``billing`` attribute; one without it counts as ``api``."""
+    value = getattr(driver, "billing", None)
+    return value if value in BILLING_ORDER else "api"
+
+
+def selection_key(driver: AgentDriver) -> tuple[float, int]:
+    """Cheapest-capable order: estimated cost, then local < subscription < api.
+
+    A subscription CLI reports $0 per task like a local model; at equal cost
+    the local driver still comes first.
+    """
+    return (driver.cost_per_task(), BILLING_ORDER.index(billing_of(driver)))
+
 
 class DriverRegistry:
     """Registry of available agent drivers.

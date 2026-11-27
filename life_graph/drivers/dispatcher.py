@@ -54,7 +54,7 @@ from life_graph.drivers.plan_spec import (  # noqa: F401  (re-exported)
     _extract_spec,
     _parse_tasks,
 )
-from life_graph.drivers.registry import driver_registry
+from life_graph.drivers.registry import driver_registry, selection_key
 from life_graph.drivers.verify_chain import (  # noqa: F401  (re-exported)
     DEFAULT_VERIFY_CHAIN,
     _resolve_verify_chain,
@@ -1425,8 +1425,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 continue
 
         if available:
-            # Sort by cost (cheapest first)
-            available.sort(key=lambda d: d.cost_per_task())
+            # Cheapest first; at equal cost local < subscription < api.
+            available.sort(key=selection_key)
 
             # What the user did with a driver's work on this project outranks
             # whether that work passed the checks: a free driver whose PRs keep

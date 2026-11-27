@@ -443,3 +443,88 @@ LIFE_GRAPH_CONCURRENT_TASKS_PER_TENANT=5
 - [ ] Update KNOWLEDGE.md (drivers section, new tables/events), .env.example, OpenAPI examples
 
 **Total: ~9.5 days**
+
+---
+
+## Phase 3a (2026-11-27): Codex and Gemini CLI drivers
+
+> **Status: Built, fixture-tested.** `drivers/codex.py`, `drivers/gemini.py`, shared
+> `drivers/cli_run.py` (host run + detection) and `drivers/cli_failure.py` (failure
+> classification). Both drivers are **off by default** and have not yet run against a
+> signed-in CLI: on the workstation both CLIs were signed out on 2026-11-27, so the event
+> parsers are tested against fixtures built from the CLIs' own event definitions, not
+> recorded runs. Part of the race-app migration (race-app's `agents/runtimes/codex*.ts`
+> rebuilt in Python; Gemini had no race-app parser yet).
+
+### Requirements
+
+- GIVEN `driver_codex_enabled` (or `driver_gemini_enabled`) is false WHEN the dispatcher
+  selects a driver THEN that driver reports unavailable and is skipped, installed or not.
+- GIVEN it is enabled but the binary is missing, or the CLI reports it is signed out, THEN
+  it is unavailable, and `GET /kernel/drivers` shows why (`detail.installed`,
+  `detail.version`, `detail.logged_in`, `detail.hint` such as "run `codex login`"). No token
+  is ever read or printed: Codex is asked `codex login status` (exit code only); Gemini is
+  judged by whether `~/.gemini/oauth_creds.json` exists or a key variable is passed through.
+- GIVEN a dispatch WHEN the driver runs THEN it uses the CLI's headless, structured mode in
+  the task workdir, on the host, with the `host_exec` environment allowlist, its own
+  process group (a timeout kills the group) and the prompt on stdin:
+  - Codex: `codex exec --json` with `-s read-only` for a plan (or a persona without write
+    tools) and `-s workspace-write` otherwise, `approval_policy="never"`, network off in
+    the sandbox, web search, browser, computer use, apps, plugins, hooks and memories off,
+    and the user's `config.toml` ignored (so its MCP servers do not load).
+  - Gemini: `gemini -p … -o stream-json` with `--approval-mode plan` for a plan and
+    `auto_edit` otherwise; never `yolo`, never `-w`. A run-scoped system settings file
+    (`GEMINI_CLI_SYSTEM_SETTINGS_PATH`, highest precedence) excludes the shell and web
+    tools and turns hooks, tool-discovery commands and usage statistics off;
+    `--allowed-mcp-server-names` names a server that does not exist, so none load.
+- GIVEN the run ends THEN the result has the same shape as `claude_code`'s: `output` is the
+  final agent message, `metadata.steps` the driver-neutral steps (`text`, `thinking`,
+  `tool_call`, `tool_result`, `error`), `metadata.session_id` the Codex thread id or the
+  Gemini session id, `metadata.usage` the token counts when the CLI reports them, and live
+  session events are emitted line by line. `cost_usd` is 0: both run on a subscription
+  login, which reports no price.
+- GIVEN the run fails THEN `metadata.failure` classifies it: `rate_limited` (with
+  `resets_at` when the CLI gives a reset: a Codex rate-limit snapshot, an ISO time, or
+  "try again in 2 hours 5 minutes"), `auth` (with the sign-in command), or `other`.
+  Messages are scrubbed of token-shaped strings and clipped to 200 characters.
+- GIVEN the packet WHEN the prompt is built THEN memories, preferences and procedures are
+  dropped (CHARTER invariant 7: both CLIs send everything to a cloud provider), whatever
+  `packet.private` says.
+- GIVEN Codex on the host WHEN `driver_allow_host_shell` is false THEN the dispatch is
+  refused (`exit_status=refused_host_shell`). Codex has no way to run without its shell,
+  and its sandbox confines writes and network but not reads, so it can read anything this
+  user can and send it to the model. Gemini runs with its shell excluded and its file
+  tools limited to the workspace directories by the CLI itself.
+- GIVEN cheapest-capable selection THEN drivers sort by `(cost_per_task, billing)`, where
+  `billing` is `local` < `subscription` < `api` (a driver without the attribute counts as
+  `api`). Codex and Gemini are `subscription` with a marginal cost of $0, so at equal cost
+  a local driver still wins. A persona pinned to `codex` or `gemini` gets that driver
+  when it is available.
+
+### Config
+
+`driver_codex_enabled`, `driver_codex_bin`, `driver_codex_model` (empty = the CLI's
+default), `driver_codex_timeout_seconds`; the same four for `gemini`. A CLI's own login
+location passes through (`CODEX_HOME`; Gemini reads `~/.gemini`); an API key only when the
+operator lists it in `driver_host_env_passthrough`.
+
+### Not in 3a (Phase 3b)
+
+- Accounts, a login pool and plan-limit polling (race-app `limits/**`); the rate-limit
+  windows are captured in `metadata.rate_limits` but nothing schedules around them yet.
+- Resume/continue (`codex exec resume <thread>`, `gemini -r`), so no self-check loop.
+- Parking a task until `resets_at` instead of failing it.
+- Subscription budget (risk D4): the Governor sees $0 for these runs, so its monthly cap
+  does not limit them; only the drivers' own `max_concurrency = 1` does.
+- Running either CLI in the per-task container runtime (needed before Codex can run
+  without `driver_allow_host_shell`).
+- Recorded fixtures from a signed-in run of each CLI.
+
+### Tasks
+
+- [x] `drivers/cli_driver.py`, `drivers/cli_failure.py`, `drivers/cli_run.py`
+- [x] `drivers/codex.py`: argv, event parser, rate-limit snapshot, failure classification
+- [x] `drivers/gemini.py`: argv, system settings, event parser, failure classification
+- [x] Registration (`drivers/setup.py`), `billing` attribute, selection tiebreak, config flags
+- [x] Unit tests with fixture event streams and a fake CLI binary
+- [ ] Record real fixtures once the owner signs in (`codex login`, `gemini`)

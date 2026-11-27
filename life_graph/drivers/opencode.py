@@ -228,6 +228,12 @@ class OpencodeDriver:
     def dispatch_timeout(self) -> int:
         return settings.driver_opencode_timeout_seconds
 
+    @property
+    def billing(self) -> str:
+        """``local`` on Ollama, else the provider's metered API."""
+        provider = settings.driver_opencode_model.partition("/")[0]
+        return "local" if provider == "ollama" else "api"
+
     async def available(self) -> bool:
         if not settings.driver_opencode_enabled:
             logger.debug("opencode unavailable: parked (driver_opencode_enabled=false)")

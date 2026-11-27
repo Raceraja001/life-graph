@@ -33,6 +33,10 @@ class DriverInfo(BaseModel):
     available: bool
     capabilities: list[str]
     cost_per_task: float
+    billing: str = "api"
+    # Readiness detail from drivers that probe a CLI (codex, gemini): enabled,
+    # installed, binary, version, logged_in, hint. None for the others.
+    detail: dict | None = None
 
 
 class DriverStatResponse(BaseModel):
@@ -101,7 +105,7 @@ async def list_drivers():
     Returns each driver's name, current availability status,
     supported task types, and estimated cost per task.
     """
-    from life_graph.drivers.registry import driver_registry
+    from life_graph.drivers.registry import billing_of, driver_registry
 
     drivers = driver_registry.list_all()
     result = []
@@ -110,6 +114,13 @@ async def list_drivers():
             avail = await d.available()
         except Exception:  # best-effort: a driver whose probe raises is listed as unavailable
             avail = False
+        detail = None
+        describe = getattr(d, "describe", None)
+        if describe is not None:
+            try:
+                detail = await describe()
+            except Exception:  # best-effort, like the probe above
+                detail = None
 
         result.append(
             DriverInfo(
@@ -117,6 +128,8 @@ async def list_drivers():
                 available=avail,
                 capabilities=d.capabilities(),
                 cost_per_task=d.cost_per_task(),
+                billing=billing_of(d),
+                detail=detail,
             ).model_dump()
         )
 

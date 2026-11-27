@@ -323,6 +323,11 @@ class ClaudeCodeDriver:
         """Read by the dispatcher in place of its 300s fallback."""
         return settings.driver_claude_code_timeout_seconds
 
+    @property
+    def billing(self) -> str:
+        """``subscription`` on the personal login, ``api`` with an API key."""
+        return "api" if settings.driver_claude_code_auth == "api_key" else "subscription"
+
     # ── Protocol ──────────────────────────────────────────────
 
     async def available(self) -> bool:

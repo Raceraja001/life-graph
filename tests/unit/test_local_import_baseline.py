@@ -49,7 +49,9 @@ BASELINE = {
     "cold_start": 6,
     "connectors": 26,
     "core": 26,
-    "drivers": 54,
+    # 54 -> 56: drivers/setup.py imports the codex and gemini drivers inside
+    # register_default_drivers, like the four drivers before them (Phase 3a).
+    "drivers": 56,
     "extraction": 10,
     "integrations": 25,
     "jobs": 5,
