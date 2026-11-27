@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -391,8 +392,15 @@ def test_added_when_it_became_active_in_the_window():
 
 
 def test_a_model_proposed_addition_and_a_candidate_decision_are_held_back():
+    # An inference of Life Graph's own: still held back (D4 changed only what
+    # a model extracted from the owner's words, see the tests below).
     guess = _item(
-        "memory", 30, origin="model_proposed", confirmed=False, recorded_at=IN.isoformat()
+        "memory",
+        30,
+        origin="model_proposed",
+        confirmed=False,
+        evidence="inferred",
+        recorded_at=IN.isoformat(),
     )
     cand = _item(
         "decision",
@@ -405,6 +413,90 @@ def test_a_model_proposed_addition_and_a_candidate_decision_are_held_back():
     rows = _rows(_row(M1), _row(guess, recorded_at=IN), _row(cand, recorded_at=IN))
     result = _run(_base([M1]), _snap([M1, guess, cand]), rows)
     assert result.changes == () and dict(result.suppressed) == {"low_confidence": 2}
+
+
+def test_an_active_llm_extracted_addition_is_reported():
+    """D4: origin model_proposed alone does not hold back an active memory."""
+    fact = _item("memory", 32, origin="model_proposed", confirmed=False, recorded_at=IN.isoformat())
+    rows = _rows(_row(M1), _row(fact, recorded_at=IN, evidence="said"))
+    result = _run(_base([M1]), _snap([M1, fact]), rows)
+    assert _kinds(result) == [("added", fact.source_ref.key())]
+    assert "low_confidence" not in dict(result.suppressed)
+
+
+@pytest.mark.parametrize(
+    ("status", "evidence"),
+    [("pending", "said"), ("active", "inferred"), ("active", "summary"), ("active", "")],
+)
+def test_a_weak_model_proposed_addition_is_still_held_back(status, evidence):
+    """Pending, an inference, a day summary, or evidence not known: held back."""
+    guess = _item(
+        "memory",
+        33,
+        origin="model_proposed",
+        confirmed=False,
+        status=status,
+        evidence=evidence,
+        recorded_at=IN.isoformat(),
+    )
+    rows = _rows(_row(M1), _row(guess, recorded_at=IN))
+    result = _run(_base([M1]), _snap([M1, guess]), rows)
+    assert result.changes == () and dict(result.suppressed) == {"low_confidence": 1}
+
+
+def test_an_active_llm_extracted_edit_is_reported():
+    m = _item("memory", 34, origin="model_proposed", confirmed=False)
+    rows = _rows(_row(m, fp="0123456789abcdef", evidence="said", updated_at=IN))
+    result = _run(_base([m]), _snap([]), rows)
+    assert _kinds(result) == [("edited", m.source_ref.key())]
+
+
+def test_an_edit_falls_back_to_the_current_items_evidence():
+    m = _item("memory", 35, origin="model_proposed", confirmed=False)
+    rows = _rows(_row(m, fp="0123456789abcdef", updated_at=IN))
+    result = _run(_base([m]), _snap([m]), rows)
+    assert _kinds(result) == [("edited", m.source_ref.key())]
+    inferred = replace(m, evidence="inferred")
+    result = _run(_base([m]), _snap([inferred]), rows)
+    assert result.changes == () and dict(result.suppressed) == {"low_confidence": 1}
+
+
+@pytest.mark.parametrize(
+    ("source_type", "expected"), [("chat", "said"), ("distillation", "inferred")]
+)
+def test_memory_state_records_the_rows_evidence(source_type, expected):
+    m = SimpleNamespace(
+        id=_id(37),
+        content="the standup is at 9:30",
+        status="active",
+        source_type=source_type,
+        trust_tier="self",
+        extraction_tier="llm",
+        properties={},
+        tags=[],
+        created_at=BEFORE,
+        updated_at=BEFORE,
+        valid_from=BEFORE,
+        valid_until=None,
+        superseded_by=None,
+        last_reinforced=None,
+    )
+    state = changes.memory_state(m)
+    assert state.origin == "model_proposed" and state.evidence == expected
+
+
+def test_a_model_proposed_decision_appearing_is_still_held_back():
+    d = _item(
+        "decision",
+        36,
+        status="decided",
+        origin="model_proposed",
+        confirmed=False,
+        recorded_at=IN.isoformat(),
+    )
+    rows = _rows(_row(M1), _row(d, recorded_at=IN))
+    result = _run(_base([M1]), _snap([M1, d]), rows)
+    assert result.changes == () and dict(result.suppressed) == {"low_confidence": 1}
 
 
 def test_a_baseline_from_another_conversation_reports_no_additions():

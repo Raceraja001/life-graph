@@ -45,7 +45,10 @@ subjects are dropped; ``cosmetic`` edits (the fingerprint did not move, only
 ``updated_at``); ``duplicate`` (one change per kind and ref, a supersession
 chain is one change, ``deleted`` beats every other kind and ``superseded``
 beats ``edited``); ``low_confidence`` (a model-proposed, unconfirmed addition
-or edit, or a candidate decision appearing); ``newly_relevant`` (in this
+or edit, or a candidate decision appearing; an *active* memory is held back
+only when it is Life Graph's own conclusion, an inference or a day summary,
+not merely because a model extracted it from what the owner said);
+``newly_relevant`` (in this
 snapshot only, but recorded before the window); ``over_budget`` (more than
 20 changes, in fixed priority order). A change the owner made himself (a
 review stamp, a correction or a /deny, a memory saved in this conversation)
@@ -77,6 +80,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import or_, select
 from sqlalchemy.orm import defer
 
+from life_graph.core import evidence as ev
 from life_graph.core.tenant import get_current_tenant_id, tenant_scope
 from life_graph.core.trust import is_excluded_from_agents
 from life_graph.models.db import AgentSession, AgentTask, Approval, Decision, Intention, Memory
@@ -273,6 +277,8 @@ class RowState:
     hostile: bool = False
     origin: str = ""
     owner_confirmed: bool = False
+    #: A memory's evidence kind (core/evidence.py), "" when not known.
+    evidence: str = ""
     recorded_at: datetime | None = None
     updated_at: datetime | None = None
     reviewed_at: datetime | None = None
@@ -499,13 +505,37 @@ def _memory_removal(p: BaselineItem, r: RowState, run: _Run) -> ContextChange | 
     return None
 
 
-def _low_confidence(origin: str, confirmed: bool) -> bool:
-    return origin == snapshot_mod.MODEL_PROPOSED and not confirmed
+#: Evidence kinds that are Life Graph's own conclusions, not anyone's words.
+LOW_EVIDENCE = frozenset({ev.INFERRED, ev.SUMMARY})
+
+
+def _low_confidence(
+    origin: str, confirmed: bool, *, kind: str = "", status: str = "", evidence: str = ""
+) -> bool:
+    """An addition or edit too weak to report (ADR §5.4 rule 4).
+
+    A model-proposed record the owner has not confirmed is held back, with one
+    exception: an **active** memory whose evidence is known and is not one of
+    :data:`LOW_EVIDENCE`. Origin alone is not enough there: most facts from
+    chat are extracted by a model (``extraction_tier`` "llm" makes the origin
+    ``model_proposed``), yet they are the owner's own words. A pending memory,
+    an inference or a day summary, and a memory whose evidence is not known
+    are still held back, as are model-proposed decisions and intentions.
+    """
+    if origin != snapshot_mod.MODEL_PROPOSED or confirmed:
+        return False
+    return not (
+        kind == "memory" and status == "active" and evidence and evidence not in LOW_EVIDENCE
+    )
 
 
 def _edited(p: BaselineItem, r: RowState, run: _Run) -> None:
     if p.fp and r.fp and p.fp != r.fp:
-        if _low_confidence(r.origin or p.origin, r.owner_confirmed):
+        c = run.current.get(p.ref)
+        evidence = r.evidence or (c.evidence if c is not None else "")
+        if _low_confidence(
+            r.origin or p.origin, r.owner_confirmed, kind=r.kind, status=r.status, evidence=evidence
+        ):
             run.hold("low_confidence")
             return
         run.add(
@@ -708,7 +738,7 @@ def _addition(c: ContextItem, run: _Run, targets: set[str]) -> None:
         run.hold("duplicate")  # the newer side of a supersession already reported
         return
     if (c.source_ref.kind == "decision" and c.status == "candidate") or _low_confidence(
-        c.origin, c.confirmed
+        c.origin, c.confirmed, kind=c.source_ref.kind, status=c.status, evidence=c.evidence
     ):
         run.hold("low_confidence")
         return
@@ -949,6 +979,9 @@ def memory_state(m: Any) -> RowState:
         hostile=is_excluded_from_agents(getattr(m, "trust_tier", None)),
         origin=origin,
         owner_confirmed=snapshot_mod.memory_confirmed(m, origin),
+        evidence=ev.evidence_of(
+            getattr(m, "source_type", None), getattr(m, "trust_tier", None), props
+        ),
         recorded_at=retrieval.recorded_time_of(m),
         updated_at=_ts(getattr(m, "updated_at", None)),
         reviewed_at=_ts(review.get("at")),

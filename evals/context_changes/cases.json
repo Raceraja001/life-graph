@@ -672,6 +672,76 @@
    ]
   },
   {
+   "id": "llm-extracted-addition",
+   "category": "addition",
+   "expect": "detect",
+   "seed": {
+    "memories": [
+     {
+      "key": "a",
+      "content": "the car insurance renews in March"
+     },
+     {
+      "key": "b",
+      "content": "the release is blocked on the vendor's API keys",
+      "extraction_tier": "llm",
+      "created_at_h": -3
+     }
+    ]
+   },
+   "previous": [
+    "a"
+   ],
+   "current": [
+    "a",
+    "b"
+   ],
+   "mutate": [],
+   "changes": [
+    {
+     "kind": "added",
+     "ref": "b",
+     "acknowledged": false
+    }
+   ]
+  },
+  {
+   "id": "llm-extracted-edit",
+   "category": "transition",
+   "expect": "detect",
+   "seed": {
+    "memories": [
+     {
+      "key": "a",
+      "content": "the team standup is at 9:30",
+      "extraction_tier": "llm"
+     }
+    ]
+   },
+   "previous": [
+    "a"
+   ],
+   "current": [
+    "a"
+   ],
+   "mutate": [
+    {
+     "op": "set",
+     "key": "a",
+     "set": {
+      "content": "the team standup is at 10:00",
+      "updated_at_h": -2
+     }
+    }
+   ],
+   "changes": [
+    {
+     "kind": "edited",
+     "ref": "a"
+    }
+   ]
+  },
+  {
    "id": "edited-decision",
    "category": "transition",
    "expect": "detect",
@@ -1797,7 +1867,7 @@
    "changes": []
   },
   {
-   "id": "model-proposed-addition",
+   "id": "inferred-addition",
    "category": "low_confidence",
    "expect": "silent",
    "seed": {
@@ -1810,6 +1880,36 @@
       "key": "b",
       "content": "seems to enjoy hiking",
       "extraction_tier": "llm",
+      "created_at_h": -3,
+      "source_type": "distillation"
+     }
+    ]
+   },
+   "previous": [
+    "a"
+   ],
+   "current": [
+    "a",
+    "b"
+   ],
+   "mutate": [],
+   "changes": []
+  },
+  {
+   "id": "model-proposed-pending-addition",
+   "category": "low_confidence",
+   "expect": "silent",
+   "seed": {
+    "memories": [
+     {
+      "key": "a",
+      "content": "the car insurance renews in March"
+     },
+     {
+      "key": "b",
+      "content": "might move to Pune next year",
+      "extraction_tier": "llm",
+      "status": "pending",
       "created_at_h": -3
      }
     ]
@@ -1822,6 +1922,37 @@
     "b"
    ],
    "mutate": [],
+   "changes": []
+  },
+  {
+   "id": "inferred-edit",
+   "category": "low_confidence",
+   "expect": "silent",
+   "seed": {
+    "memories": [
+     {
+      "key": "a",
+      "content": "seems to prefer mornings for calls",
+      "source_type": "distillation"
+     }
+    ]
+   },
+   "previous": [
+    "a"
+   ],
+   "current": [
+    "a"
+   ],
+   "mutate": [
+    {
+     "op": "set",
+     "key": "a",
+     "set": {
+      "content": "seems to prefer evenings for calls",
+      "updated_at_h": -2
+     }
+    }
+   ],
    "changes": []
   },
   {
