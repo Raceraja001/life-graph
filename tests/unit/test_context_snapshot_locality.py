@@ -81,6 +81,7 @@ def no_models(monkeypatch):
     monkeypatch.setattr(snapshot, "_open_intentions", empty)
     monkeypatch.setattr(snapshot, "_current_decisions", empty)
     monkeypatch.setattr(snapshot, "_due_intentions", empty)
+    monkeypatch.setattr(snapshot, "_typed_links", empty)
     with tenant_scope("t-local"):
         yield
 

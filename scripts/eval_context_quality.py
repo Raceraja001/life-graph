@@ -49,10 +49,10 @@ Metrics, reported per category and per question, never as one score
 * current_vs_historical / temporal -- per labelled record: a current one is an
   item, a historical one is not; a ``future_due`` one is an item that carries
   a machine-readable due time; a ``resolved`` one is absent or explicitly tied
-  to what resolved it;
+  to what resolved it (a conflict or a relation between the two);
 * relationships -- both ends of each expected pair present, and separately
-  whether the snapshot carries any explicit relation between them (it can only
-  do so as a conflict) or only co-occurrence;
+  whether the snapshot carries an explicit relation between them (a conflict,
+  or a typed link in ``relations``, either direction) or only co-occurrence;
 * conflicts -- each expected disagreement present with both sides;
 * provenance coverage -- items that resolve to a seeded record and carry an
   origin, evidence label and recorded time; origin accuracy -- origin and
@@ -421,6 +421,14 @@ def _conflict_pairs(snap: Any, key_of: dict[str, str]) -> set[frozenset[str]]:
     }
 
 
+def _relation_pairs(snap: Any, key_of: dict[str, str]) -> set[frozenset[str]]:
+    """The snapshot's typed relations as unordered pairs (none on an older snapshot)."""
+    return {
+        frozenset((key_of.get(r.from_ref.id, r.from_ref.id), key_of.get(r.to_ref.id, r.to_ref.id)))
+        for r in getattr(snap, "relations", ())
+    }
+
+
 def _gold_origin(world: World, key: str) -> dict[str, Any]:
     return (world.specs.get(key) or {}).get("gold") or {}
 
@@ -433,7 +441,7 @@ def _temporal_ok(status: str, key: str, ctx: dict[str, Any]) -> bool:
         return key not in included
     if status == "resolved":
         by = _gold_origin(world, key).get("resolved_by")
-        return key not in included or frozenset({key, by}) in pairs
+        return key not in included or frozenset({key, by}) in pairs | ctx["related"]
     if status == "future_due":
         item = items.get(key)
         return item is not None and any(item.to_dict().get(f) for f in DUE_FIELDS)
@@ -482,7 +490,8 @@ def score_snapshot(q: dict[str, Any], snap: Any, world: World, other: World, tok
     forbidden = (set(q.get("forbidden", [])) | state_bad) - ok
     pairs = _conflict_pairs(snap, key_of)
     in_conflicts = {k for p in pairs for k in p}
-    ctx = {"included": included, "items": items, "pairs": pairs, "world": world}
+    related = _relation_pairs(snap, key_of)
+    ctx = {"included": included, "items": items, "pairs": pairs, "world": world, "related": related}
     out: dict[str, Any] = {
         "items": len(snap.items),
         "unresolved_items": len(snap.items) - len(items),
@@ -504,7 +513,7 @@ def score_snapshot(q: dict[str, Any], snap: Any, world: World, other: World, tok
     out["temporal_wrong"] = sorted(k for k, v in t_ok.items() if not v)
     rels = q.get("relations", [])
     both = [r for r in rels if all(k in included or k in in_conflicts for k in r["pair"])]
-    explicit = [r for r in rels if frozenset(r["pair"]) in pairs]
+    explicit = [r for r in rels if frozenset(r["pair"]) in pairs | related]
     out["relations"], out["relations_both_ends"] = len(rels), len(both)
     out["relations_explicit"] = len(explicit)
     out["relation_detail"] = [

@@ -21,7 +21,7 @@ from httpx import ASGITransport, AsyncClient
 
 from life_graph.core.tenant import tenant_scope
 from life_graph.main import app
-from life_graph.models.db import Approval, Decision, Intention, Memory
+from life_graph.models.db import Approval, Decision, Intention, Memory, MemoryLink
 from life_graph.services.memory.snapshot import assemble_context
 from life_graph.storage.database import async_session
 from tests.integration.conftest import skip_on_db_error
@@ -454,3 +454,66 @@ async def test_tamil_words_match_tamil_decisions_and_intentions(stand_ins):
     assert reasons.get(str(intention.id)) == "open_intention"
     assert reasons.get(str(decision.id)) == "decision"
     assert str(unrelated.id) not in reasons
+
+
+def _link(tenant: str, a: Memory, b: Memory, link_type: str, strength: float = 0.5) -> MemoryLink:
+    return MemoryLink(
+        id=uuid.uuid4(),
+        tenant_id=tenant,
+        source_memory_id=a.id,
+        target_memory_id=b.id,
+        link_type=link_type,
+        strength=strength,
+        properties={},
+    )
+
+
+@skip_on_db_error
+async def test_typed_links_are_relations_and_contradicts_is_a_conflict(stand_ins):
+    tenant, word = _tenant("rel"), _word()
+    goal = await _memory(tenant, f"{word} goal is to lead the platform team")
+    project = await _memory(tenant, f"{word} project is the route planner")
+    inferred = await _memory(tenant, f"{word} seems to be looking for a new job")
+    stated = await _memory(tenant, f"{word} is not leaving the company")
+    await _add(
+        _link(tenant, goal, project, "LEADS_TO", 0.9),
+        _link(tenant, inferred, stated, "CONTRADICTS", 0.8),
+        _link(tenant, goal, stated, "ASSOCIATED", 0.7),  # learned: never a relation
+    )
+    with tenant_scope(tenant):
+        snap = await assemble_context(f"{word} goal project job leaving")
+    assert _ids(snap) == {str(m.id) for m in (goal, project, inferred, stated)}
+    assert [r.to_dict() for r in snap.relations] == [
+        {
+            "from": {"kind": "memory", "id": str(goal.id)},
+            "to": {"kind": "memory", "id": str(project.id)},
+            "type": "LEADS_TO",
+            "strength": 0.9,
+        }
+    ]
+    (conflict,) = snap.conflicts
+    assert conflict.kind == "linked_contradiction"
+    assert [(s.source_ref.id, s.role) for s in conflict.sides] == [
+        (str(inferred.id), "source"),
+        (str(stated.id), "target"),
+    ]
+
+
+@skip_on_db_error
+async def test_another_tenants_links_never_become_relations(stand_ins):
+    a, b, word = _tenant("rela"), _tenant("relb"), _word()
+    one = await _memory(a, f"{word} pays the school fee")
+    two = await _memory(a, f"{word} school fee is due in December")
+    theirs = await _memory(b, f"{word} school fee is paid by card")
+    await _add(
+        # Tenant B's rows, even between tenant A's own memories, must not show.
+        _link(b, one, two, "LEADS_TO", 0.9),
+        _link(b, one, two, "CONTRADICTS", 0.9),
+        # A's own row pointing at B's memory: its far end is never an item.
+        _link(a, one, theirs, "RELATED_TO", 0.9),
+    )
+    with tenant_scope(a):
+        snap = await assemble_context(f"{word} school fee")
+    assert _ids(snap) == {str(one.id), str(two.id)}
+    assert snap.relations == () and snap.conflicts == ()
+    assert str(theirs.id) not in str(snap.to_dict())

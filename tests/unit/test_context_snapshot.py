@@ -82,6 +82,10 @@ def wired(monkeypatch):
         "current_decisions": [],
         "due": [],
         "result": None,
+        # Typed memory_links rows (source, target, type, strength) and the
+        # memory ids each read asked about.
+        "links": [],
+        "link_reads": [],
     }
 
     class _Manager:
@@ -117,6 +121,10 @@ def wired(monkeypatch):
     async def due_intentions(tenant_id, ref, as_of):
         return list(state["due"])
 
+    async def typed_links(tenant_id, ids):
+        state["link_reads"].append((tenant_id, [str(i) for i in ids]))
+        return list(state["links"])
+
     monkeypatch.setattr(runtime, "get_memory_manager", lambda: _Manager())
     monkeypatch.setattr(runtime, "get_store", lambda: _Store())
     monkeypatch.setattr(retrieval, "retrieve", fake_retrieve)
@@ -126,6 +134,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(snapshot, "_open_intentions", intentions)
     monkeypatch.setattr(snapshot, "_current_decisions", current_decisions)
     monkeypatch.setattr(snapshot, "_due_intentions", due_intentions)
+    monkeypatch.setattr(snapshot, "_typed_links", typed_links)
     with tenant_scope("t-snap"):
         yield state
 
