@@ -303,3 +303,54 @@ async def test_the_endpoint_needs_a_query(stand_ins):
     ) as client:
         resp = await client.get("/api/v1/context/snapshot")
     assert resp.status_code == 422
+
+
+@skip_on_db_error
+async def test_as_of_keeps_a_replaced_value_while_its_successor_was_not_yet_true(stand_ins):
+    """D1: "what was my salary in March?" after the salary was replaced."""
+    tenant, word = _tenant("asof_sup"), _word()
+    old = await _memory(
+        tenant,
+        f"{word} take-home salary is 1,50,000 a month",
+        days_ago=300,
+        status="superseded",
+        properties={"superseded_at": (NOW - timedelta(days=24)).isoformat()},
+    )
+    new = await _memory(
+        tenant, f"After the promotion {word} take-home salary is 1,80,000", days_ago=24
+    )
+    async with async_session() as s:
+        row = await s.get(Memory, old.id)
+        row.superseded_by = new.id
+        newer = await s.get(Memory, new.id)
+        newer.supersedes = old.id
+        await s.commit()
+    with tenant_scope(tenant):
+        then = await assemble_context(
+            f"what was {word} take-home salary", as_of=NOW - timedelta(days=250)
+        )
+        now = await assemble_context(f"what is {word} take-home salary")
+    assert _ids(then) == {str(old.id)}
+    assert _ids(now) == {str(new.id)}
+
+
+@skip_on_db_error
+async def test_tamil_words_match_tamil_decisions_and_intentions(stand_ins):
+    """D10: Tamil vowel signs no longer split the words of the keyword match."""
+    tenant = _tenant("tamil")
+    intention = Intention(id=uuid.uuid4(), tenant_id=tenant, content="இலாவின் பள்ளி கட்டணம் கட்டு")
+    decision = Decision(
+        id=uuid.uuid4(),
+        tenant_id=tenant,
+        title="பள்ளி கட்டணம் இந்த மாதமே கட்டுவது",
+        status="decided",
+        source="conversation",
+    )
+    unrelated = Intention(id=uuid.uuid4(), tenant_id=tenant, content="காய்கறி வாங்கு")
+    await _add(intention, decision, unrelated)
+    with tenant_scope(tenant):
+        snap = await assemble_context("பள்ளி கட்டணம்")
+    reasons = {i.source_ref.id: i.reason for i in snap.items}
+    assert reasons.get(str(intention.id)) == "open_intention"
+    assert reasons.get(str(decision.id)) == "decision"
+    assert str(unrelated.id) not in reasons
