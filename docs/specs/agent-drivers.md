@@ -1,6 +1,6 @@
 # Agent Drivers — Rent the Muscle, Own the Nervous System — Feature Spec
 
-> **Status: Built.** Implemented in `life_graph/drivers/dispatcher.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+> **Status: Built.** Implemented in `life_graph/drivers/dispatcher.py`. The [2026-11-27 autonomy-policy amendment](#amendment-2026-11-27--autonomy-policy-owner-decision-d2) is built too (migration `063_autonomy_policies`). This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
 
 > _Historical banner (July 2026); the line above and docs/STATE.md are current._ ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `021_agent_drivers.py`; package `life_graph/drivers/` (base protocol, registry, local driver, dispatcher with WIP limits + bounce-once, context packets); `services/verifiers.py`, `services/results_loop.py`; API `api/drivers.py`. **Still pending**: second-opinion reviewer pass; seed personas (`uzhavu-ops`, `dependency-updater`); watcher-finding → task origination. See [CHARTER.md](../../CHARTER.md#current-frontier) for what is genuinely still open. **Do not rebuild what exists.**
 
@@ -157,6 +157,7 @@ Key design decisions:
 2. **Verifier chains are data.** Adding a task type = registering verifiers + a persona row. Code only for new verifier *kinds*.
 3. **No new approval/trust/audit machinery.** Era 8 built it; this spec routes through it. Any temptation to add a second approval path is a bug.
 4. **One bounce rule.** A failed verification returns to the driver once with specifics; twice → human. Infinite fix loops burn money silently — hard cap.
+   *Amended 2026-11-27 (owner decision D2, see [Amendment: autonomy policy](#amendment-2026-11-27--autonomy-policy-owner-decision-d2)):* the one bounce stays the default. The owner may enable a **bounded** number of extra automatic rounds (verify-fix, review-fix), each budget- and kill-switch-gated and recorded as a verification attempt. Rounds never approve: decision 3's single approval path is unchanged.
 5. **Privacy split is structural.** External drivers never receive memory/preference sections on private-flagged tasks; the local driver exists precisely for this.
 
 ### Data Models
@@ -443,3 +444,261 @@ LIFE_GRAPH_CONCURRENT_TASKS_PER_TENANT=5
 - [ ] Update KNOWLEDGE.md (drivers section, new tables/events), .env.example, OpenAPI examples
 
 **Total: ~9.5 days**
+
+
+---
+
+## Amendment 2026-11-27 — Autonomy policy (owner decision D2)
+
+> **Status: Built** (branch `race/autonomy-policy`). Code: `services/dev/autonomy_policy.py`,
+> `services/dev/review_stages.py`, `services/dev/risk_report.py`, `drivers/review_stages.py`
+> (dispatcher mixin), `autonomy/policy/router.py`; migration `063_autonomy_policies`.
+> Context: race-app becomes life-graph's frontend and its own autonomy pipeline (race-app
+> `docs/specs/AUTONOMY.md`, `TEAMWORK.md` §1–2) is replaced by these features
+> (race-app `docs/specs/LIFE_GRAPH_MIGRATION.md`, Phase 2).
+
+### Decision
+
+A task may get **bounded, budget-gated, owner-enabled** automatic rounds — verify-fix and
+review-fix now; nudges, stall retries and PR-feedback rounds later — each recorded as a
+verification attempt. **The approval path stays single**: rounds never approve, and the
+owner's auto-approval conditions can only **narrow** `change_policy.auto_gate`.
+**Default 0 rounds = today's one-bounce behaviour, unchanged.**
+
+### Rationale
+
+- *Why amend decision 4 at all.* One bounce was a cost guard ("infinite fix loops burn money
+  silently"), not a quality rule. A cap the owner sets explicitly, per project, with the budget
+  governor, the per-task cost cap and the kill switch checked before every round, keeps that
+  guarantee: loops stay finite (`MAX_FIX_ROUNDS = 3`), and spend stays visible and bounded.
+  race-app's local engine showed that one or two more targeted rounds turn many needs-human
+  escalations (a test still failing after the first fix; a reviewer's concrete objection) into
+  finished work without a person.
+- *Why rounds never approve* (decision 3, CHARTER invariants 1 and 5). A round only produces
+  a new attempt that must pass the same verifier chain; it is recorded in `verification_runs`
+  like the bounce (attempt 3, 4, …). Whether anything lands unattended is still decided by
+  `auto_gate` alone.
+- *Why a reviewer can only veto* (invariant 1). race-app's `requireReviewApproved` becomes
+  `require_no_reviewer_objection`: some reviewer looked and none objected. An LLM's "ok" adds
+  nothing to the trust the change already needs; a stage that could not run counts against
+  auto-approval, never for it.
+- *Why conditions only narrow* (invariant 5). The owner's conditions are asked *after* auto_gate's
+  own rules (protected paths, size, proof checks, trust per kind of change) passed, and can only
+  add refusal reasons. Global and project conditions are evaluated separately and both must hold.
+  An unreadable or corrupt policy refuses. Merges and deploys keep their existing human rules
+  (`auto_merge` is still a separate opt-in; `deploy_on_merge` is never trust-approved).
+
+### Story 7: Owner auto-approval conditions (narrow `auto_gate` only)
+
+- GIVEN no `autonomy_policies` row for the tenant WHEN auto_gate runs THEN its answer is exactly
+  what it was before this amendment (no query result adds a reason).
+- GIVEN a policy WHEN auto_gate's own rules refuse THEN that refusal is returned unchanged and the
+  policy is not consulted.
+- GIVEN auto_gate's own rules pass WHEN any owner condition fails THEN auto_gate returns
+  `(False, "owner policy: <reason>; <reason>…", record)` — the same `(allowed, reason, record)`
+  shape, so the approval note, the auto-open/merge logs and the night-shift "why waiting" all
+  show the owner's reason.
+- Conditions (each off by default): `max_changed_lines`, `max_files`, `paths_allowed` (every changed
+  file matches one glob), `paths_forbidden` (none matches), `require_verification_passed` (payload
+  `verified` true, at least one check, no unverifiable check), `require_no_reviewer_objection`,
+  `risk_tolerance` (`any` | `warnings` = no block finding | `none` = no finding; a missing or
+  incomplete risk report refuses). Globs are `fnmatch` (`*` also crosses `/`), as `protected_paths`.
+- GIVEN `daily_auto_approval_cap: N` (global) WHEN N tasks were already opened or merged
+  unattended since UTC midnight, across all projects, THEN auto-approval is refused
+  ("daily auto-approval cap reached (N of N today)"). Counted per task (auto-open + auto-merge of
+  one task = 1), excluding the task being decided; `0` = no auto-approval; uncountable → refuse.
+- GIVEN any policy row WHEN the kill switch is paused (or unreadable) THEN auto-approval is refused.
+- GIVEN a `human` review stage in the global or the project list THEN the task is never
+  auto-approved.
+
+### Story 8: Review stages (veto-only)
+
+- GIVEN `review_stages` (≤ 4, unique names, each `{name, reviewer, focus}`) WHEN a task's verifier
+  chain passes THEN the stages run in order in the second-opinion position, **replacing** the
+  single default review; with no stages the default review runs exactly as before.
+- Reviewers: `human` (stop the chain; the task lands for a person and is never auto-approved;
+  later stages are recorded `skipped`), `pr_agent` (PR-Agent on the real diff with the focus as
+  extra instructions), `model:<id>` (one veto-only LLM pass on that model only, no paid fallback,
+  code only). Driver-backed reviewers come with the Phase 3 drivers.
+- GIVEN a stage objects AND review-fix rounds remain AND `_round_allowed` THEN the objection goes
+  back to the author as a failed check (`review:<stage>`), the verifier chain re-runs (recorded
+  as the next attempt), then **that** stage reviews again. GIVEN no round is left or allowed THEN
+  it routes to a person exactly as today's dissent (`driver_second_opinion_dissent`, task
+  `needs_human`, error `Review stage dissent: review stage '<name>': <concern>`).
+- GIVEN a review-fix round's driver run or re-verification fails THEN the task needs a person
+  (`driver_verification_failed` entry).
+- GIVEN a stage cannot run (tool missing, model down, unreadable answer) THEN it is recorded
+  `unavailable`, the chain continues, the task is not failed, and auto-approval is refused.
+- `review_fix_rounds` is a per-task total across stages (not per stage): the strictest reading of
+  "bounded".
+- Every result is stored, in order, on the task (`properties.review_stages`); the PR approval
+  payload carries the latest verdict per stage (`payload.autonomy.review_stages`).
+
+### Story 9: Verify-fix rounds
+
+- GIVEN `verify_fix_rounds = 0` (default) WHEN verification fails THEN the one bounce runs and a
+  second failure escalates — identical attempts, events, error text, metadata and approval entry
+  to before.
+- GIVEN `verify_fix_rounds = N > 0` WHEN the bounce's re-check still fails THEN up to N more rounds
+  run, each with the **latest** failing verifier output, each recorded as attempt 3, 4, …; a round
+  that passes lands like a successful bounce; out of rounds → needs_human with the last failure
+  (`Verification failed after the bounce and N verify-fix round(s) — needs human review`; the
+  approval entry says "after one bounce and N verify-fix round(s)").
+- Before each extra round `_round_allowed` checks, fail-closed: kill switch not paused, the run's
+  spend below its per-task cost cap, and the Governor allows the driver's estimated spend
+  (interactive / local-model runs bypass the monthly cap exactly as the first dispatch does).
+  Extra rounds book their spend with the Governor. A round whose *driver run* fails ends the
+  rounds (they fix checks; stall retries are a later, separate round kind).
+
+### Story 10: Risk report
+
+- GIVEN a task lands a change WHEN Step 6b runs (before the landing commit) THEN a risk report is
+  built from the worktree diff and stored on the task (`properties.risk_report`), and its counts go
+  into the PR approval payload (`payload.autonomy.risk = {block, warn, complete}`).
+- Findings on **added** lines: `secret_pattern` (block; the high-confidence shapes of
+  `no_secrets_in_diff`), `high_entropy_string` (block; warn in tests/fixtures or next to
+  sha/hash/digest/integrity) — ≥ 20 chars, ≥ 2 digits, letters, ≥ 3 character classes, Shannon
+  entropy ≥ 3.5 bits/char, not a UUID — `hex_string` (warn; ≥ 32 hex chars), `secret_assignment`
+  (warn; a literal assigned to password/api_key/secret/token…, placeholders excepted). On the
+  change: `protected_path`, `out_of_scope` (non-test file the instruction does not name, when it
+  names any) and `large_deletion` (deleted file, or > 200 lines removed) — all warn. Lock files,
+  minified/map/svg/snapshot files are not scanned for entropy.
+- A finding names file, line, rule and a shape ("28-char string, 4.3 bits/char"), never the
+  value. ≤ 100 findings stored (`truncated` says so). An empty diff while files changed is stored
+  `complete: false`, which `risk_tolerance` refuses.
+- New opt-in verifier `no_high_entropy_in_diff` (a project's `required_checks` or a persona's
+  chain): fails on `block` findings in added lines (tracked diff + untracked files). Not in the
+  default chain or the always-on checks, so existing dispatches are unchanged.
+
+### Data model
+
+```sql
+-- Migration 063_autonomy_policies.py
+CREATE TABLE autonomy_policies (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   VARCHAR(64) NOT NULL,
+    scope       VARCHAR(64) NOT NULL,          -- 'global' or the project's UUID as text
+    policy      JSONB NOT NULL DEFAULT '{}',   -- validated by services/dev/autonomy_policy.py
+    updated_by  VARCHAR(128),                  -- who the server saw (approval_identity.resolver)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_autonomy_policies_tenant_scope UNIQUE (tenant_id, scope)
+);
+```
+
+Per-task results need no schema change: `agent_tasks.properties.review_stages` /
+`.risk_report` (cleared when a new dispatch of the task starts), and rounds are
+`verification_runs` rows with `attempt` ≥ 3.
+
+### API contracts
+
+All under `/api/v1`, tenant-scoped by `X-Tenant-ID`. Reads: any tenant key. Writes (`PUT`,
+`DELETE`): **owner only** (`approval_identity.owner_only`, as trust overrides and autonomy levels)
+→ 403 `{"detail": "Changing the autonomy policy needs the owner: an owner API key or a paired phone."}`.
+Invalid bodies → 422 (unknown fields are refused). Responses use the usual `{"data": …}` envelope.
+
+**Policy body** — global (`PUT /autonomy/policy`); every field optional, omitted = neutral default
+(`//` comments are annotations, not part of the body):
+
+```jsonc
+{
+  "conditions": {
+    "max_changed_lines": 80,              // int 0..100000 | null (off)
+    "max_files": 4,                       // int 0..10000 | null
+    "paths_allowed": ["docs/*", "tests/*"],   // ≤ 50 globs; [] = off
+    "paths_forbidden": ["*.env"],             // ≤ 50 globs; [] = off
+    "require_verification_passed": true,  // default false
+    "require_no_reviewer_objection": true,// default false
+    "risk_tolerance": "warnings"          // "any" (default) | "warnings" | "none"
+  },
+  "daily_auto_approval_cap": 5,           // int 0..1000 | null (no cap); global only
+  "review_stages": [                      // ≤ 4, unique names; [] = default single review
+    {"name": "security", "reviewer": "model:gemini/gemini-2.5-flash", "focus": "secrets, auth"},
+    {"name": "owner", "reviewer": "human", "focus": ""}   // reviewer: "human" | "pr_agent" | "model:<id>"
+  ],
+  "verify_fix_rounds": 2,                 // int 0..3, default 0
+  "review_fix_rounds": 1                  // int 0..3, default 0
+}
+```
+
+Project body (`PUT /autonomy/policy/projects/{project_id}`): the same without
+`daily_auto_approval_cap` (422 if sent); `review_stages`, `verify_fix_rounds` and
+`review_fix_rounds` may be `null` (= use the global value). Project conditions are checked in
+addition to the global ones; non-null stages/rounds replace the global ones (a `human` stage in
+either list still forbids auto-approval).
+
+```
+GET /autonomy/policy
+→ 200 {"data": {
+    "global": {"policy": {…global body…}, "updated_by": "owner", "updated_at": "2026-11-27T10:00:00+00:00"} | null,
+    "projects": [{"project_id": "<uuid>", "policy": {…project body…}, "updated_by": "owner", "updated_at": "…"}],
+    "auto_approvals_today": 2,
+    "limits": {"max_fix_rounds": 3, "max_review_stages": 4, "max_globs": 50,
+               "reviewers": ["human", "pr_agent", "model:<model id>"]}}}
+
+PUT /autonomy/policy            body: global body   → 200, same shape as GET
+DELETE /autonomy/policy                              → 200 {"data": {"removed": true}}
+
+GET /autonomy/policy/projects/{project_id}           (404 unknown/inactive/other-tenant project)
+→ 200 {"data": {
+    "project_id": "<uuid>",
+    "policy": {"policy": {…}, "updated_by": "owner", "updated_at": "…"} | null,
+    "effective": {
+      "configured": true, "sources": ["global", "project"],
+      "conditions": [{"source": "global", …conditions…}, {"source": "project", …conditions…}],
+      "daily_auto_approval_cap": 5,
+      "review_stages": [{"name": "security", "reviewer": "model:…", "focus": "…"}],
+      "human_stage": true, "verify_fix_rounds": 0, "review_fix_rounds": 1}}}
+
+PUT /autonomy/policy/projects/{project_id}   body: project body → 200, same shape as GET
+DELETE /autonomy/policy/projects/{project_id}       → 200 {"data": {"project_id": "<uuid>", "removed": true}}
+
+GET /kernel/drivers/tasks/{task_id}/review-stages    (404: no task / no stage ran)
+→ 200 {"data": {"task_id": "<uuid>",
+    "results": [{"index": 0, "name": "security", "reviewer": "model:…", "focus": "…",
+                 "verdict": "objection",            // no_objection|objection|unavailable|human|skipped
+                 "concern": "…", "fix_round": 0, "note": null, "at": "2026-11-27T10:00:00+00:00"},
+                {"index": 0, "name": "security", …, "verdict": "no_objection", "fix_round": 1, …}],
+    "latest": [{"index": 0, "name": "security", "reviewer": "model:…", "verdict": "no_objection", "fix_round": 1}]}}
+
+GET /kernel/drivers/tasks/{task_id}/risk             (404: no task / nothing landed)
+→ 200 {"data": {"task_id": "<uuid>", "version": 1, "generated_at": "…", "complete": true,
+    "files": 3, "block": 1, "warn": 2, "truncated": false,
+    "findings": [{"severity": "block", "rule": "high_entropy_string", "file": "app/config.py",
+                  "line": 11, "detail": "32-char string, 4.6 bits/char"}, …]}}
+
+GET /kernel/drivers/tasks/{task_id}   (existing) now also returns "review_stages" and "risk_report"
+(null when absent).
+```
+
+The PR/merge approval payload gains `autonomy` (when anything was recorded):
+`{"review_stages": [latest per stage], "human_stage": true?, "risk": {"block", "warn", "complete"},
+"verify_fix": {"rounds", "allowed", "stopped"}?, "review_fix": {"rounds", "allowed"}?}`.
+Task events gain kind `round` (`data.kind` = `verify_fix` | `review_fix`).
+
+### What the defaults guarantee
+
+No `autonomy_policies` row ⇒ `owner_policy_reasons` returns `[]` without consulting the kill
+switch or the cap; the dispatcher's policy is `NEUTRAL` (0 rounds, no stages) ⇒ the one bounce,
+the single default review, and auto_gate's answers are exactly as before. Additions that do run
+by default are informational only: the risk report (stored, never acted on without
+`risk_tolerance`) and the `autonomy` block on new approval payloads.
+
+### Not in this amendment
+
+Nudges, stall retries, park-on-limit and PR-feedback rounds (race-app TEAMWORK §3, migration
+Phase 3/4) — they will reuse `_round_allowed` and the attempt counter. Driver-backed reviewers.
+The cap counts at decision time, so two auto-approvals deciding in the same instant can exceed it
+by one.
+
+### Tasks
+
+- [x] `autonomy_policies` table + migration 063; model `AutonomyPolicy`
+- [x] `services/dev/autonomy_policy.py`: schemas, merge, conditions, cap, kill switch; wired last into `auto_gate`
+- [x] `services/dev/review_stages.py` + `drivers/review_stages.py`: stages, review-fix rounds, stored results
+- [x] Verify-fix rounds in `_bounce_or_escalate`; `_bounce_task(attempt=…)`; Governor booking for extra rounds
+- [x] `services/dev/risk_report.py` (entropy + line/change rules), stored report; opt-in `no_high_entropy_in_diff`
+- [x] API `/autonomy/policy*` (owner-only writes), `/kernel/drivers/tasks/{id}/review-stages|risk`
+- [x] Unit tests: narrowing only, cap, stages incl. human, bounded rounds and default 0, entropy, API
+- [ ] Integration test against Postgres (migration up/down, cap count on real approvals)
+- [ ] race-app Settings → Autonomy reads/writes these endpoints; race-app's local pipeline reads this policy
