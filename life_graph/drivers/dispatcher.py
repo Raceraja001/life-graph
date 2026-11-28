@@ -91,6 +91,7 @@ from life_graph.drivers.workdir import (
 from life_graph.services.dev import task_events
 from life_graph.services.dev.autonomy_policy import NEUTRAL, EffectivePolicy
 from life_graph.services.dev.change_policy import policy_from_project
+from life_graph.services.dev.second_opinion import ReviewVerdict
 from life_graph.services.dev.verifiers import (  # noqa: F401  (failure_text: re-exported)
     BOUNCE_TASK_MARKER,
     VerifierResult,
@@ -1556,6 +1557,21 @@ class TaskDispatcher(
             {"task_id": run.task_id, "driver": driver.name},
         )
         await self._end_transaction(run.session)  # an LLM review follows
+        if run.handoff == "branch":
+            # A team worker: its branch only feeds the plan's integration task,
+            # which gets the full review (second opinion / stages / panel) on the
+            # combined diff. Reviewing each worker would double the cost, and a
+            # worker's "not reviewed" would cancel the whole team for nothing.
+            run.second_opinion = _review_entry(
+                "second_opinion", ReviewVerdict.skipped("team worker: reviewed at integration")
+            )
+            if run.result is not None:
+                run.result.metadata = {
+                    **(run.result.metadata or {}),
+                    "second_opinion_status": "skipped",
+                    "second_opinion_reason": "team worker: reviewed at integration",
+                }
+            return
         if run.policy.review_stages:
             # The owner's ordered stages replace the single default review.
             await self._run_review_stages(run)

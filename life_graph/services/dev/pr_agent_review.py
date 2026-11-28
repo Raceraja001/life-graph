@@ -23,9 +23,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import tempfile
 from pathlib import Path
 
+from life_graph.config import settings
 from life_graph.services.dev.second_opinion import ReviewStatus, ReviewVerdict
 
 __all__ = ["PRAgentReviewer", "ReviewStatus", "ReviewVerdict"]
@@ -33,6 +35,17 @@ __all__ = ["PRAgentReviewer", "ReviewStatus", "ReviewVerdict"]
 logger = logging.getLogger(__name__)
 
 _TIMEOUT_SECONDS = 180
+
+
+def _pr_agent_env() -> dict[str, str]:
+    """The subprocess env: inherited as before, plus where a local Ollama model lives.
+
+    PR-Agent reads ``OLLAMA__API_BASE`` (its env override for ``[ollama] api_base``);
+    without it an ``ollama_chat/...`` reviewer model can't be reached.
+    """
+    env = dict(os.environ)
+    env.setdefault("OLLAMA__API_BASE", settings.ollama_api_base)
+    return env
 
 
 class PRAgentReviewer:
@@ -64,17 +77,22 @@ class PRAgentReviewer:
             with tempfile.TemporaryDirectory() as tmp:
                 json_path = Path(tmp) / "review.json"
                 argv = [self._bin, "--json-output", str(json_path), "--stdin", "review"]
+                env = _pr_agent_env()
                 if self._model:
                     # fallback_models=[] -- a cheap reviewer silently escalating
                     # to PR-Agent's own (possibly expensive) default fallback
                     # chain on failure would defeat the point of picking a
                     # specific model here; a failure is NOT_REVIEWED below.
-                    argv += [f"--config.model={self._model}", "--config.fallback_models=[]"]
+                    # PR-Agent >= 0.50 forbids `--config.fallback_models` on the
+                    # command line, so it goes in through its env override.
+                    argv.append(f"--config.model={self._model}")
+                    env["CONFIG__FALLBACK_MODELS"] = "[]"
                 if focus and focus.strip():
                     argv.append(f"--pr_reviewer.extra_instructions={focus.strip()[:2000]}")
 
                 proc = await asyncio.create_subprocess_exec(
                     *argv,
+                    env=env,
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
