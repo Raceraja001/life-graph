@@ -1567,6 +1567,12 @@ class TaskDispatcher(
         if status in ("approved", "skipped"):
             # services/dev/second_opinion.ReviewVerdict.may_auto_land: only an
             # approval, or a review that is off / had nothing to read, lands.
+            if run.result is not None:
+                # Recorded so the task API can show it (approved/skipped too).
+                run.result.metadata = {
+                    **(run.result.metadata or {}),
+                    "second_opinion_status": status,
+                }
             return
         result = run.result
         if status == "not_reviewed":
@@ -1617,6 +1623,7 @@ class TaskDispatcher(
             duration_ms=result.duration_ms,
             metadata={
                 "needs_human": True,
+                "second_opinion_status": "objected",
                 "second_opinion_concern": verdict.concern,
             },
         )

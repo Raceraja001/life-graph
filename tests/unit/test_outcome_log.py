@@ -479,6 +479,8 @@ async def test_second_opinion_statuses_at_the_call_site(
     assert (EventType.SECOND_OPINION_DISSENT in events) is dissent_event
     assert run.second_opinion["verdict"] == status
     assert d._outcome_row(run, None)["properties"]["second_opinion"] == status
+    # Every status is recorded in the result metadata for the task API.
+    assert run.result.metadata["second_opinion_status"] == status
     if lands:
         assert approvals == []
     elif status == "not_reviewed":
