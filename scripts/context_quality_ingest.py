@@ -551,7 +551,10 @@ async def _map_message(world: Any, msg: dict[str, Any], state: IngestState, even
     from life_graph.models.db import Decision, Memory
     from life_graph.storage.database import async_session
 
-    wanted = fact_keys(msg)
+    # Only this build's records: a message also says records of another
+    # phase or scenario (O6 sends the promotion for the job, and its salary
+    # fact comes along), and those rows count as extra here.
+    wanted = {c: k for c, k in fact_keys(msg).items() if k in world.specs}
     async with async_session() as s:
         rows = (
             (await s.execute(select(Memory).where(Memory.tenant_id == world.tenant)))
