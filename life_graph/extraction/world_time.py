@@ -721,8 +721,10 @@ def from_model(value: object, text: str, anchor: datetime, tz: tzinfo = UTC) -> 
     Kept only when it is a YYYY-MM-DD date (as ``llm._validity`` checks
     ``valid_until``), not after the day it was said, and *text* has a time
     phrase the rules can see, even one they cannot place ("last Pongal").
-    A blocked text, or a bare date with no phrase, gives None. Call it only
-    when :func:`world_time_of` found nothing.
+    A blocked text, or a bare date with no phrase, gives None. When the text
+    names a period the rules can place ("last month", "in 2019"), the date
+    must fall inside one of those periods: a rule has to agree with it. Call
+    it only when :func:`world_time_of` found nothing.
     """
     if not isinstance(value, str) or not text or blocked(text):
         return None
@@ -734,4 +736,20 @@ def from_model(value: object, text: str, anchor: datetime, tz: tzinfo = UTC) -> 
     hits = _hits(text, today)
     if day > today or not hits or any(h.kind == FUTURE for h in hits):
         return None
+    placed = [h for h in hits if h.kind == START]
+    if placed and not any(_within(day, h) for h in placed):
+        return None
     return WorldTime(datetime.combine(day, time(0, 0), tzinfo=tz), DAY, "model", MODEL)
+
+
+def _within(day: date, hit: _Hit) -> bool:
+    """True when *day* falls in the period a placed *hit* names."""
+    assert hit.day is not None
+    start = hit.day
+    if hit.precision == DAY:
+        return day == start
+    if hit.precision == WEEK:
+        return start <= day < start + timedelta(weeks=1)
+    if hit.precision == MONTH:
+        return (day.year, day.month) == (start.year, start.month)
+    return day.year == start.year

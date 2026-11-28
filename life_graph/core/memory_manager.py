@@ -35,7 +35,7 @@ from life_graph.services.contradiction import (
     differs_in_detail,
     differs_in_scope,
 )
-from life_graph.services.memory import supersession, typed_links
+from life_graph.services.memory import supersession, typed_links, world_time
 
 if TYPE_CHECKING:
     from life_graph.extraction.pipeline import ExtractionPipeline
@@ -371,8 +371,9 @@ class MemoryManager:
         replaced by that newer memory (superseded, as any replaced value is).
 
         ``valid_from`` moves with ``created_at`` unless the row already has an
-        earlier world time of its own. A ``valid_from`` at or after *said* is
-        only the arrival time; left there, it would sit later than the recorded
+        earlier world time of its own (a rule start from
+        services/memory/world_time.py, anchored at *said*, so never later).
+        A ``valid_from`` at or after *said* is only the arrival time; left there, it would sit later than the recorded
         time and the snapshot would read it as a real world time
         (snapshot.world_time_known). Moved to *said*, it equals the recorded
         time again, which is how "no world time" is spelled.
@@ -650,6 +651,13 @@ class MemoryManager:
                 auto_supersede_targets, said
             )
             other_clashes = [t for t in other_clashes if t in auto_supersede_targets]
+        # When it started being true, from its own words (ADR m8-ingestion
+        # §5.1; services/memory/world_time.py). None is unknown: no valid_from
+        # is passed, so it stays the recorded time. With ingest_world_time off
+        # it is always None.
+        started = world_time.for_fact(fact, properties)
+        if started is not None:
+            world_time.record(properties, started)
         kept_because = _auto_approved(fact, trust_tier, contradicts=bool(other_clashes))
         active_now = kept_because is not None
         if kept_because:
@@ -681,10 +689,13 @@ class MemoryManager:
             # every new memory was stored 'normal' (code review, 2026-10-22).
             importance_tier=tier,
             valid_until=_end_of_day(fact.valid_until),
+            **world_time.store_kwargs(started),
         )
         if (new_this_message := _new_this_message.get()) is not None:
             new_this_message.add(stored.id)  # stored new: may take typed links
 
+        # A late capture is dated when it was said. A rule start is never
+        # later than that (it is anchored there), so _as_said keeps it.
         if said:
             await self._as_said(stored, said, history_of=newer[0] if newer else None)
 
