@@ -107,10 +107,11 @@ class MemorySettings(BaseModel):
     # fixed, measured experiment set for GET /api/v1/context/snapshot.
     # "recall" = query-type gate + typed links + cosine cut at 0.70 + the
     # structural recall options H-K (undated intentions, goal records,
-    # overview cut, domain hold). M8 eval, bge-m3, held-out test split:
+    # overview cut, domain hold) and L (current unresolved blockers for a
+    # priorities question). M8 eval, bge-m3, held-out test split, before L:
     # precision 0.25 -> 0.55, recall 0.94 -> 0.96 (tune 0.40 / 1.00).
     # "precision" = the same plus the hub penalty, cut at 0.75 (test 0.61 /
-    # 0.96, tune 0.49 / 0.96). H-K's keyword lists were written with sight
+    # 0.96, tune 0.49 / 0.96). H-L's keyword lists were written with sight
     # of all 45 questions: the test split is not fully blind for them.
     # "" (the default) is the normal snapshot, byte for byte. It does not
     # touch the chat prompt (services/memory/context.py) or the shadow

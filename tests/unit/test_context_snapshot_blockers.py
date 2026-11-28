@@ -76,6 +76,10 @@ def _work_world(state):
 # ── Letters, tunables, default ────────────────────────────────
 
 
+def test_both_modes_carry_l():
+    assert all(xp.BLOCKERS in m.experiments for m in xp.MODES.values())
+
+
 def test_l_parses_and_is_tunable():
     assert xp.parse("L") == {xp.BLOCKERS} and xp.letters({xp.BLOCKERS}) == ["L"]
     assert xp.DEFAULT_TUNABLES.named()["BLOCKER_PULL"] == xp.BLOCKER_PULL
@@ -266,3 +270,11 @@ async def test_a_question_with_its_own_subject_gets_only_the_blockers_about_it(b
         experiments=xp.parse("L"),
     )
     assert BLOCKER in _keys(snap) and other.content not in _keys(snap)
+
+
+@pytest.mark.parametrize("name", ["recall", "precision"])
+async def test_each_mode_brings_the_blocker_and_never_the_resolved_dependency(bwired, name):
+    _work_world(bwired)
+    snap = await assemble_context(PRIORITIES, now=NOW, mode=name)
+    assert _reasons(snap).get(BLOCKER) == xp.BLOCKER_RECORD
+    assert DEP not in _keys(snap) and DEP_DONE not in _keys(snap)

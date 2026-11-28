@@ -342,23 +342,26 @@ class Mode:
 #: recall B+C+F 0.401/0.978 tune, 0.539/0.882 test. With H-K (below) recall
 #: on the held-out split rises 0.882 -> 0.961. Caveat: H-K's keyword lists
 #: (overview, domains, due-time words) were written with sight of all 45
-#: questions, so the test split is not fully blind for them.
-_STRUCTURAL = frozenset({UNDATED, GOALS, OVERVIEW, DOMAIN})
+#: questions, so the test split is not fully blind for them. L (blockers)
+#: was folded in afterwards: the numbers below are without it, and L's
+#: word rules too were written with sight of the 45 questions (it fires on
+#: O1, O7, B3, F4).
+_STRUCTURAL = frozenset({UNDATED, GOALS, OVERVIEW, DOMAIN, BLOCKERS})
 MODES: MappingProxyType[str, Mode] = MappingProxyType(
     {
         "recall": Mode(
             name="recall",
             experiments=frozenset({QUERY_TYPE, LINKS, BUDGET}) | _STRUCTURAL,
             tunables=Tunables(cosine_floor=0.70),
-            measured="B+C+F+H+I+J+K, COSINE_FLOOR 0.70: tune P 0.400 R 1.000, "
-            "test P 0.547 R 0.961 (owner's ten R 1.00 / 0.94)",
+            measured="B+C+F+H+I+J+K+L, COSINE_FLOOR 0.70; without L: tune P 0.400 "
+            "R 1.000, test P 0.547 R 0.961 (owner's ten R 1.00 / 0.94); with L: not yet run",
         ),
         "precision": Mode(
             name="precision",
             experiments=frozenset({QUERY_TYPE, LINKS, BUDGET, HUB}) | _STRUCTURAL,
             tunables=Tunables(cosine_floor=0.75),
-            measured="B+C+F+G+H+I+J+K, COSINE_FLOOR 0.75: tune P 0.490 R 0.957, "
-            "test P 0.605 R 0.961",
+            measured="B+C+F+G+H+I+J+K+L, COSINE_FLOOR 0.75; without L: tune P 0.490 "
+            "R 0.957, test P 0.605 R 0.961; with L: not yet run",
         ),
     }
 )

@@ -43,13 +43,14 @@ wired = base.wired
 
 @pytest.fixture(autouse=True)
 def _no_structural_reads(monkeypatch):
-    """The modes include H and I: their reads are stand-ins here (no database)."""
+    """The modes include H, I and L: their reads are stand-ins here (no database)."""
 
     async def none(*a, **kw):
         return []
 
     monkeypatch.setattr(snapshot, "_undated_intentions", none)
     monkeypatch.setattr(snapshot, "_goal_memories", none)
+    monkeypatch.setattr(snapshot, "_blocker_memories", none)
 
 
 # ── The table ─────────────────────────────────────────────────
@@ -57,7 +58,7 @@ def _no_structural_reads(monkeypatch):
 
 def test_the_modes_are_the_measured_configurations():
     recall, precision = xp.MODES["recall"], xp.MODES["precision"]
-    structural = {xp.UNDATED, xp.GOALS, xp.OVERVIEW, xp.DOMAIN}
+    structural = {xp.UNDATED, xp.GOALS, xp.OVERVIEW, xp.DOMAIN, xp.BLOCKERS}
     assert recall.experiments == {xp.QUERY_TYPE, xp.LINKS, xp.BUDGET} | structural
     assert precision.experiments == {xp.QUERY_TYPE, xp.LINKS, xp.BUDGET, xp.HUB} | structural
     # Only the cosine floor differs from the module's defaults (the eval's --xp-set).
@@ -266,7 +267,7 @@ def test_the_comparison_keeps_refs_labels_and_counts_only():
     assert (
         out["v"] == 1
         and out["mode"] == "recall"
-        and out["experiments"] == ["B", "C", "F", "H", "I", "J", "K"]
+        and out["experiments"] == ["B", "C", "F", "H", "I", "J", "K", "L"]
     )
     assert out["kept"] == ["memory:a", "memory:c"]
     assert out["dropped"] == ["memory:b"]

@@ -65,7 +65,7 @@ def test_mode_alone_runs_the_production_path():
     record, kw = ecq.experiment_run(_args(mode="recall"))
     assert kw == {"mode": "recall"}
     assert record["mode"] == "recall"
-    assert record["experiments"] == ["B", "C", "F", "H", "I", "J", "K"]
+    assert record["experiments"] == ["B", "C", "F", "H", "I", "J", "K", "L"]
     assert record["constants"]["COSINE_FLOOR"] == 0.70
     assert "xp_set" not in record
 
@@ -138,5 +138,5 @@ def test_the_lookup_embedder_knows_the_texts_the_experiments_embed():
 
 def test_the_new_letters_reach_the_eval():
     record, kw = ecq.experiment_run(_args(mode="recall", experiments="H,I,J,K"))
-    assert record["experiments"] == ["B", "C", "F", "H", "I", "J", "K"]
+    assert record["experiments"] == ["B", "C", "F", "H", "I", "J", "K", "L"]
     assert kw["tunables"] == xp.MODES["recall"].tunables
