@@ -98,6 +98,12 @@ class MemorySettings(BaseModel):
     # inside the same time box. Off, or with the snapshot flag off, nothing
     # is compared and the trace is exactly as before.
     context_change_shadow: bool = False
+    # M8 ingestion ADR §5.3 (services/memory/typed_links.py): the facts of one
+    # message get BECAUSE links (from the extractor's reason) and LEADS_TO links
+    # (the model's optional leads_to proposal plus a cue word in the text). It
+    # also adds the optional leads_to field to the extraction request. No extra
+    # model call. Off means the request and the save are exactly as before.
+    ingest_typed_links: bool = False
     # The owner's lasting facts, put in front of every local Jarvis answer
     # whether or not search finds them (services/profile_card.py). 0 = off.
     profile_card_max_items: int = 40

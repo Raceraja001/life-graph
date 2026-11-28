@@ -6,11 +6,13 @@ Uses structured JSON output to extract facts, tracks token costs.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
 from typing import Any
 
+from life_graph.config import settings
 from life_graph.extraction.rules import ExtractedFact
 from life_graph.self_improving.prompt_resolver import ResolvedPrompt, resolve_prompt
 from life_graph.self_improving.traces import current_tenant_or_none, record_trace
@@ -108,6 +110,38 @@ _EXTRACTION_SCHEMA: dict[str, Any] = {
     },
     "required": ["facts"],
 }
+
+#: The optional ``leads_to`` field (M8 ingestion ADR §5.3): which other facts of
+#: the same output a fact led to. Sent only with ``settings.ingest_typed_links``
+#: on, so with it off the request is exactly as before. A proposal becomes a
+#: link only when a rule agrees (services/memory/typed_links.py).
+_LEADS_TO_FIELD: dict[str, Any] = {
+    "type": ["array", "null"],
+    "items": {"type": "integer"},
+    "description": (
+        "0-based positions of other facts in this list that this fact led to, only"
+        " when the text says so ('so', 'then', 'therefore'); otherwise null."
+    ),
+}
+#: Told in the request itself, not the system prompt, so a deployed prompt
+#: version (self_improving/prompt_resolver.py) is not changed.
+_LEADS_TO_HINT = (
+    "If the text says one fact led to another ('so', 'then', 'therefore', 'அதனால்',"
+    " 'adhanala', 'apram'), give the earlier fact leads_to: the 0-based positions"
+    " in your list of the facts it led to. Otherwise leave leads_to out.\n\n"
+)
+#: Most leads_to positions read from one fact.
+_MAX_LEADS_TO = 3
+
+
+def extraction_schema() -> dict[str, Any]:
+    """The schema sent to the model: today's, plus ``leads_to`` with ingest_typed_links."""
+    if not settings.ingest_typed_links:
+        return _EXTRACTION_SCHEMA
+    schema = copy.deepcopy(_EXTRACTION_SCHEMA)
+    schema["properties"]["facts"]["items"]["properties"]["leads_to"] = _LEADS_TO_FIELD
+    return schema
+
 
 # ---------------------------------------------------------------------------
 # System prompt
@@ -210,7 +244,9 @@ Rules:
 """
 
 
-def _user_message(text: str, *, schema_in_prompt: bool, known: str = "") -> str:
+def _user_message(
+    text: str, *, schema_in_prompt: bool, known: str = "", leads_to_hint: bool = False
+) -> str:
     """The extraction request. The schema is pasted in only when the runtime is
     not enforcing it — with constrained decoding it is redundant, and it is
     exactly what small models copy back instead of answering. *known* is who the
@@ -237,10 +273,12 @@ def _user_message(text: str, *, schema_in_prompt: bool, known: str = "") -> str:
             " extract, and it changes nothing else: still keep every fact in the"
             " text.\n\n"
         )
+    if leads_to_hint:
+        message += _LEADS_TO_HINT
     if schema_in_prompt:
         return (
             message
-            + f"Respond with JSON matching this schema:\n{json.dumps(_EXTRACTION_SCHEMA, indent=2)}"
+            + f"Respond with JSON matching this schema:\n{json.dumps(extraction_schema(), indent=2)}"
         )
     return message + 'Respond with JSON only: {"facts": [...]}.'
 
@@ -283,7 +321,12 @@ def build_extraction_messages(
     messages.append(
         {
             "role": "user",
-            "content": _user_message(text, schema_in_prompt=not structured, known=known),
+            "content": _user_message(
+                text,
+                schema_in_prompt=not structured,
+                known=known,
+                leads_to_hint=settings.ingest_typed_links,
+            ),
         }
     )
     return messages
@@ -387,7 +430,7 @@ def response_format_for(structured: bool) -> dict[str, Any]:
             "type": "json_schema",
             "json_schema": {
                 "name": "extracted_facts",
-                "schema": _EXTRACTION_SCHEMA,
+                "schema": extraction_schema(),
                 "strict": True,
             },
         }
@@ -531,7 +574,8 @@ class LLMExtractor:
             return []
 
         facts: list[ExtractedFact] = []
-        for item in raw_facts:
+        kept: dict[int, ExtractedFact] = {}
+        for raw_index, item in enumerate(raw_facts):
             if not isinstance(item, dict):
                 continue
             content = item.get("content", "").strip()
@@ -556,6 +600,8 @@ class LLMExtractor:
                     **_meaning(item),
                 )
             )
+            kept[raw_index] = facts[-1]
+        _resolve_leads_to(raw_facts, kept)
 
         # Keep the call as training data, and tag each fact with it so the
         # memory it becomes can be traced back (its review is the label).
@@ -598,7 +644,7 @@ class LLMExtractor:
                     f"Extract facts from the following text:\n\n"
                     f"---\n{text}\n---\n\n"
                     f"Respond with JSON matching this schema:\n"
-                    f"{json.dumps(_EXTRACTION_SCHEMA, indent=2)}"
+                    f"{json.dumps(extraction_schema(), indent=2)}"
                 ),
             },
         ]
@@ -655,7 +701,8 @@ class LLMExtractor:
             return []
 
         facts: list[ExtractedFact] = []
-        for item in raw_facts:
+        kept: dict[int, ExtractedFact] = {}
+        for raw_index, item in enumerate(raw_facts):
             if not isinstance(item, dict):
                 continue
             content = item.get("content", "").strip()
@@ -680,6 +727,8 @@ class LLMExtractor:
                     **_meaning(item),
                 )
             )
+            kept[raw_index] = facts[-1]
+        _resolve_leads_to(raw_facts, kept)
 
         return facts
 
@@ -742,6 +791,30 @@ def _meaning(item: dict) -> dict[str, Any]:
         "correction": item.get("correction") is True,
         "slot": slot,
     }
+
+
+def _resolve_leads_to(raw_facts: list[Any], kept: dict[int, ExtractedFact]) -> None:
+    """Each kept fact's ``leads_to`` positions, as the content of the facts they name.
+
+    The positions are the model's own list, which may hold items that were
+    dropped (no content); a content survives the pipeline's dedup and
+    reordering, a position does not. A position that is not an int, is the
+    fact itself or names a dropped item is left out. Only with
+    ``ingest_typed_links`` on; off, no fact gets a ``leads_to``.
+    """
+    if not settings.ingest_typed_links:
+        return
+    for index, fact in kept.items():
+        raw = raw_facts[index].get("leads_to")
+        if not isinstance(raw, list):
+            continue
+        targets: list[str] = []
+        for pos in raw[:_MAX_LEADS_TO]:
+            if isinstance(pos, bool) or not isinstance(pos, int):
+                continue
+            if pos != index and pos in kept and kept[pos].content not in targets:
+                targets.append(kept[pos].content)
+        fact.leads_to = targets
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
