@@ -1,0 +1,3412 @@
+{
+  "benchmark": "life_graph_context_quality_v1",
+  "dataset_sha256": "8e66336dae89357eddfb2125335f5a815046441d945361207bcc038428ecb16c",
+  "questions_sha256": "3e58ee1ad579d06c9e80582e9d52c1f0e650445845520a1a82271e4860485562",
+  "judge": "off (assemble_context calls retrieve(judge=False)); no model call",
+  "arms": {
+    "bge-m3": {
+      "embedder": "bge-m3",
+      "by_category": {
+        "O": {
+          "questions": 3,
+          "precision": 0.2333,
+          "precision_without_standing": 0.2333,
+          "standing_items": 0,
+          "recall": 0.2222,
+          "forbidden_as_current": 0,
+          "noise_items": 23,
+          "current_vs_historical": 0.5556,
+          "temporal": 0.5556,
+          "relationship_both_ends": 0.5,
+          "relationship_explicit": 0.5,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 0.3333,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "search_hit": 30
+          },
+          "denominators": {
+            "precision": 30,
+            "recall": 9,
+            "current_vs_historical": 9,
+            "temporal": 9,
+            "relationship_both_ends": 2,
+            "relationship_explicit": 2,
+            "conflict_recall": 1,
+            "provenance_coverage": 30,
+            "origin_accuracy": 30,
+            "field_accuracy": 0,
+            "abstention_accuracy": 3
+          }
+        },
+        "A": {
+          "questions": 4,
+          "precision": 0.25,
+          "precision_without_standing": 0.25,
+          "standing_items": 0,
+          "recall": 0.8571,
+          "forbidden_as_current": 0,
+          "noise_items": 30,
+          "current_vs_historical": null,
+          "temporal": null,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 1.0,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "search_hit": 40
+          },
+          "denominators": {
+            "precision": 40,
+            "recall": 7,
+            "current_vs_historical": 0,
+            "temporal": 0,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 0,
+            "provenance_coverage": 40,
+            "origin_accuracy": 40,
+            "field_accuracy": 4,
+            "abstention_accuracy": 4
+          }
+        },
+        "B": {
+          "questions": 1,
+          "precision": 0.5,
+          "precision_without_standing": 0.5,
+          "standing_items": 0,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 5,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": 1.0,
+          "relationship_explicit": 1.0,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "search_hit": 10
+          },
+          "denominators": {
+            "precision": 10,
+            "recall": 2,
+            "current_vs_historical": 2,
+            "temporal": 2,
+            "relationship_both_ends": 1,
+            "relationship_explicit": 1,
+            "conflict_recall": 0,
+            "provenance_coverage": 10,
+            "origin_accuracy": 10,
+            "field_accuracy": 0,
+            "abstention_accuracy": 1
+          }
+        },
+        "C": {
+          "questions": 3,
+          "precision": 0.3,
+          "precision_without_standing": 0.3,
+          "standing_items": 0,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 21,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 1.0,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "search_hit": 30
+          },
+          "denominators": {
+            "precision": 30,
+            "recall": 4,
+            "current_vs_historical": 5,
+            "temporal": 5,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 3,
+            "provenance_coverage": 30,
+            "origin_accuracy": 30,
+            "field_accuracy": 2,
+            "abstention_accuracy": 3
+          }
+        },
+        "D": {
+          "questions": 3,
+          "precision": 0.3,
+          "precision_without_standing": 0.3,
+          "standing_items": 0,
+          "recall": 0.8,
+          "forbidden_as_current": 0,
+          "noise_items": 21,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": 1.0,
+          "relationship_explicit": 0.0,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "search_hit": 30
+          },
+          "denominators": {
+            "precision": 30,
+            "recall": 5,
+            "current_vs_historical": 1,
+            "temporal": 1,
+            "relationship_both_ends": 1,
+            "relationship_explicit": 1,
+            "conflict_recall": 1,
+            "provenance_coverage": 30,
+            "origin_accuracy": 30,
+            "field_accuracy": 0,
+            "abstention_accuracy": 3
+          }
+        },
+        "E": {
+          "questions": 3,
+          "precision": 0.1905,
+          "precision_without_standing": 0.1905,
+          "standing_items": 0,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 17,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "search_hit": 21
+          },
+          "denominators": {
+            "precision": 21,
+            "recall": 3,
+            "current_vs_historical": 5,
+            "temporal": 5,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 0,
+            "provenance_coverage": 21,
+            "origin_accuracy": 21,
+            "field_accuracy": 0,
+            "abstention_accuracy": 3
+          }
+        },
+        "F": {
+          "questions": 4,
+          "precision": 0.325,
+          "precision_without_standing": 0.325,
+          "standing_items": 0,
+          "recall": 0.6154,
+          "forbidden_as_current": 0,
+          "noise_items": 27,
+          "current_vs_historical": null,
+          "temporal": 0.0,
+          "relationship_both_ends": 0.5,
+          "relationship_explicit": 0.375,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "search_hit": 40
+          },
+          "denominators": {
+            "precision": 40,
+            "recall": 13,
+            "current_vs_historical": 0,
+            "temporal": 1,
+            "relationship_both_ends": 8,
+            "relationship_explicit": 8,
+            "conflict_recall": 1,
+            "provenance_coverage": 40,
+            "origin_accuracy": 40,
+            "field_accuracy": 0,
+            "abstention_accuracy": 4
+          }
+        },
+        "G": {
+          "questions": 3,
+          "precision": 0.2333,
+          "precision_without_standing": 0.2333,
+          "standing_items": 0,
+          "recall": 0.6667,
+          "forbidden_as_current": 0,
+          "noise_items": 23,
+          "current_vs_historical": null,
+          "temporal": null,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 0.8,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "search_hit": 30
+          },
+          "denominators": {
+            "precision": 30,
+            "recall": 3,
+            "current_vs_historical": 0,
+            "temporal": 0,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 0,
+            "provenance_coverage": 30,
+            "origin_accuracy": 30,
+            "field_accuracy": 10,
+            "abstention_accuracy": 3
+          }
+        }
+      },
+      "per_question": {
+        "O3": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 6,
+          "found_required": 0,
+          "missed_required": [
+            "i_aws_book",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_car_loan_closed",
+            "f_fund_goal",
+            "f_fund_old",
+            "l_aws_goal",
+            "p_back",
+            "p_constraint_travel",
+            "w_blocker",
+            "w_dep"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": true,
+          "missing": [
+            "commitments"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 5,
+          "temporal_correct": 3,
+          "cvh_checks": 5,
+          "cvh_correct": 3,
+          "temporal_wrong": [
+            "i_fee",
+            "i_runbook"
+          ],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 0,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.89
+        },
+        "O5": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 2,
+          "required": 1,
+          "found_required": 0,
+          "missed_required": [
+            "d_pgqueue"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_car_loan_closed",
+            "f_fund_old",
+            "f_injection",
+            "p_constraint_travel",
+            "p_no_meat",
+            "w_inferred_jobchange",
+            "w_proj_billing"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_no_meat",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "f_injection",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_kafka_consequence",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": true,
+          "missing": [
+            "decisions",
+            "superseded",
+            "replaced"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 1,
+          "cvh_checks": 2,
+          "cvh_correct": 1,
+          "temporal_wrong": [
+            "d_pgqueue"
+          ],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 0,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 31.4
+        },
+        "O7": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 4,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_fund_goal",
+            "f_fund_old",
+            "p_constraint_travel",
+            "w_inferred_jobchange",
+            "w_kafka_consequence"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_rp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9037,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8702,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_kafka_consequence",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 1,
+          "cvh_checks": 2,
+          "cvh_correct": 1,
+          "temporal_wrong": [
+            "w_dep"
+          ],
+          "relations": 2,
+          "relations_both_ends": 1,
+          "relations_explicit": 1,
+          "relation_detail": [
+            {
+              "pair": [
+                "w_blocker",
+                "w_proj_billing"
+              ],
+              "relation": "constraint -> affected project",
+              "stored_as": "typed_link:BECAUSE",
+              "both_ends": true,
+              "explicit_in_snapshot": true
+            },
+            {
+              "pair": [
+                "w_dep",
+                "w_dep_done"
+              ],
+              "relation": "dependency resolved",
+              "stored_as": "typed_link:RELATED_TO",
+              "both_ends": false,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 30.1
+        },
+        "A1": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_husband_income_new",
+            "f_salary_new",
+            "p_back",
+            "p_constraint_travel",
+            "p_inferred_hobby",
+            "p_mother_care",
+            "p_no_meat",
+            "p_run",
+            "w_inferred_jobchange"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_coffee",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9582,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.83,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.7244,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "p_run",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_no_meat",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 2,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 32.82
+        },
+        "A2": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 4,
+          "required": 3,
+          "found_required": 2,
+          "missed_required": [
+            "i_clinic"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_fund_goal",
+            "p_back",
+            "p_inferred_hobby",
+            "w_inferred_jobchange",
+            "w_not_leaving"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9787,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_hosp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9634,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8062,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.7746,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 28.13
+        },
+        "A4": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_car_loan_closed",
+            "f_fund_goal",
+            "f_fund_old",
+            "f_salary_new",
+            "l_aws_goal",
+            "p_goal_marathon",
+            "p_inferred_hobby",
+            "w_task_runbook"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_anniv",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 2,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 29.0
+        },
+        "A5": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 4,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_fund_goal",
+            "f_salary_new",
+            "l_aws_prereq",
+            "p_constraint_travel",
+            "p_inferred_hobby"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9688,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "p_run",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "p_no_meat",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "p_coffee",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 29.2
+        },
+        "B3": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "l_prereq",
+            "p_back",
+            "p_constraint_travel",
+            "w_blocker",
+            "w_inferred_jobchange"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_task_demo",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9787,
+              "block": "search"
+            },
+            {
+              "key": "w_dep_done",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9583,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_rp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9536,
+              "block": "search"
+            },
+            {
+              "key": "w_goal_link",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9531,
+              "block": "search"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9242,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "waiting"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 1,
+          "relations_both_ends": 1,
+          "relations_explicit": 1,
+          "relation_detail": [
+            {
+              "pair": [
+                "w_dep",
+                "w_dep_done"
+              ],
+              "relation": "dependency resolved",
+              "stored_as": "typed_link:RELATED_TO",
+              "both_ends": true,
+              "explicit_in_snapshot": true
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.48
+        },
+        "C2": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_fund_goal",
+            "f_fund_old",
+            "f_salary_new",
+            "l_prereq",
+            "p_back",
+            "w_blocker",
+            "w_proj_billing"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9787,
+              "block": "search"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9061,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "repaying"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 2,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.29
+        },
+        "C3": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_car_loan_closed",
+            "f_emi",
+            "f_injection",
+            "f_salary_new",
+            "l_aws_prereq",
+            "p_anniv"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "f_sip",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9389,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_anniv",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "f_injection",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "big"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 1,
+          "cvh_correct": 1,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 28.81
+        },
+        "C4": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_car_loan_closed",
+            "f_emi",
+            "f_fund_goal",
+            "f_fund_old",
+            "f_sip",
+            "p_anniv",
+            "w_proj_billing"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_anniv",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "f_sip",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 2,
+          "conflicts_found": 2,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 27.59
+        },
+        "D2": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_car_loan_closed",
+            "l_aws_goal",
+            "l_aws_prereq",
+            "l_aws_progress",
+            "p_inferred_hobby",
+            "w_kafka_consequence",
+            "w_task_runbook"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "l_rust_progress_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_topic",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9683,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8825,
+              "block": "search"
+            },
+            {
+              "key": "w_kafka_consequence",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.7038,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_progress",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 1,
+          "cvh_correct": 1,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 34.44
+        },
+        "D3": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 3,
+          "found_required": 2,
+          "missed_required": [
+            "i_aws_book"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "l_mastered",
+            "l_prereq",
+            "l_rust_progress_new",
+            "l_rust_topic",
+            "p_constraint_travel",
+            "w_kafka_consequence",
+            "w_task_runbook"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_progress",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9683,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_topic",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8198,
+              "block": "search"
+            },
+            {
+              "key": "w_kafka_consequence",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.7913,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_progress_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.765,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "l_mastered",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 1,
+          "relations_both_ends": 1,
+          "relations_explicit": 0,
+          "relation_detail": [
+            {
+              "pair": [
+                "l_aws_prereq",
+                "l_aws_progress"
+              ],
+              "relation": "prerequisite -> progress",
+              "stored_as": "none",
+              "both_ends": true,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.48
+        },
+        "D4": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_car_loan_closed",
+            "f_salary_new",
+            "l_aws_goal",
+            "l_aws_prereq",
+            "l_aws_progress",
+            "p_inferred_hobby",
+            "w_job_new"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "l_rust_progress_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "l_mastered",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_topic",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_progress",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "mastered"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 29.39
+        },
+        "E1": {
+          "items": 1,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_old_employer",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8856,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "2019"
+          ],
+          "reasons": {
+            "search_hit": 1
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 1,
+          "cvh_correct": 1,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 1,
+          "origin_checked": 1,
+          "origin_correct": 1,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 24.86
+        },
+        "E3": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 2,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_fund_old",
+            "l_prereq",
+            "p_back",
+            "p_constraint_travel",
+            "p_goal_marathon",
+            "p_run",
+            "w_blocker",
+            "w_inferred_jobchange"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9683,
+              "block": "search"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9007,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8938,
+              "block": "search"
+            },
+            {
+              "key": "p_run",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9071,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "running"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 29.08
+        },
+        "E4": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_car_loan_closed",
+            "f_salary_new",
+            "p_constraint_travel",
+            "p_no_meat",
+            "p_run",
+            "p_saturday",
+            "w_blocker",
+            "w_inferred_jobchange",
+            "w_not_leaving"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9687,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9683,
+              "block": "search"
+            },
+            {
+              "key": "p_run",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9433,
+              "block": "search"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8702,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_no_meat",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 26.09
+        },
+        "F1": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 4,
+          "required": 4,
+          "found_required": 3,
+          "missed_required": [
+            "i_clinic"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_car_loan_closed",
+            "l_aws_progress",
+            "l_prereq",
+            "p_back",
+            "p_daughter_school",
+            "w_task_runbook"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9894,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_hosp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9735,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.959,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_progress",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "p_daughter_school",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "mothers care"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 2,
+          "relations_both_ends": 1,
+          "relations_explicit": 1,
+          "relation_detail": [
+            {
+              "pair": [
+                "p_mother_hosp",
+                "p_saturday"
+              ],
+              "relation": "past event -> current situation",
+              "stored_as": "typed_link:LEADS_TO",
+              "both_ends": true,
+              "explicit_in_snapshot": true
+            },
+            {
+              "pair": [
+                "p_mother_care",
+                "i_clinic"
+              ],
+              "relation": "responsibility -> commitment",
+              "stored_as": "none",
+              "both_ends": false,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 30.2
+        },
+        "F2": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 6,
+          "required": 5,
+          "found_required": 3,
+          "missed_required": [
+            "i_demo",
+            "w_task_demo"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_fund_goal",
+            "l_aws_goal",
+            "l_aws_prereq",
+            "w_manager"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_goal_link",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9536,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9484,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_rp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9157,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8938,
+              "block": "search"
+            },
+            {
+              "key": "w_manager",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.853,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "tasks",
+            "connect"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 3,
+          "relations_both_ends": 1,
+          "relations_explicit": 1,
+          "relation_detail": [
+            {
+              "pair": [
+                "w_career_goal",
+                "w_proj_rp"
+              ],
+              "relation": "goal -> project",
+              "stored_as": "typed_link:LEADS_TO",
+              "both_ends": true,
+              "explicit_in_snapshot": true
+            },
+            {
+              "pair": [
+                "w_proj_rp",
+                "w_task_demo"
+              ],
+              "relation": "project -> task",
+              "stored_as": "typed_link:LEADS_TO",
+              "both_ends": false,
+              "explicit_in_snapshot": false
+            },
+            {
+              "pair": [
+                "w_task_demo",
+                "i_demo"
+              ],
+              "relation": "task -> commitment",
+              "stored_as": "none",
+              "both_ends": false,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 31.66
+        },
+        "F3": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 2,
+          "found_required": 1,
+          "missed_required": [
+            "d_pgqueue"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_fund_old",
+            "l_mastered",
+            "p_coffee",
+            "p_constraint_travel",
+            "p_saturday",
+            "w_inferred_jobchange",
+            "w_job_new",
+            "w_not_leaving",
+            "w_proj_billing"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_kafka_consequence",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "l_mastered",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_coffee",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "chose",
+            "postgres queue"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 2,
+          "relations_both_ends": 2,
+          "relations_explicit": 1,
+          "relation_detail": [
+            {
+              "pair": [
+                "d_pgqueue",
+                "w_kafka_consequence"
+              ],
+              "relation": "decision -> consequence",
+              "stored_as": "none",
+              "both_ends": true,
+              "explicit_in_snapshot": false
+            },
+            {
+              "pair": [
+                "d_pgqueue",
+                "d_kafka"
+              ],
+              "relation": "decision supersedes decision",
+              "stored_as": "decision_supersession",
+              "both_ends": true,
+              "explicit_in_snapshot": true
+            }
+          ],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.89
+        },
+        "F5": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 2,
+          "required": 2,
+          "found_required": 1,
+          "missed_required": [
+            "i_fee"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_car_loan_closed",
+            "f_husband_income_new",
+            "p_constraint_travel",
+            "p_husband_job",
+            "p_mother_care",
+            "p_mother_hosp",
+            "p_saturday",
+            "w_task_runbook"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_pickup",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "p_daughter_school",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9297,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9109,
+              "block": "search"
+            },
+            {
+              "key": "p_husband_job",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8673,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_hosp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "fee"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [
+            "i_fee"
+          ],
+          "relations": 1,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [
+            {
+              "pair": [
+                "i_fee",
+                "p_daughter_school"
+              ],
+              "relation": "commitment -> deadline / who",
+              "stored_as": "none",
+              "both_ends": false,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 32.63
+        },
+        "G2": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "l_aws_prereq",
+            "l_prereq",
+            "l_rust_topic",
+            "p_daughter_school",
+            "p_goal_marathon",
+            "w_career_goal",
+            "w_goal_link",
+            "w_not_leaving"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "l_rust_topic",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9531,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.949,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9297,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9337,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8971,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8776,
+              "block": "search"
+            },
+            {
+              "key": "w_goal_link",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_daughter_school",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 4,
+          "field_correct": 4,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 29.46
+        },
+        "G5": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 0,
+          "missed_required": [
+            "d_caregiver"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_fund_old",
+            "f_salary_new",
+            "p_back",
+            "p_constraint_travel",
+            "p_inferred_hobby",
+            "w_inferred_jobchange"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_hosp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9403,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "decide",
+            "hire",
+            "caregiver"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 0,
+          "field_wrong": [
+            "d_caregiver.label: '<not included>' != 'proposed, not decided'",
+            "d_caregiver.confirmed: '<not included>' != False"
+          ],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 30.92
+        },
+        "G6": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_car_loan_closed",
+            "f_fund_goal",
+            "f_fund_old",
+            "l_aws_goal",
+            "l_prereq",
+            "w_task_runbook"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "f_injection",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9531,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9683,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "ask"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 4,
+          "field_correct": 4,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.7
+        }
+      },
+      "change_detection": null,
+      "zero_tolerance": {
+        "cross_tenant_leaks": 0,
+        "cloud_model_calls": 0,
+        "forbidden_as_current": 0,
+        "rows_left_after_cleanup": 0
+      },
+      "model_calls_by_route": {},
+      "latency_ms": {
+        "runs": 72,
+        "p50": 30.63,
+        "p95": 34.44,
+        "max": 80.25
+      }
+    }
+  },
+  "skipped": {},
+  "run": {
+    "experiments": [
+      "A",
+      "E"
+    ],
+    "experiment_names": [
+      "evidence",
+      "rank"
+    ],
+    "constants": {
+      "TIE_TOLERANCE": 0.02,
+      "LINK_SEEDS": 5,
+      "LINK_PULL": 6,
+      "LINK_FLOOR": 0.25,
+      "DUPLICATE_SIMILARITY": 0.85,
+      "MIN_KEEP": 3,
+      "RELATIVE_FLOOR": 0.6,
+      "ELBOW_GAP": 0.2,
+      "COSINE_FLOOR": 0.8,
+      "COSINE_GAP": 0.08,
+      "HUB_WEIGHT": 0.5
+    },
+    "max_items": 10,
+    "split": "tune",
+    "split_rule": "sha256(question id)[0] % 2: 0 tune, 1 test"
+  }
+}

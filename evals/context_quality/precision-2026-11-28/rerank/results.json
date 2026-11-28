@@ -1,0 +1,3310 @@
+{
+ "determinism_max_abs_logit_diff": 0.0,
+ "rerank_ms_p50": 18.694603990297765,
+ "rerank_ms_p95": 52.166551002301276,
+ "gpu": "NVIDIA GeForce RTX 5080",
+ "policies": {
+  "pool(no cut)": {
+   "tune": {
+    "P": 0.306,
+    "R": 0.978,
+    "items_per_q": 11.167,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.417,
+    "R": 0.915,
+    "items_per_q": 10.619,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.356,
+    "R": 0.946,
+    "items_per_q": 10.911,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.571,
+    "R": 0.868,
+    "items_per_q": 9.1,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "top4 reranker": {
+   "tune": {
+    "P": 0.667,
+    "R": 0.783,
+    "items_per_q": 3.875,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "F1": [
+      "i_clinic",
+      "p_mother_hosp"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.707,
+    "R": 0.638,
+    "items_per_q": 3.905,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ],
+     "D1": [
+      "l_aws_goal"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.686,
+    "R": 0.71,
+    "items_per_q": 3.889,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D1": [
+      "l_aws_goal"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "F1": [
+      "i_clinic",
+      "p_mother_hosp"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.769,
+    "R": 0.5,
+    "items_per_q": 3.9,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ]
+    }
+   }
+  },
+  "top4 cosine": {
+   "tune": {
+    "P": 0.624,
+    "R": 0.674,
+    "items_per_q": 3.875,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book",
+      "i_clinic",
+      "i_fee"
+     ],
+     "A2": [
+      "i_clinic",
+      "p_saturday"
+     ],
+     "A5": [
+      "p_goal_marathon"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "F1": [
+      "i_clinic",
+      "p_saturday"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.634,
+    "R": 0.532,
+    "items_per_q": 3.905,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new"
+     ],
+     "B1": [
+      "w_job_new"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust",
+      "l_aws_goal"
+     ],
+     "E5": [
+      "i_demo"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.629,
+    "R": 0.602,
+    "items_per_q": 3.889,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book",
+      "i_clinic",
+      "i_fee"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new"
+     ],
+     "A2": [
+      "i_clinic",
+      "p_saturday"
+     ],
+     "A5": [
+      "p_goal_marathon"
+     ],
+     "B1": [
+      "w_job_new"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust",
+      "l_aws_goal"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F1": [
+      "i_clinic",
+      "p_saturday"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.795,
+    "R": 0.474,
+    "items_per_q": 3.9,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book",
+      "i_clinic",
+      "i_fee"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new"
+     ]
+    }
+   }
+  },
+  "top5 reranker": {
+   "tune": {
+    "P": 0.609,
+    "R": 0.826,
+    "items_per_q": 4.792,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book",
+      "i_demo"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F1": [
+      "i_clinic",
+      "p_mother_hosp"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.68,
+    "R": 0.702,
+    "items_per_q": 4.762,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.642,
+    "R": 0.763,
+    "items_per_q": 4.778,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book",
+      "i_demo"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F1": [
+      "i_clinic",
+      "p_mother_hosp"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.783,
+    "R": 0.579,
+    "items_per_q": 4.6,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book",
+      "i_demo"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ]
+    }
+   }
+  },
+  "top5 cosine": {
+   "tune": {
+    "P": 0.565,
+    "R": 0.761,
+    "items_per_q": 4.792,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book",
+      "i_clinic"
+     ],
+     "A2": [
+      "i_clinic",
+      "p_saturday"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.59,
+    "R": 0.596,
+    "items_per_q": 4.762,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic"
+     ],
+     "O9": [
+      "f_emi",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust",
+      "l_aws_goal"
+     ],
+     "E5": [
+      "i_demo"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.577,
+    "R": 0.677,
+    "items_per_q": 4.778,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book",
+      "i_clinic"
+     ],
+     "O8": [
+      "i_clinic"
+     ],
+     "O9": [
+      "f_emi",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new"
+     ],
+     "A2": [
+      "i_clinic",
+      "p_saturday"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust",
+      "l_aws_goal"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.761,
+    "R": 0.553,
+    "items_per_q": 4.6,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book",
+      "i_clinic"
+     ],
+     "O8": [
+      "i_clinic"
+     ],
+     "O9": [
+      "f_emi",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new"
+     ]
+    }
+   }
+  },
+  "top6 reranker": {
+   "tune": {
+    "P": 0.54,
+    "R": 0.87,
+    "items_per_q": 5.708,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.619,
+    "R": 0.723,
+    "items_per_q": 5.619,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.576,
+    "R": 0.796,
+    "items_per_q": 5.667,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.755,
+    "R": 0.632,
+    "items_per_q": 5.3,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ]
+    }
+   }
+  },
+  "top6 cosine": {
+   "tune": {
+    "P": 0.504,
+    "R": 0.804,
+    "items_per_q": 5.708,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.551,
+    "R": 0.66,
+    "items_per_q": 5.619,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic"
+     ],
+     "O9": [
+      "f_emi",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust",
+      "l_aws_goal"
+     ],
+     "E5": [
+      "i_demo"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.525,
+    "R": 0.731,
+    "items_per_q": 5.667,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic"
+     ],
+     "O9": [
+      "f_emi",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust",
+      "l_aws_goal"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.774,
+    "R": 0.658,
+    "items_per_q": 5.3,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic"
+     ],
+     "O9": [
+      "f_emi",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "top7 reranker": {
+   "tune": {
+    "P": 0.481,
+    "R": 0.87,
+    "items_per_q": 6.583,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.574,
+    "R": 0.766,
+    "items_per_q": 6.476,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic"
+     ],
+     "O9": [
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.524,
+    "R": 0.817,
+    "items_per_q": 6.533,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic"
+     ],
+     "O9": [
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.729,
+    "R": 0.684,
+    "items_per_q": 5.9,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic"
+     ],
+     "O9": [
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ]
+    }
+   }
+  },
+  "top7 cosine": {
+   "tune": {
+    "P": 0.437,
+    "R": 0.804,
+    "items_per_q": 6.583,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.522,
+    "R": 0.723,
+    "items_per_q": 6.476,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust"
+     ],
+     "E5": [
+      "i_demo"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.476,
+    "R": 0.763,
+    "items_per_q": 6.533,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.729,
+    "R": 0.711,
+    "items_per_q": 5.9,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "top8 reranker": {
+   "tune": {
+    "P": 0.436,
+    "R": 0.913,
+    "items_per_q": 7.458,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.539,
+    "R": 0.809,
+    "items_per_q": 7.333,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "f_husband_income_new"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.483,
+    "R": 0.86,
+    "items_per_q": 7.4,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_husband_income_new"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.692,
+    "R": 0.737,
+    "items_per_q": 6.5,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_husband_income_new"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new",
+      "f_salary_new"
+     ]
+    }
+   }
+  },
+  "top8 cosine": {
+   "tune": {
+    "P": 0.391,
+    "R": 0.804,
+    "items_per_q": 7.458,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.487,
+    "R": 0.723,
+    "items_per_q": 7.333,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust"
+     ],
+     "E5": [
+      "i_demo"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.435,
+    "R": 0.763,
+    "items_per_q": 7.4,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.692,
+    "R": 0.711,
+    "items_per_q": 6.5,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "top9 reranker": {
+   "tune": {
+    "P": 0.39,
+    "R": 0.913,
+    "items_per_q": 8.333,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.509,
+    "R": 0.851,
+    "items_per_q": 8.143,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.445,
+    "R": 0.882,
+    "items_per_q": 8.244,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.686,
+    "R": 0.789,
+    "items_per_q": 7.0,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O10": [
+      "f_fund_old",
+      "f_husband_income_new"
+     ]
+    }
+   }
+  },
+  "top9 cosine": {
+   "tune": {
+    "P": 0.35,
+    "R": 0.804,
+    "items_per_q": 8.333,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.439,
+    "R": 0.723,
+    "items_per_q": 8.143,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust"
+     ],
+     "E5": [
+      "i_demo"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.391,
+    "R": 0.763,
+    "items_per_q": 8.244,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "B4": [
+      "i_runbook"
+     ],
+     "D1": [
+      "d_pause_rust"
+     ],
+     "D3": [
+      "i_aws_book"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F1": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_task_demo"
+     ],
+     "F3": [
+      "d_pgqueue"
+     ],
+     "F5": [
+      "i_fee"
+     ],
+     "G5": [
+      "d_caregiver"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.643,
+    "R": 0.711,
+    "items_per_q": 7.0,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_fee",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=2 keep=3": {
+   "tune": {
+    "P": 0.616,
+    "R": 0.87,
+    "items_per_q": 4.125,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.61,
+    "R": 0.617,
+    "items_per_q": 3.905,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.613,
+    "R": 0.742,
+    "items_per_q": 4.022,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.6,
+    "R": 0.553,
+    "items_per_q": 5.0,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=2 keep=5": {
+   "tune": {
+    "P": 0.551,
+    "R": 0.891,
+    "items_per_q": 5.667,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.619,
+    "R": 0.745,
+    "items_per_q": 5.381,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.582,
+    "R": 0.817,
+    "items_per_q": 5.533,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.65,
+    "R": 0.658,
+    "items_per_q": 6.0,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=3 keep=3": {
+   "tune": {
+    "P": 0.62,
+    "R": 0.87,
+    "items_per_q": 4.167,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.589,
+    "R": 0.617,
+    "items_per_q": 4.286,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.605,
+    "R": 0.742,
+    "items_per_q": 4.222,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.608,
+    "R": 0.553,
+    "items_per_q": 5.1,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=3 keep=5": {
+   "tune": {
+    "P": 0.551,
+    "R": 0.891,
+    "items_per_q": 5.667,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.6,
+    "R": 0.745,
+    "items_per_q": 5.714,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.574,
+    "R": 0.817,
+    "items_per_q": 5.689,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "A2": [
+      "i_clinic"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.65,
+    "R": 0.658,
+    "items_per_q": 6.0,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O8": [
+      "i_clinic",
+      "i_demo"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=4 keep=3": {
+   "tune": {
+    "P": 0.496,
+    "R": 0.891,
+    "items_per_q": 5.542,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.626,
+    "R": 0.681,
+    "items_per_q": 4.714,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.552,
+    "R": 0.785,
+    "items_per_q": 5.156,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.649,
+    "R": 0.632,
+    "items_per_q": 5.7,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=4 keep=5": {
+   "tune": {
+    "P": 0.472,
+    "R": 0.913,
+    "items_per_q": 6.708,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.61,
+    "R": 0.787,
+    "items_per_q": 5.857,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.532,
+    "R": 0.849,
+    "items_per_q": 6.311,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.667,
+    "R": 0.711,
+    "items_per_q": 6.3,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=5 keep=3": {
+   "tune": {
+    "P": 0.496,
+    "R": 0.891,
+    "items_per_q": 5.542,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.589,
+    "R": 0.681,
+    "items_per_q": 5.095,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.537,
+    "R": 0.785,
+    "items_per_q": 5.333,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "E5": [
+      "i_demo"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.649,
+    "R": 0.632,
+    "items_per_q": 5.7,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker",
+      "w_career_goal"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_emi",
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=5 keep=5": {
+   "tune": {
+    "P": 0.472,
+    "R": 0.913,
+    "items_per_q": 6.708,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.585,
+    "R": 0.787,
+    "items_per_q": 6.19,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.522,
+    "R": 0.849,
+    "items_per_q": 6.467,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "F2": [
+      "i_demo",
+      "w_proj_rp",
+      "w_task_demo"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.667,
+    "R": 0.711,
+    "items_per_q": 6.3,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_fund_goal",
+      "f_husband_income_new",
+      "i_fee"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=6 keep=3": {
+   "tune": {
+    "P": 0.459,
+    "R": 0.957,
+    "items_per_q": 6.542,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.521,
+    "R": 0.787,
+    "items_per_q": 6.762,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "f_husband_income_new"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.488,
+    "R": 0.871,
+    "items_per_q": 6.644,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_husband_income_new"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.683,
+    "R": 0.737,
+    "items_per_q": 6.3,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_clinic",
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_husband_income_new"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=6 keep=5": {
+   "tune": {
+    "P": 0.444,
+    "R": 0.978,
+    "items_per_q": 7.5,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.523,
+    "R": 0.83,
+    "items_per_q": 7.381,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O9": [
+      "f_husband_income_new"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.481,
+    "R": 0.903,
+    "items_per_q": 7.444,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_husband_income_new"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.682,
+    "R": 0.763,
+    "items_per_q": 6.6,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "i_runbook",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O9": [
+      "f_husband_income_new"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=8 keep=3": {
+   "tune": {
+    "P": 0.42,
+    "R": 0.957,
+    "items_per_q": 7.25,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.513,
+    "R": 0.851,
+    "items_per_q": 7.524,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.464,
+    "R": 0.903,
+    "items_per_q": 7.378,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O10": [
+      "f_fund_old"
+     ],
+     "D3": [
+      "l_aws_progress"
+     ],
+     "F4": [
+      "w_proj_billing"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.571,
+    "R": 0.816,
+    "items_per_q": 8.4,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  },
+  "rel logit d=8 keep=5": {
+   "tune": {
+    "P": 0.412,
+    "R": 0.978,
+    "items_per_q": 8.083,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O3": [
+      "i_aws_book"
+     ]
+    }
+   },
+   "test": {
+    "P": 0.509,
+    "R": 0.872,
+    "items_per_q": 7.952,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "all": {
+    "P": 0.457,
+    "R": 0.925,
+    "items_per_q": 8.022,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   },
+   "O": {
+    "P": 0.571,
+    "R": 0.816,
+    "items_per_q": 8.4,
+    "forbidden_as_current": 0,
+    "missed": {
+     "O1": [
+      "i_demo",
+      "i_payflow_followup",
+      "l_aws_goal",
+      "w_blocker"
+     ],
+     "O2": [
+      "l_aws_goal"
+     ],
+     "O3": [
+      "i_aws_book"
+     ],
+     "O10": [
+      "f_fund_old"
+     ]
+    }
+   }
+  }
+ }
+}
