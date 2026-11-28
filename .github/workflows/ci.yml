@@ -522,10 +522,26 @@ jobs:
       # zero-tolerance counts (cross-tenant leaks, cloud model calls,
       # superseded/expired/pending/hostile shown as current, rows left) and
       # regressions below evals/context_quality/baseline.json, which records
-      # today's weak categories as they are.
+      # today's weak categories as they are. The ingest arm builds the same
+      # world through the save path (scripts/context_quality_ingest.py: the
+      # four M8 ingestion flags on, recorded extractor output, no model call);
+      # it gates its fixtures, leaks, cloud calls and rows left, and its rates
+      # once baseline.json has an "ingest" section.
       - name: Verify Context Quality Gates
         if: ${{ !cancelled() }}
-        run: python scripts/eval_context_quality.py --verify
+        run: python scripts/eval_context_quality.py --arms hashing,ingest --verify
+
+      # M8 ingestion structure (scripts/eval_ingestion_structure.py) over the
+      # labelled cases in evals/ingestion_structure/cases.json: world time,
+      # supersession tiers, typed links and the decision lifecycle, through
+      # the real save-path code with stand-ins for the store. No DB, no
+      # model. Zero-tolerance: world time set where unknown, a wrong automatic
+      # supersede, a decision confirmed without the owner, outside text
+      # superseding or linking the owner's facts. Rates may not fall below
+      # evals/ingestion_structure/baseline.json.
+      - name: Verify Ingestion Structure Gates
+        if: ${{ !cancelled() }}
+        run: python scripts/eval_ingestion_structure.py --verify
 
       - name: Upload integration coverage
         if: ${{ !cancelled() }}

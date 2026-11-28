@@ -1,0 +1,25 @@
+{
+  "about": "Floors for scripts/eval_ingestion_structure.py, recorded from a real run of today's code. Not targets: ADR \u00a76.1 sets those.",
+  "world_time": {
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "supersession": {
+    "precision": 1.0,
+    "recall": 0.7619,
+    "tier_accuracy": 0.8378,
+    "world_end_precision": 1.0,
+    "world_end_recall": 0.6
+  },
+  "links": {
+    "because_precision": 1.0,
+    "because_recall": 1.0,
+    "leads_to_precision": 1.0,
+    "leads_to_recall": 1.0
+  },
+  "decisions": {
+    "detection_precision": 1.0,
+    "detection_recall": 0.5714,
+    "lifecycle_accuracy": 1.0
+  }
+}

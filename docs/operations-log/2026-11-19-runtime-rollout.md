@@ -834,3 +834,33 @@ All three passed health, UI, services, 0 log errors, the dev edition and the res
   - the AGE graph mirror never deletes edges;
   - re-approving a rejected memory doesn't restore its links;
   - the MCP `forget` docstring says "soft delete", but it is a hard delete.
+
+### D35. First ingestion flag on in prod: `ingest_world_time` (2026-11-28)
+
+**Owner:** "you decide and proceed", on the order of the flags.
+
+**Decision:** turn on `ingest_world_time` first and alone.
+- It is the most-tested step: 119 rule cases, precision and recall 1.0, 0 starts where the time is unknown, plus 36 wiring tests.
+- It only adds a start where the wording is clear. It never changes or removes an existing memory.
+- The other three steps build on it: supersession tiers use known starts, typed links and the decision mirror come later.
+- One flag at a time keeps each effect measurable.
+
+**Done:**
+- 07:23 UTC: `.env` backed up to `~/life-graph-backups/env-ingest-world-time-20261128-0723`, then `LIFE_GRAPH_INGEST_WORLD_TIME=true` set and prod restarted.
+- The prod API (:8080) restarted at 07:24:05 with the flag in its environment. The dev edition (:8180) is unchanged and off. Health 200; 0 errors in the API and worker logs.
+- The other three new flags are still off; both shadow flags are on.
+- Spot check of the rules in prod:
+  - "I moved to Chennai last month" → 2026-10-01, month precision;
+  - "நேற்று புது வேலை ஆரம்பிச்சேன்" → 2026-11-27, day precision;
+  - "I will start gym next week" → none;
+  - "I currently work at Zoho" → none.
+
+**Rollback:** delete the line from `.env` and run `./dev.sh restart`. Rows the rules dated carry `properties.world_time`; the ADR §8.2 revert script resets them, with a dry run first.
+
+**Measure:** run `scripts/shadow_context_structure.py --tenant raja --since 7` around 2026-12-05.
+- Memories with `properties.world_time`, by precision and source.
+- The share of snapshot memory items with `world_time_known`. It was 0 of 9 at release.
+- Zero tolerance: no start where the time is unknown. Spot-check dated rows read-only against their wording.
+- If it is clean, the next flag is `ingest_typed_links`.
+
+**For the owner:** the Tamil and Tanglish word lists in `life_graph/extraction/world_time.py` (#433) are data, meant for you to review.

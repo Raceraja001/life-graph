@@ -28,6 +28,17 @@ Arms
 * ``bge-m3`` -- production's embedding model served by the local Ollama
   (``--ollama-url``, default http://127.0.0.1:11434). Every text is embedded
   once, up front. Local only; skipped with a note when Ollama is not there.
+* ``ingest`` -- the same world built through the save path instead of seeded
+  rows (scripts/context_quality_ingest.py): each record's owner message
+  (English, Tamil or Tanglish, ``evals/context_quality/ingest_fixtures.json``)
+  goes through the capture spine, Jarvis's memory_save or distillation with
+  the four M8 ingestion flags on, the extractor replaying the *recorded*
+  output of the local extraction model (no model call), and the owner's
+  decision moves through the owner's service calls. Hashing embedder. The
+  same questions then show what ingestion writes against the gold structure,
+  and the report adds "ingestion vs gold" (supersession chains, typed links,
+  pending contradictions, memory states, decisions). Record the extractor's
+  answers again with ``--record-fixtures`` (local Ollama only).
 * ``answer`` (optional, ``--answer``) -- the existing local synthesis path
   (services/synthesis.py SynthesisService, ``chat_local_only``) on the local
   Ollama (``--answer-model``, default qwen3:14b), fed the snapshot items of
@@ -69,10 +80,21 @@ falls more than 0.05 (or one item, for a rate out of fewer than 20) below the
 committed baseline
 (`evals/context_quality/baseline.json`). The baseline records what the system
 does today, weak categories included; it is a floor against regressions, not
-a target. Record it on purpose with `--write-baseline`.
+a target. Record it on purpose with `--write-baseline`, which writes the floors
+of the arms that ran and keeps the others.
+
+With the ``ingest`` arm in ``--arms``, `--verify` also fails when its
+fixtures do not fit the dataset, or on leaks, cloud model calls or rows left
+behind; its rates and its forbidden-as-current count are held to the
+``ingest`` floors in the baseline once they are recorded. Forbidden-as-current
+is not zero-tolerance there: a superseded record that ingestion failed to
+supersede is shown as current, and that is what the arm measures.
 
     set -a; . <(grep -E '^LIFE_GRAPH_(DATABASE_URL|DATABASE_URL_SYNC|REDIS_URL)=' .env); set +a
-    python scripts/eval_context_quality.py --verify                 # CI arm
+    python scripts/eval_context_quality.py --verify                 # hashing arm only
+    python scripts/eval_context_quality.py --arms hashing,ingest --verify   # the CI step
+    python scripts/eval_context_quality.py --arms ingest --write-baseline --write-report
+    python scripts/eval_context_quality.py --record-fixtures         # local Ollama, no DB
     python scripts/eval_context_quality.py --arms hashing,bge-m3 --answer --write-report
 """
 
@@ -99,6 +121,8 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from scripts import context_quality_ingest as ingest  # noqa: E402 — needs ROOT on sys.path
 
 DIR = ROOT / "evals" / "context_quality"
 DATASET_PATH = DIR / "dataset.json"
@@ -139,6 +163,8 @@ CURRENT_VS_HISTORICAL = frozenset({"current", "resolved"}) | HISTORICAL
 #: Item fields that would carry a machine-readable due time (none exists today).
 DUE_FIELDS = ("due", "due_at", "trigger_time", "expires_at", "deadline")
 ZERO_TOLERANCE = ("cross_tenant_leaks", "cloud_model_calls", "forbidden_as_current")
+#: The ingest arm's zero-tolerance counts (forbidden-as-current is a floor there).
+INGEST_ZERO = ("cross_tenant_leaks", "cloud_model_calls", "rows_left_after_cleanup")
 RATES = (
     "precision",
     "recall",
@@ -697,18 +723,43 @@ async def _ask(q: dict[str, Any], tenant: str, now: datetime, repeat: int) -> tu
     return snap, latencies, int(len(dumps) != 1)
 
 
+async def build_world(
+    world: World, spec: dict[str, Any], fx: dict | None, state: Any = None
+) -> Any:
+    """*spec*'s records in *world*: seeded rows, or through the save path with *fx*.
+
+    The ingest arm (*fx* given) ingests the memories and decisions and seeds
+    only the intentions; its approvals and typed links are whatever ingestion
+    wrote. Returns the ingestion state (None for seeded rows).
+    """
+    if fx is None:
+        await seed(world, spec)
+        return None
+    state = state or ingest.IngestState(fx, world.now)
+    await ingest.build(world, spec, state)
+    await seed(world, {"intentions": spec.get("intentions", [])})
+    return state
+
+
 async def run_snapshot_questions(
-    data: dict[str, Any], questions: list[dict[str, Any]], repeat: int
+    data: dict[str, Any], questions: list[dict[str, Any]], repeat: int, fx: dict | None = None
 ) -> dict[str, Any]:
-    """Seed the main and look-alike tenants once, ask every snapshot question, clean up."""
+    """Build the main and look-alike tenants once, ask every snapshot question, clean up.
+
+    With *fx* (the ingest arm) the main tenant is built through the save path
+    and ``structure`` reports what ingestion wrote against the gold.
+    """
     now = datetime.now(UTC)
     main, other = World(_new_tenant(), now), World(_new_tenant(), now)
     tokens = data["other_tenant"].get("leak_tokens", [])
     per_q: dict[str, Any] = {}
     snaps: dict[str, Any] = {}
     latencies: list[float] = []
+    structure = None
     try:
-        await seed(main, _main_spec(data))
+        state = await build_world(main, _main_spec(data), fx)
+        if state is not None:
+            structure = await ingest.structure_report(main, data, state)
         await seed(other, data["other_tenant"])
         for q in questions:
             snap, lat, nondet = await _ask(q, main.tenant, now, repeat)
@@ -720,7 +771,13 @@ async def run_snapshot_questions(
             snaps[q["id"]] = (snap, {str(r.id): k for k, r in main.rows.items()}, main.specs)
     finally:
         left = await cleanup(main.tenant) + await cleanup(other.tenant)
-    return {"per_question": per_q, "snapshots": snaps, "latencies": latencies, "rows_left": left}
+    return {
+        "per_question": per_q,
+        "snapshots": snaps,
+        "latencies": latencies,
+        "rows_left": left,
+        "structure": structure,
+    }
 
 
 def _new_tenant() -> str:
@@ -781,10 +838,15 @@ async def _conversation(tenant: str, at: datetime) -> Any:
     return conv.id
 
 
-async def _apply_after(world: World, after: dict[str, Any]) -> None:
+async def _apply_after(world: World, after: dict[str, Any], *, by_hand: bool = True) -> None:
+    """The scenario's changes. Without *by_hand* (the ingest arm) the memory and
+    decision supersedes are left to ingestion and the owner's actions; only the
+    intentions are set."""
     from life_graph.models.db import Decision, Intention, Memory
     from life_graph.storage.database import async_session
 
+    if not by_hand:
+        after = {"set": after.get("set", [])}
     async with async_session() as s:
         for op in after.get("supersede", []):
             old = await s.get(Memory, world.rows[op["old"]].id)
@@ -812,9 +874,14 @@ def _change_key(ref: str, key_of: dict[str, str]) -> str:
 
 
 async def run_change_question(
-    data: dict[str, Any], q: dict[str, Any], tokens: list[str]
+    data: dict[str, Any], q: dict[str, Any], tokens: list[str], fx: dict | None = None
 ) -> dict[str, Any]:
-    """O6: the work records 7 days ago in a turn trace, the changes since, detect()."""
+    """O6: the work records 7 days ago in a turn trace, the changes since, detect().
+
+    With *fx* (the ingest arm) both the records of 7 days ago and the ones
+    after are ingested; the supersede of the job comes from ingestion itself
+    and the decision supersede from the owner's action.
+    """
     from life_graph.core.tenant import tenant_scope
     from life_graph.services.memory import changes
     from life_graph.services.memory.snapshot import assemble_context
@@ -824,16 +891,20 @@ async def run_change_question(
     base_at = now - timedelta(days=float(sc["baseline_days_ago"]))
     world, other = World(_new_tenant(), now), World(_new_tenant(), now)
     try:
-        await seed(world, _subset(data, sc["seed"], sc.get("seed_overrides", {})))
+        state = await build_world(
+            world, _subset(data, sc["seed"], sc.get("seed_overrides", {})), fx
+        )
         await seed(other, data["other_tenant"])
         conv = await _conversation(world.tenant, base_at - timedelta(minutes=1))
         with tenant_scope(world.tenant):
             before = await assemble_context(sc["query"], now=base_at)
         await _turn(world.tenant, conv, base_at, before.compact())
         after = sc["after"]
-        await seed(world, _subset(data, after["create"], after.get("create_overrides", {})))
-        await seed(world, {"approvals": after.get("approvals", [])})
-        await _apply_after(world, after)
+        created = _subset(data, after["create"], after.get("create_overrides", {}))
+        await build_world(world, created, fx, state)
+        if fx is None:
+            await seed(world, {"approvals": after.get("approvals", [])})
+        await _apply_after(world, after, by_hand=fx is None)
         task_id = await _turn(world.tenant, conv, now, None)
         with tenant_scope(world.tenant):
             t0 = time.perf_counter()
@@ -1030,6 +1101,7 @@ async def run_arm(
     questions = [q for q in gq["questions"] if only is None or q["id"] in only]
     snap_qs = [q for q in questions if q.get("mode", "snapshot") == "snapshot"]
     change_qs = [q for q in questions if q.get("mode") == "changes"]
+    fx = ingest.load_fixtures() if arm_name == "ingest" else None
     calls: dict[str, int] = {}
     embed_ctx: Any = contextlib.nullcontext()
     if arm_name == "bge-m3":
@@ -1038,19 +1110,34 @@ async def run_arm(
             arm.ollama_embedder(texts, model="bge-m3", base_url=ollama_url), "bge-m3"
         )
     with embed_ctx, arm.production_fakes(), model_guard(calls):
-        main = await run_snapshot_questions(data, snap_qs, repeat)
+        main = await run_snapshot_questions(data, snap_qs, repeat, fx)
         per_q, snaps, latencies = main["per_question"], main["snapshots"], main["latencies"]
         rows_left = main["rows_left"]
         changes_out = None
         for q in change_qs:
-            res = await run_change_question(data, q, data["other_tenant"].get("leak_tokens", []))
+            res = await run_change_question(
+                data, q, data["other_tenant"].get("leak_tokens", []), fx
+            )
             per_q[q["id"]] = res["row"]
             snaps[q["id"]] = res["snapshot"]
             rows_left += res["rows_left"]
             changes_out = res["row"]["change_detection"]
     by_cat = _by_category(questions, per_q)
+    extra: dict[str, Any] = {}
+    if fx is not None:
+        extra = {
+            "path": "save path (scripts/context_quality_ingest.py), hashing embedder, flags "
+            + ", ".join(ingest.FLAGS),
+            "fixtures": {
+                "recorded": fx.get("recorded"),
+                "messages": len(fx.get("messages", [])),
+                "problems": ingest.check_fixtures(fx, data),
+                "coverage": ingest.coverage(fx, data),
+            },
+            "ingestion": main.get("structure"),
+        }
     return {
-        "embedder": arm_name,
+        "embedder": "hashing" if fx is not None else arm_name,
         "by_category": by_cat,
         "per_question": per_q,
         "change_detection": changes_out,
@@ -1069,6 +1156,7 @@ async def run_arm(
             "max": round(max(latencies), 2) if latencies else 0.0,
         },
         "_snapshots": snaps,
+        **extra,
     }
 
 
@@ -1163,17 +1251,59 @@ def _embed_unavailable(url: str) -> str | None:
 # ── Baseline, verify, report ──────────────────────────────────
 
 
-def baseline_of(report: dict[str, Any]) -> dict[str, Any]:
-    arm = report["arms"]["hashing"]
+def _floors(arm: dict[str, Any]) -> dict[str, Any]:
     return {
-        "about": "Floors for the hashing arm, recorded from a real run: what the context layer does today, weak categories included. Not a target.",
-        "arm": "hashing",
         "by_category": {
             cat: {k: v for k, v in e.items() if k in RATES and v is not None}
             for cat, e in arm["by_category"].items()
         },
         "change_detection_recall": (arm.get("change_detection") or {}).get("recall"),
     }
+
+
+def baseline_of(report: dict[str, Any], previous: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The floors of the arms in *report*; an arm that did not run keeps *previous*'s.
+
+    The hashing floors stay at the top level (as before); the ingest arm's go
+    under ``ingest``, with its forbidden-as-current count as a ceiling.
+    """
+    out = dict(previous or {})
+    if "hashing" in report["arms"]:
+        out.update(
+            {
+                "about": "Floors for the hashing arm, recorded from a real run: what the context layer does today, weak categories included. Not a target.",
+                "arm": "hashing",
+                **_floors(report["arms"]["hashing"]),
+            }
+        )
+    if "ingest" in report["arms"]:
+        arm = report["arms"]["ingest"]
+        out["ingest"] = {
+            "about": "Floors for the ingest arm (the world built by the save path, all four M8 ingestion flags on, recorded extractor output), recorded from a real run. Not a target: the gaps are what ingestion does not write yet.",
+            **_floors(arm),
+            "forbidden_as_current_max": arm["zero_tolerance"]["forbidden_as_current"],
+        }
+    return out
+
+
+def _floor_fails(arm: dict[str, Any], floors: dict[str, Any], prefix: str = "") -> list[str]:
+    fails: list[str] = []
+    for cat, per_cat in floors.get("by_category", {}).items():
+        entry = arm["by_category"].get(cat)
+        if entry is None:
+            fails.append(f"{prefix}{cat}: category missing from this run")
+            continue
+        for key, floor in per_cat.items():
+            got = entry.get(key)
+            den = entry.get("denominators", {}).get(key) or 0
+            slack = max(TOLERANCE, 1.0 / den) if den else TOLERANCE
+            if got is None or got < floor - slack - 1e-9:
+                fails.append(f"{prefix}{cat}.{key} = {got} < baseline {floor} - {slack:.3f}")
+    floor = floors.get("change_detection_recall")
+    got = (arm.get("change_detection") or {}).get("recall")
+    if floor is not None and (got is None or got < floor - TOLERANCE):
+        fails.append(f"{prefix}change_detection.recall = {got} < baseline {floor} - {TOLERANCE}")
+    return fails
 
 
 def regressions(report: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
@@ -1184,21 +1314,26 @@ def regressions(report: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
     for key, value in arm["zero_tolerance"].items():
         if value:
             fails.append(f"{key} = {value} (target 0)")
-    for cat, floors in baseline.get("by_category", {}).items():
-        entry = arm["by_category"].get(cat)
-        if entry is None:
-            fails.append(f"{cat}: category missing from this run")
-            continue
-        for key, floor in floors.items():
-            got = entry.get(key)
-            den = entry.get("denominators", {}).get(key) or 0
-            slack = max(TOLERANCE, 1.0 / den) if den else TOLERANCE
-            if got is None or got < floor - slack - 1e-9:
-                fails.append(f"{cat}.{key} = {got} < baseline {floor} - {slack:.3f}")
-    floor = baseline.get("change_detection_recall")
-    got = (arm.get("change_detection") or {}).get("recall")
-    if floor is not None and (got is None or got < floor - TOLERANCE):
-        fails.append(f"change_detection.recall = {got} < baseline {floor} - {TOLERANCE}")
+    fails += _floor_fails(arm, baseline)
+    if "ingest" in report["arms"]:
+        fails += ingest_regressions(report["arms"]["ingest"], baseline.get("ingest"))
+    return fails
+
+
+def ingest_regressions(arm: dict[str, Any], floors: dict[str, Any] | None) -> list[str]:
+    """The ingest arm's gate: usable fixtures and its zero counts always; floors once recorded."""
+    fails = [f"ingest: fixtures: {p}" for p in arm.get("fixtures", {}).get("problems", [])]
+    for key in INGEST_ZERO:
+        value = arm["zero_tolerance"].get(key)
+        if value:
+            fails.append(f"ingest: {key} = {value} (target 0)")
+    if floors is None:
+        return fails
+    fails += _floor_fails(arm, floors, prefix="ingest: ")
+    ceiling = floors.get("forbidden_as_current_max")
+    got = arm["zero_tolerance"].get("forbidden_as_current")
+    if ceiling is not None and got is not None and got > ceiling:
+        fails.append(f"ingest: forbidden_as_current = {got} > baseline {ceiling}")
     return fails
 
 
@@ -1255,10 +1390,53 @@ def markdown(report: dict[str, Any], questions: list[dict]) -> str:
                 f"(recall {_f(cd['recall'])}, precision {_f(cd['precision'])}); missed: "
                 f"{', '.join(cd['missed']) or 'none'}; suppressed: {cd['suppressed']}."
             )
+        if arm.get("ingestion"):
+            lines += ["", _ingestion_lines(arm)]
         lines += ["", _question_table(arm["per_question"], questions)]
     if "answer" in report["arms"]:
         lines += ["", "## Answer arm", "", _answer_table(report["arms"]["answer"], questions)]
     return "\n".join(lines) + "\n"
+
+
+def _ingestion_lines(arm: dict[str, Any]) -> str:
+    """What the save path wrote, and each gold structure found or missed."""
+    ing, fx = arm["ingestion"], arm.get("fixtures", {})
+    gold = ing["gold"]
+    rec = fx.get("recorded") or {}
+    cov = fx.get("coverage", {})
+    out = [
+        "### Ingestion vs gold",
+        "",
+        f"{fx.get('messages')} messages through the {arm.get('path')}; extractor output "
+        f"recorded with {rec.get('model', '?')} on {rec.get('anchor', '?')}. Fixture problems: "
+        f"{len(fx.get('problems', []))}; records with no message: "
+        f"{', '.join(cov.get('no_message', [])) or 'none'}; said but not extracted: "
+        f"{', '.join(cov.get('not_extracted', [])) or 'none'}.",
+        "",
+        f"- Memories {ing['memories']} {ing['memories_by_status']}, {ing['extra_memories']} "
+        f"beyond the dataset's; world time set {ing['world_time_set']} (known "
+        f"{ing['world_time_known']}); valid_until set {ing['valid_until_set']}; superseded "
+        f"{ing['superseded']}.",
+        f"- Links: {ing['links_associated']} ASSOCIATED, typed {ing['links_typed'] or 'none'}; "
+        f"contradiction approvals {ing['contradiction_approvals'] or 'none'}.",
+        f"- Decisions {ing['decisions_by_status']}, owner-confirmed "
+        f"{ing['decisions_owner_confirmed']}; found per decision message {ing['decisions_detected']}.",
+        f"- Records with no row: {', '.join(ing['unmapped_records']) or 'none'}; replay misses "
+        f"{len(ing['replay_misses'])}; owner actions refused: "
+        f"{'; '.join(ing['owner_actions_failed']) or 'none'}.",
+    ]
+    for name in ("supersession", "typed_links", "pending_contradictions"):
+        g = gold[name]
+        out.append(
+            f"- Gold {name}: {len(g['found'])}/{g['expected']} found; missed: "
+            f"{', '.join(g['missed']) or 'none'}."
+        )
+    for name in ("memory_state", "decisions"):
+        g = gold[name]
+        out.append(
+            f"- Gold {name}: {g['right']}/{g['of']} right; wrong: {'; '.join(g['wrong']) or 'none'}."
+        )
+    return "\n".join(out)
 
 
 def _snap_table(by_cat: dict[str, Any]) -> str:
@@ -1315,11 +1493,27 @@ def _answer_table(ans: dict[str, Any], questions: list[dict]) -> str:
     return "\n".join(out)
 
 
+def _record(args: argparse.Namespace) -> int:
+    """--record-fixtures: the local model's answers for the ingest arm's messages."""
+    why = ollama_chat_available(args.ollama_url, args.extract_model)
+    if why:
+        print(f"cannot record: {why}", file=sys.stderr)
+        return 1
+    data, _ = load()
+    calls: dict[str, int] = {}
+    with model_guard(calls, allow_local_chat=True):
+        out = asyncio.run(
+            ingest.record_fixtures(data, url=args.ollama_url, model=args.extract_model)
+        )
+    print(json.dumps({**out, "cloud_model_calls": sum(calls.values())}, indent=2))
+    return 1 if calls else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--arms", default="hashing", help="Comma list: hashing,bge-m3")
+    parser.add_argument("--arms", default="hashing", help="Comma list: hashing,bge-m3,ingest")
     parser.add_argument("--answer", action="store_true", help="Also run the local answer arm")
     parser.add_argument("--answer-model", default="qwen3:14b")
     parser.add_argument("--ollama-url", default=OLLAMA_URL)
@@ -1330,6 +1524,12 @@ def main() -> int:
     parser.add_argument("--write-report", action="store_true", help="Write report.json + report.md")
     parser.add_argument("--output", type=Path, default=None, help="Also write the report JSON here")
     parser.add_argument(
+        "--record-fixtures",
+        action="store_true",
+        help="Record the ingest arm's extractor output with the local model (no DB), then exit",
+    )
+    parser.add_argument("--extract-model", default="qwen3:14b", help="Model for --record-fixtures")
+    parser.add_argument(
         "--db-suffix",
         default=os.environ.get("LIFE_GRAPH_TEST_DATABASE_SUFFIX", "_test"),
         help='Suffix for the database name (default "_test"; "" uses the configured DB)',
@@ -1337,6 +1537,8 @@ def main() -> int:
     args = parser.parse_args()
     _point_at_test_database(args.db_suffix)
     logging.getLogger("life_graph").setLevel(logging.ERROR)
+    if args.record_fixtures:
+        return _record(args)
 
     report = asyncio.run(run(args))
     _, gq = load()
@@ -1352,7 +1554,10 @@ def main() -> int:
             json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
     if args.write_baseline:
-        BASELINE_PATH.write_text(json.dumps(baseline_of(report), indent=2) + "\n", encoding="utf-8")
+        previous = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+        BASELINE_PATH.write_text(
+            json.dumps(baseline_of(report, previous), indent=2) + "\n", encoding="utf-8"
+        )
         print(f"Wrote baseline {BASELINE_PATH.name}")
     if args.verify:
         fails = regressions(report, json.loads(BASELINE_PATH.read_text(encoding="utf-8")))
