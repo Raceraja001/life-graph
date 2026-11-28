@@ -64,7 +64,8 @@ def test_xp_set_casts_like_before_and_an_int_takes_a_float_spelling():
 def test_mode_alone_runs_the_production_path():
     record, kw = ecq.experiment_run(_args(mode="recall"))
     assert kw == {"mode": "recall"}
-    assert record["mode"] == "recall" and record["experiments"] == ["B", "C", "F"]
+    assert record["mode"] == "recall"
+    assert record["experiments"] == ["B", "C", "F", "H", "I", "J", "K"]
     assert record["constants"]["COSINE_FLOOR"] == 0.70
     assert "xp_set" not in record
 
@@ -74,7 +75,7 @@ def test_mode_plus_flags_starts_from_the_mode():
         _args(mode="precision", experiments="A", xp_set=["COSINE_FLOOR=0.8"])
     )
     assert "mode" not in kw and record["mode"] == "precision"
-    assert kw["experiments"] == {"rank", "query_type", "links", "budget", "hub"}
+    assert kw["experiments"] == {"rank"} | xp.MODES["precision"].experiments
     assert kw["tunables"] == xp.MODES["precision"].tunables.with_values({"COSINE_FLOOR": 0.8})
     assert record["xp_set"] == {"COSINE_FLOOR": 0.8}
 
@@ -126,3 +127,16 @@ def test_rows_log_each_item_and_count_the_standing_block():
     assert summary["precision"] == round(2 / 3, 4)
     assert summary["precision_without_standing"] == 1.0
     assert summary["standing_items"] == 2
+
+
+def test_the_lookup_embedder_knows_the_texts_the_experiments_embed():
+    data, gq = ecq.load()
+    texts = set(ecq._all_texts(data, gq))
+    assert set(xp.HUB_PROBES) <= texts  # G
+    assert {i["content"] for i in data["intentions"]} <= texts  # H
+
+
+def test_the_new_letters_reach_the_eval():
+    record, kw = ecq.experiment_run(_args(mode="recall", experiments="H,I,J,K"))
+    assert record["experiments"] == ["B", "C", "F", "H", "I", "J", "K"]
+    assert kw["tunables"] == xp.MODES["recall"].tunables
