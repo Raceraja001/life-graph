@@ -701,3 +701,67 @@ All three passed health, UI, services, 0 log errors, the dev edition and the res
 - Turning on either M8 shadow flag in prod is a separate decision.
 
 **Open:** worker-side events still reach no WebSocket. The fix first needs `ws_event_handler` moved below the API layer (import contract).
+
+### D33. M8 context quality: evaluation, fixes, shadow mode on in prod (2026-11-27 to 2026-11-28)
+
+**Owner:**
+- approved the evaluation PR and the P0 fixes ("merge them and release");
+- then said "do the next work";
+- then answered "proceed" to turning on both M8 shadow flags and starting the ingestion design note.
+
+**1. Context-quality evaluation (#412).**
+- Built `scripts/eval_context_quality.py`, with synthetic data in `evals/context_quality/`. No production data was used. The `--verify` gate runs in CI.
+- Audit: `docs/audits/2026-11-26-m8-context-quality-evaluation.md`. Verdict: retrieval is good, but relationships, deadlines and abstention were missing.
+- The owner OK'd the lead running the eval on the test DB, loading only the DB and Redis variables and never printing them. Agents are refused that env.
+
+**2. P0 fixes, released as `prod-20261127-1117`** (rollback `3a452228`):
+- **#413:** Stage 2 no longer holds back active memories on origin alone (D4).
+- **#414:** due intentions, current decisions, a `due` field and abstention in the snapshot (D2, D3, D7).
+- **#415:** replaced values are kept as `as_of` history; Tamil-safe decision and intention words (D1, D10).
+- **#416:** reading a memory no longer marks it edited (D9).
+- **#417:** corrections to the Stage 2 ADR and a spec §6 note.
+- **#418:** baseline re-recorded.
+
+**3. Next work, released as `prod-20261127-1154`** (rollback `c12fa331`):
+- **#419:** typed links become relations; `CONTRADICTS` becomes a conflict (D6).
+- **#420:** owner disputes; a new `disputed` change kind.
+- **#421:** a word-level sufficiency check (D7: G3, O10).
+- **#422:** baseline re-recorded.
+- Eval on bge-m3, the prod embedding model:
+  - abstention 1.00 in every category;
+  - O6 change detection 7/7;
+  - temporal F 1.00;
+  - explicit relations: O and B 0.50, F 0.44;
+  - zero-tolerance checks (leaks, cloud calls, forbidden-as-current) all 0.
+  - Precision is still low (0.16–0.41).
+- Change eval: 45 must-detect, 25 must-stay-silent, 0 misses, 0 false positives.
+
+**4. Prod config: both M8 shadow flags on** (2026-11-28 03:12; `.env` backup `~/life-graph-backups/env-m8-shadow-20261128-0312`).
+- `LIFE_GRAPH_CONTEXT_SNAPSHOT_SHADOW=true` and `LIFE_GRAPH_CONTEXT_CHANGE_SHADOW=true`.
+- Scope:
+  - personal, local Jarvis turns only;
+  - the trace gets references and labels only, no memory text;
+  - the prompt is unchanged;
+  - a failure never fails the turn.
+- Checked:
+  - after the restart, health 200 and both flags true in the API process;
+  - two temporary test turns gave traces with `context_snapshot` (12 and 11 items) and `context_changes` (7 ms);
+  - the longest string in the trace is 45 characters (refs, labels, times).
+  - Temporary chats are never a baseline (by design), so the compare runs on the owner's next normal conversation.
+- Rollback: delete the two lines from `.env` and run `./dev.sh restart`, or restore the backup.
+- **Plan:** a 7-day shadow period, then a report from the traces:
+  - how often it abstains or says "not enough";
+  - change counts and noise;
+  - latency.
+- Stage 3b (briefs) stays blocked until that report and the ingestion ADR.
+
+**5. Next:** the ADR "ingestion produces structure" (`docs/design/adr-m8-ingestion-structure.md`) is being written, design only. On real data:
+- world time always equals saved time;
+- facts are almost never superseded;
+- every link is one generic type;
+- every decision stays "candidate" (`supersede_decision` has no caller).
+- No build until the owner approves the design.
+
+**Open:**
+- Worker-side events reach no WebSocket; `ws_event_handler` must move below the API layer.
+- The dashboard Caddy key is not an owner key (owner action).
