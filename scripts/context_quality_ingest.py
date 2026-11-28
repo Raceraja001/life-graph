@@ -23,8 +23,8 @@ actually writes (ADR docs/design/adr-m8-ingestion-structure.md §6.1):
   service calls (services/decision_lifecycle.py ``move`` / ``supersede`` with an
   owner ``by``, what POST /judgment/decisions/{id}/confirm|discard|supersede
   call), and the owner archiving one memory;
-- the four M8 flags are on: ``ingest_world_time``, ``ingest_supersession_tiers``,
-  ``ingest_typed_links``, ``decision_lifecycle``.
+- the M8 flags are on: ``ingest_world_time``, ``ingest_supersession_tiers``,
+  ``ingest_slot_pairing``, ``ingest_typed_links``, ``decision_lifecycle``.
 
 No model is called. The extractor is the real ``LLMExtractor`` with its local
 chat replaced by the *recorded* raw output of the local extraction model for
@@ -65,10 +65,11 @@ FIXTURES_PATH = ROOT / "evals" / "context_quality" / "ingest_fixtures.json"
 PATHS = ("capture", "memory_save", "distillation")
 LANGS = ("en", "ta", "tanglish")
 OWNER_OPS = ("confirm", "discard", "supersede", "archive")
-#: The four M8 ingestion flags, all on for this arm.
+#: The M8 ingestion flags, all on for this arm (ingest_slot_pairing since 2026-11-28).
 FLAGS = (
     "ingest_world_time",
     "ingest_supersession_tiers",
+    "ingest_slot_pairing",
     "ingest_typed_links",
     "decision_lifecycle",
 )
@@ -271,7 +272,7 @@ def auto_keys(raw: str, expect: list[str], contents: dict[str, str]) -> list[str
 
 @contextlib.contextmanager
 def flags_on() -> Iterator[None]:
-    """The four M8 ingestion flags on for the block."""
+    """The M8 ingestion flags (:data:`FLAGS`) on for the block."""
     from life_graph.config import settings
 
     saved = {name: getattr(settings, name) for name in FLAGS}
@@ -348,7 +349,7 @@ async def record_fixtures(
 ) -> dict[str, Any]:
     """Run the local extraction model on every message and write ``raw`` and ``keys``.
 
-    The real ``LLMExtractor._extract_local`` with the four flags on, the said
+    The real ``LLMExtractor._extract_local`` with the M8 flags on, the said
     day as "Today is", no tenant (so no known-people hint and no trace), on
     the local Ollama at *url* only. Returns a summary.
     """

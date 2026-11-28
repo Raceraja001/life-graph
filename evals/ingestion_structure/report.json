@@ -1,8 +1,8 @@
 {
   "benchmark": "life_graph_ingestion_structure_v1",
-  "cases_sha256": "a9d254f81f04c3ed28f55963491fca5926db7a18c63dc492d17eb3c05d3c922e",
-  "cases": 222,
-  "tamil_or_tanglish_share": 0.365,
+  "cases_sha256": "81e6d1cab9379600a0c294d4b9f66414ecbd065a6412382a78605710abf9fd85",
+  "cases": 232,
+  "tamil_or_tanglish_share": 0.362,
   "zero_tolerance": {
     "world_time_set_where_unknown": 0,
     "world_time_future_given_start": 0,
@@ -25,19 +25,19 @@
     "misses": []
   },
   "supersession": {
-    "cases": 37,
+    "cases": 47,
     "precision": 1.0,
-    "recall": 0.7619,
-    "tier_accuracy": 0.8378,
+    "recall": 0.7917,
+    "tier_accuracy": 0.8723,
     "world_end_precision": 1.0,
-    "world_end_recall": 0.6,
-    "low_items_per_100_facts": 5.4,
+    "world_end_recall": 0.6667,
+    "low_items_per_100_facts": 4.3,
     "denominators": {
-      "precision": 19,
-      "recall": 21,
-      "tier_accuracy": 37,
-      "world_end_precision": 3,
-      "world_end_recall": 5
+      "precision": 23,
+      "recall": 24,
+      "tier_accuracy": 47,
+      "world_end_precision": 4,
+      "world_end_recall": 6
     },
     "wrong_auto_supersede": [],
     "outside": [],

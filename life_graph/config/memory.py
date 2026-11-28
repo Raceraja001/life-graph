@@ -121,6 +121,16 @@ class MemorySettings(BaseModel):
     # never makes one. A real world change also ends the old fact's world
     # time (valid_until). Off means the save path behaves exactly as before.
     ingest_supersession_tiers: bool = False
+    # One attribute under two slot keys (services/memory/supersession.py
+    # slot_pairs): the local model files the same thing under different keys
+    # on different days ("my take-home salary is ..." as money.budget, then as
+    # work.salary), so the same-slot rule never paired them. With this AND
+    # ingest_supersession_tiers on, an active memory of the same subject whose
+    # sentence names the same attribute in the same words with a different
+    # value ("<attribute> is <value>") is a same-slot pair, tiered like one.
+    # Its own flag so the tiers can go on without it. Off: only the same
+    # canonical key pairs, as before.
+    ingest_slot_pairing: bool = False
     # M8 ingestion step 3 (services/memory/world_time.py, ADR m8-ingestion
     # §5.1): a new memory gets valid_from from its own words ("since 2019",
     # "nethu", "போன மாதம்") by deterministic rules, recorded in

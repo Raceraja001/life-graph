@@ -32,7 +32,7 @@ Arms
   rows (scripts/context_quality_ingest.py): each record's owner message
   (English, Tamil or Tanglish, ``evals/context_quality/ingest_fixtures.json``)
   goes through the capture spine, Jarvis's memory_save or distillation with
-  the four M8 ingestion flags on, the extractor replaying the *recorded*
+  the M8 ingestion flags on, the extractor replaying the *recorded*
   output of the local extraction model (no model call), and the owner's
   decision moves through the owner's service calls. Hashing embedder. The
   same questions then show what ingestion writes against the gold structure,
