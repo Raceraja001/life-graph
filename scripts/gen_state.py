@@ -446,6 +446,8 @@ def collect_specs() -> dict[str, Any]:
         "telegram-bridge": ("life_graph/api/integrations_telegram.py", "Built"),
         # Finish line is the automatic weekly cycle (Phase 4), not the Phase 0 tables.
         "personal-model-tuning": ("life_graph/tuning/cycle.py", "Built"),
+        # Finish line is the per-minute cron that runs intake, schedules and the digest.
+        "dev-automation": ("life_graph/workers/dev_automation.py", "Built"),
     }
     # Specs that describe a different product (Uzhavu SaaS / commercial work).
     other_product = {"razorpay-upi", "whatsapp-bot", "template-gallery"}

@@ -12,6 +12,13 @@ Limits:
 One-bounce rule:
 - Failed verification → re-dispatch once with failure report
 - Second failure → needs_human in approval queue
+
+Owner-enabled fix rounds (docs/specs/agent-drivers.md, "Autonomy policy",
+2026-11-27): with ``verify_fix_rounds`` > 0 a still-failing bounce gets up to
+that many more rounds, and with review stages a stage's objection may go back
+to the author for up to ``review_fix_rounds`` rounds -- each budget- and
+kill-switch-gated and recorded as a verification attempt. Default 0 = the
+one-bounce rule above, unchanged. Rounds never approve anything.
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ from life_graph.core.budget import BudgetCategory
 from life_graph.core.events import EventBus, EventType
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import ContextPacketBuilder
+from life_graph.drivers.continue_run import ContinueRunMixin
 from life_graph.drivers.dispatch_approvals import (  # noqa: F401  (re-exported)
     AUTO_PR_MERGE_RATE,
     ApprovalFilingMixin,
@@ -53,8 +61,17 @@ from life_graph.drivers.plan_spec import (  # noqa: F401  (re-exported)
     _SPEC_FIRST_PREFIX,
     _extract_spec,
     _parse_tasks,
+    plan_only_prefix,
 )
-from life_graph.drivers.registry import driver_registry
+from life_graph.drivers.registry import driver_registry, selection_key
+from life_graph.drivers.review_stages import AutonomyRoundsMixin
+from life_graph.drivers.run_health import RunHealthMixin
+from life_graph.drivers.seed_branches import (
+    apply_handoffs,
+    commit_seed,
+    seed_report,
+    unresolved_markers,
+)
 from life_graph.drivers.verify_chain import (  # noqa: F401  (re-exported)
     DEFAULT_VERIFY_CHAIN,
     _resolve_verify_chain,
@@ -70,6 +87,7 @@ from life_graph.drivers.workdir import (
     worktree_intact,
 )
 from life_graph.services.dev import task_events
+from life_graph.services.dev.autonomy_policy import NEUTRAL, EffectivePolicy
 from life_graph.services.dev.change_policy import policy_from_project
 from life_graph.services.dev.verifiers import (  # noqa: F401  (failure_text: re-exported)
     BOUNCE_TASK_MARKER,
@@ -270,9 +288,49 @@ class _DispatchRun:
     # replaced by the bounce's own re-verification, so the independent
     # completion gate never weighs a superseded attempt's checks.
     verifier_results: list[VerifierResult] = field(default_factory=list)
+    # The owner's autonomy policy for this task (services/dev/autonomy_policy.py):
+    # NEUTRAL unless a policy row exists, which is today's behaviour exactly.
+    policy: EffectivePolicy = NEUTRAL
+    # The verification attempt the next re-dispatch records (1 = first pass,
+    # 2 = the bounce, 3+ = owner-enabled fix rounds).
+    next_attempt: int = 2
+    # What this dispatch's driver calls cost so far (the per-task cap for rounds).
+    spent_usd: float = 0.0
+    # How the last re-dispatch ended: passed | verify_failed | driver_failed | tampered.
+    bounce_outcome: str | None = None
+    # Every review-stage result, in order (properties.review_stages).
+    review_results: list[dict] = field(default_factory=list)
+    # What the approval payload carries for the owner's conditions ("autonomy").
+    autonomy: dict = field(default_factory=dict)
+    # Run health (drivers/run_health.py, Phase 3b part 2): the latest CLI
+    # session {driver, session_id, account_id}, the accounts this task already
+    # ran on (one attempt per account), and the nudges used.
+    session_ref: dict | None = None
+    accounts_tried: set = field(default_factory=set)
+    nudges: int = 0
+    # continue_task: which continuation this is (0 = a fresh dispatch), the
+    # commit the task's branch started from, and the branch it landed on.
+    continuation_round: int = 0
+    base_commit: str | None = None
+    landed_branch: str | None = None
+    # Phase 4b (teams, arena): "branch" = land on the task's branch and stop
+    # there (no approval, no PR: a team worker's hand-off); the hand-offs to
+    # apply to the fresh worktree first ({"handoffs": [...], "commit": bool});
+    # what applying them did; a driver and/or account this task is pinned to
+    # (an arena racer); and hold_auto = never auto-open or auto-merge.
+    handoff: str | None = None
+    seed: dict | None = None
+    seed_results: list = field(default_factory=list)
+    seed_error: str | None = None
+    seed_conflicts: list[str] = field(default_factory=list)
+    driver_pin: str | None = None
+    account_pin: str | None = None
+    hold_auto: bool = False
 
 
-class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
+class TaskDispatcher(
+    DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin, RunHealthMixin, ContinueRunMixin
+):
     """Selects driver, enforces limits, runs verification, manages one-bounce.
 
     The dispatcher is the central orchestrator for sending tasks to
@@ -326,6 +384,11 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         spec_first: bool = False,
         acceptance_tests: list[str] | None = None,
         timeout_seconds: int | None = None,
+        handoff: str | None = None,
+        seed: dict | None = None,
+        driver_pin: str | None = None,
+        account_pin: str | None = None,
+        hold_auto: bool = False,
     ) -> DriverResult:
         """Dispatch a task through the full driver pipeline.
 
@@ -355,6 +418,14 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             private: If True, strip memories/preferences.
             cost_cap_usd: Maximum cost allowed for this dispatch.
             verify_chain: List of verifier names to run.
+            handoff: ``"branch"`` lands the verified work on the task's branch
+                and files no approval (a team worker, Phase 4b).
+            seed: hand-offs to apply to the fresh worktree before the run
+                (``{"handoffs": [...], "commit": bool}``, drivers/seed_branches.py).
+            driver_pin / account_pin: run on exactly this driver / agent
+                account (an arena racer); an unavailable pinned driver fails
+                the dispatch instead of falling back.
+            hold_auto: never auto-open or auto-merge the result (arena).
 
         Returns:
             DriverResult with the outcome.
@@ -378,6 +449,11 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             spec_first=spec_first,
             acceptance_tests=acceptance_tests,
             timeout_seconds=timeout_seconds,
+            handoff=handoff,
+            seed=seed,
+            driver_pin=driver_pin,
+            account_pin=account_pin,
+            hold_auto=hold_auto,
         )
 
         try:
@@ -398,14 +474,20 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 isolate_workdir=isolate_workdir,
             )
 
-            # Step 3: Select driver
-            run.driver = await self._select_driver(
-                task_type,
-                persona_name,
-                tenant_id,
-                session,
-                persona=run.persona,
-                project_id=run.project_uuid,
+            # Step 3: Select driver (an arena racer is pinned to one).
+            if run.account_pin:
+                run.packet.account_id = str(run.account_pin)
+            run.driver = (
+                await self._pinned_task_driver(run.driver_pin)
+                if run.driver_pin
+                else await self._select_driver(
+                    task_type,
+                    persona_name,
+                    tenant_id,
+                    session,
+                    persona=run.persona,
+                    project_id=run.project_uuid,
+                )
             )
             task_events.emit(
                 tenant_id, task_id, "driver", f"driver {run.driver.name}",
@@ -434,6 +516,10 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             await self._run_driver(run)
             await self._check_worktree_link(run)
             await self._check_files_changed(run)
+            # Step 4c': an integration task left no conflict marker behind.
+            self._check_seed_conflicts(run)
+            # Step 4d: still rate limited with no account left -> park (owner opt-in).
+            self._decide_park(run)
 
             # Steps 5-6: Run verifier chain and act on its verdict
             if run.verify_chain and run.result.success:
@@ -456,7 +542,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             logger.error("Dispatch failed for task %s: %s", task_id, e, exc_info=True)
             raise
         finally:
-            if run.worktree is not None:
+            # Kept for continue_task when that is on (driver_continue_enabled)
+            # and the run left a session to resume; removed otherwise.
+            if run.worktree is not None and not await self._retain_for_continuation(run):
                 # Run the removal from the ORIGIN repo: packet.project_context
                 # ["path"] now points at the worktree itself (see Step 4), and
                 # git refuses to delete a worktree from inside it.
@@ -608,6 +696,11 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         ).first()
         return row is not None
 
+    @staticmethod
+    async def _worktree_diff(workdir: Any) -> str:
+        """The worktree's diff (read through this module, so it can be patched)."""
+        return await diff_against_head(workdir)
+
     # ── dispatch_task steps, in pipeline order ──────────────────────────
 
     @staticmethod
@@ -664,6 +757,12 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                     return
                 props = dict(task.properties or {})
                 props["checkpoints"] = run.tracker.to_dict()
+                last_stage = run.tracker.checkpoints[-1].stage if run.tracker.checkpoints else None
+                if last_stage == "prepared":
+                    # A new dispatch: an earlier run's review results and risk
+                    # report do not describe this one (drivers/review_stages.py).
+                    props.pop("review_stages", None)
+                    props.pop("risk_report", None)
                 task.properties = props
                 await session.commit()
             last = run.tracker.checkpoints[-1] if run.tracker.checkpoints else None
@@ -697,10 +796,16 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         )
         # Override the task_id from the caller
         packet.task_id = uuid.UUID(run.task_id) if isinstance(run.task_id, str) else run.task_id
+        # Nobody asked for this run right now: the subscription budget (D4)
+        # applies to its account (read only when agent accounts are on).
+        packet.unattended = not run.interactive
         run.packet = packet
 
         if run.task_type == "plan":
-            packet.instruction = _PLAN_ONLY_PREFIX + packet.instruction
+            # Parallel plans on: the plan also declares each task's files.
+            packet.instruction = (
+                plan_only_prefix(settings.driver_team_max_parallel > 1) + packet.instruction
+            )
         elif run.spec_first:
             packet.instruction = _SPEC_FIRST_PREFIX + packet.instruction
 
@@ -737,6 +842,9 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             verify_chain = [*verify_chain, "acceptance_tests_pass"]
         run.verify_chain = verify_chain
 
+        # Step 2b': the owner's rounds and review stages for this project.
+        run.policy = await self._load_autonomy_policy(run)
+
         # Step 2c: opt-in workdir isolation — only when the caller asked
         # for it AND a real project path resolved. A no-op flag on a
         # personaless/projectless dispatch (today's exact behavior).
@@ -766,6 +874,22 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         local (Ollama) cannot spend, so it is never denied.
         """
         driver = run.driver
+        # A run on a subscription account is billed to the plan, not dollars
+        # (risk D4): its unattended runs are gated on window share by the
+        # account hook, so the Governor's dollar cap does not apply. The
+        # decision is a task event either way. None = accounts off (as before).
+        preview = await self._budget_preview(run)
+        if preview is not None and (
+            preview.get("state") == "over_budget"
+            or (preview.get("state") == "selected" and preview.get("kind") == "subscription")
+        ):
+            if run.tracker:
+                run.tracker.record_stage(
+                    "budget_checked",
+                    metadata={"cost_cap_usd": run.cost_cap_usd, "billing": "subscription"},
+                )
+                await self._persist_checkpoint(run)
+            return None
         decision = await governor.authorize(
             run.tenant_id,
             BudgetCategory.DRIVER,
@@ -803,9 +927,64 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             metadata={"budget_throttled": True, "reason": decision.reason},
         )
 
-    async def _run_driver(self, run: _DispatchRun) -> None:
-        """Step 4: resolve the workdir, run the driver, book what it spent."""
+    async def _run_driver(
+        self, run: _DispatchRun, resume: tuple[str, str, Any] | None = None
+    ) -> None:
+        """Step 4: resolve the workdir, run the driver, book what it spent.
+
+        *resume* (session, prompt, account) continues a kept session in the
+        already-resolved ``run.workdir`` instead (continue_task).
+        """
         packet, driver, task_id = run.packet, run.driver, run.task_id
+        if resume is None:
+            await self._resolve_run_workdir(run)
+            if run.seed_error:
+                # A dependency's change could not be applied: nothing is run.
+                run.result = DriverResult(
+                    success=False,
+                    error=run.seed_error,
+                    metadata={
+                        "exit_status": "seed_failed",
+                        "seed": [r.as_dict() for r in run.seed_results],
+                    },
+                )
+                return
+        # Rate-limit rotation and stall retries happen inside (run_health.py).
+        result, attempt = await self._drive(
+            run, driver, packet, run.workdir, attempt=1, book_first=True, resume=resume
+        )
+        run.result = result
+        if run.tracker:
+            run.tracker.record_stage(
+                "driver_executed",
+                metadata={
+                    "success": getattr(run.result, "success", False) if run.result else False
+                },
+            )
+            await self._persist_checkpoint(run)
+        await self._emit_steps(run.tenant_id, task_id, driver.name, attempt, result)
+        # Captured here, before later steps replace `run.result` with fresh
+        # DriverResult instances (verification failure, dissent, ...)
+        # that don't carry the original metadata forward — merged back
+        # in at Step 7 regardless of how the task ultimately resolved.
+        run.spec_text = _extract_spec(result.output) if run.spec_first else None
+
+        # Book the actual spend into the Governor's ledger (a subscription
+        # account's run books none: risk D4).
+        await self._book_spend(run, result, governor_too=True)
+
+        # Secondary per-task guard (the Governor is the primary budget gate).
+        if result.cost_usd > run.cost_cap_usd:
+            logger.warning(
+                "Task %s exceeded per-task cost cap: $%.2f > $%.2f",
+                task_id,
+                result.cost_usd,
+                run.cost_cap_usd,
+            )
+
+    async def _resolve_run_workdir(self, run: _DispatchRun) -> None:
+        """Step 4 (first half): the scratch dir or isolated worktree for the run."""
+        packet, task_id = run.packet, run.task_id
         scratch = Path(
             tempfile.mkdtemp(
                 prefix=f"lg_dispatch_{task_id[:8]}_", dir=tenant_scratch_root(run.tenant_id)
@@ -837,34 +1016,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                     f"{code_context}\n"
                     "Check these callers before changing a signature or return shape."
                 )
-        result = await driver.dispatch(packet, run.workdir, timeout=_driver_timeout(driver, run))
-        run.result = result
-        if run.tracker:
-            run.tracker.record_stage(
-                "driver_executed",
-                metadata={
-                    "success": getattr(run.result, "success", False) if run.result else False
-                },
-            )
-            await self._persist_checkpoint(run)
-        await self._emit_steps(run.tenant_id, task_id, driver.name, 1, result)
-        # Captured here, before later steps replace `run.result` with fresh
-        # DriverResult instances (verification failure, dissent, ...)
-        # that don't carry the original metadata forward — merged back
-        # in at Step 7 regardless of how the task ultimately resolved.
-        run.spec_text = _extract_spec(result.output) if run.spec_first else None
-
-        # Book the actual spend into the Governor's ledger.
-        await governor.record(run.tenant_id, BudgetCategory.DRIVER, result.cost_usd)
-
-        # Secondary per-task guard (the Governor is the primary budget gate).
-        if result.cost_usd > run.cost_cap_usd:
-            logger.warning(
-                "Task %s exceeded per-task cost cap: $%.2f > $%.2f",
-                task_id,
-                result.cost_usd,
-                run.cost_cap_usd,
-            )
+        if run.seed:
+            await self._seed_worktree(run)
 
     async def _check_worktree_link(self, run: _DispatchRun) -> None:
         """Step 4b: the driver must not have swapped the worktree's .git link.
@@ -952,8 +1105,11 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         import, ruff's autofix removed it as unused, and nothing else was
         ever written.
         """
-        result = run.result
         await self._observe_files_changed(run)
+        # Run health (owner opt-in, max_nudges): an edit run that only described
+        # a plan or asked a question gets "carry it out now" before failing here.
+        await self._nudge_until_changed(run, run.task_type in _CHANGE_REQUIRED_TASK_TYPES)
+        result = run.result
         if run.tracker:
             run.tracker.record_stage("files_checked")
             await self._persist_checkpoint(run)
@@ -1127,7 +1283,16 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         )
 
     async def _bounce_or_escalate(self, run: _DispatchRun, v_results: list[VerifierResult]) -> None:
-        """Step 6, a check failed: the one-bounce rule, then needs_human."""
+        """Step 6, a check failed: the one-bounce rule, then needs_human.
+
+        With the owner's ``verify_fix_rounds`` > 0, a bounce whose re-check
+        still fails gets up to that many more rounds, each with the latest
+        failing output, each gated on the kill switch, the budget and the
+        per-task cost cap (:meth:`_round_allowed`) and recorded as the next
+        verification attempt. A round whose driver run itself failed ends the
+        rounds (they fix checks; they are not retries). 0 rounds = exactly
+        the one bounce, as before.
+        """
         driver = run.driver
         await self._emit(
             EventType.VERIFICATION_FAILED,
@@ -1138,19 +1303,50 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             },
         )
 
-        # Bounce: re-dispatch once with failure context
-        bounce_result = await self._bounce_task(
-            tenant_id=run.tenant_id,
-            task_id=run.task_id,
-            driver=driver,
-            packet=run.packet,
-            workdir=run.workdir,
-            failure_report=v_results,
-            session=run.session,
-            verify_chain=run.verify_chain,
-            acceptance_tests=run.acceptance_tests,
-            run=run,
-        )
+        extra = run.policy.verify_fix_rounds
+        rounds_run = 0
+        stop_reason: str | None = None
+        failures = v_results
+        while True:
+            attempt = run.next_attempt
+            run.next_attempt += 1
+            # Bounce: re-dispatch with failure context
+            bounce_result = await self._bounce_task(
+                tenant_id=run.tenant_id,
+                task_id=run.task_id,
+                driver=driver,
+                packet=run.packet,
+                workdir=run.workdir,
+                failure_report=failures,
+                session=run.session,
+                verify_chain=run.verify_chain,
+                acceptance_tests=run.acceptance_tests,
+                run=run,
+                attempt=attempt,
+            )
+            if bounce_result is not None or rounds_run >= extra:
+                break
+            if run.bounce_outcome != "verify_failed":
+                stop_reason = "the fix round's driver run failed"
+                break
+            allowed, why = await self._round_allowed(run)
+            if not allowed:
+                stop_reason = why
+                break
+            rounds_run += 1
+            failures = list(run.verifier_results)
+            task_events.emit(
+                run.tenant_id, run.task_id, "round",
+                f"verify-fix round {rounds_run} of {extra}",
+                data={"kind": "verify_fix", "round": rounds_run, "of": extra,
+                      "attempt": run.next_attempt}, source="dispatcher",
+            )  # fmt: skip
+        if extra:
+            run.autonomy["verify_fix"] = {
+                "rounds": rounds_run,
+                "allowed": extra,
+                "stopped": stop_reason,
+            }
 
         if bounce_result is not None:
             run.result = bounce_result
@@ -1162,21 +1358,31 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             # replaced run.verifier_results with its own re-verification).
             await self._observe_files_changed(run)
             return
-        # Second failure → needs_human
+        # The last failure → needs_human. With no extra rounds this is the
+        # first attempt's report, exactly as before.
+        report = v_results if rounds_run == 0 else (run.verifier_results or v_results)
         result = run.result
+        metadata: dict[str, Any] = {
+            "needs_human": True,
+            "verification_failures": [asdict(r) for r in report if not r.passed],
+        }
+        error = "Verification failed after bounce — needs human review"
+        if rounds_run:
+            metadata["verify_fix_rounds"] = rounds_run
+            error = (
+                f"Verification failed after the bounce and {rounds_run} verify-fix "
+                f"round(s) — needs human review"
+            )
         run.result = DriverResult(
             success=False,
             output=result.output,
-            error="Verification failed after bounce — needs human review",
+            error=error,
             cost_usd=result.cost_usd,
             duration_ms=result.duration_ms,
-            metadata={
-                "needs_human": True,
-                "verification_failures": [asdict(r) for r in v_results if not r.passed],
-            },
+            metadata=metadata,
         )
         await self._create_approval_entry(
-            run.tenant_id, run.task_id, driver.name, v_results, run.session
+            run.tenant_id, run.task_id, driver.name, report, run.session, attempts=1 + rounds_run
         )
 
     async def _file_plan_spec(self, run: _DispatchRun) -> None:
@@ -1228,6 +1434,10 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             {"task_id": run.task_id, "driver": driver.name},
         )
         await self._end_transaction(run.session)  # an LLM review follows
+        if run.policy.review_stages:
+            # The owner's ordered stages replace the single default review.
+            await self._run_review_stages(run)
+            return
         diff_text = await diff_against_head(run.workdir)
         verdict = await self._reviewer.review(run.task_type, run.instruction, diff_text)
         if not (verdict.ran and not verdict.approved):
@@ -1289,6 +1499,11 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         ):
             return
         await self._end_transaction(run.session)  # git commit + branch follow
+        # The commit the branch starts from (a continuation keeps the first one).
+        if not run.base_commit:
+            run.base_commit = await _head_sha(run.worktree)
+        # Read before the commit below: afterwards the worktree has no diff.
+        await self._record_risk_report(run)
         landed_branch = await preserve_verified_work(
             worktree=run.worktree,
             repo_path=run.worktree_origin,
@@ -1304,7 +1519,13 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             run.tracker.record_stage("landed", metadata={"branch": landed_branch})
             await self._persist_checkpoint(run)
         ctx = run.packet.project_context
+        run.landed_branch = landed_branch
         run.result.metadata = {**(run.result.metadata or {}), "landed_branch": landed_branch}
+        if run.handoff == "branch":
+            # A team worker: the branch is the hand-off; the plan's integration
+            # task files the one approval (Phase 4b).
+            await self._record_handoff(run, landed_branch)
+            return
         await self._create_pr_approval(
             tenant_id=run.tenant_id,
             task_id=run.task_id,
@@ -1318,11 +1539,115 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             session=run.session,
             verified=not run.unverifiable,
             unverifiable_checks=[r.verifier for r in run.unverifiable],
-            auto_open_pr=bool(ctx.get("auto_open_pr")),
-            auto_merge=bool(ctx.get("auto_merge")),
+            auto_open_pr=bool(ctx.get("auto_open_pr")) and not run.hold_auto,
+            auto_merge=bool(ctx.get("auto_merge")) and not run.hold_auto,
             base_branch=ctx.get("base_branch") or None,
             change_policy=policy_from_project(ctx),
+            autonomy=self._autonomy_payload(run),
+            continuation=(
+                {"round": run.continuation_round, "base_commit": run.base_commit}
+                if run.continuation_round
+                else None
+            ),
         )
+
+    # ── Phase 4b: seeds, hand-off, pinned driver ─────────────────
+
+    async def _seed_worktree(self, run: _DispatchRun) -> None:
+        """Apply the hand-offs this task starts from to its fresh worktree.
+
+        A worker (``seed.commit``) starts from its dependencies' changes,
+        committed, so its own branch adds only its delta; any of them that
+        does not apply cleanly fails the worker (``seed_error``). The
+        integration task keeps them uncommitted and conflicts as markers for
+        the agent; the report is appended to the instruction either way.
+        """
+        seed = run.seed or {}
+        handoffs = [h for h in seed.get("handoffs") or [] if isinstance(h, dict)]
+        if not handoffs:
+            return
+        if run.worktree is None:
+            run.seed_error = "No isolated worktree to apply the plan's earlier changes to"
+            return
+        results = await apply_handoffs(Path(run.worktree), handoffs)
+        run.seed_results = results
+        run.seed_conflicts = sorted(
+            {f for r in results if r.status == "conflicts" for f in r.files}
+        )
+        report = seed_report(results)
+        task_events.emit(
+            run.tenant_id, run.task_id, "seed", f"applied {len(results)} hand-off(s)",
+            data={"results": [r.as_dict() for r in results], "commit": bool(seed.get("commit"))},
+            source="dispatcher",
+        )  # fmt: skip
+        if seed.get("commit"):
+            bad = [r for r in results if r.status not in ("applied", "empty")]
+            if bad:
+                run.seed_error = (
+                    "Could not start from the changes this task depends on:\n" + report
+                )[:2000]
+                return
+            await commit_seed(
+                Path(run.worktree), f"Seed: changes of {', '.join(r.branch for r in results)}"
+            )
+            run.packet.instruction += (
+                "\n\n--- STARTING POINT ---\nThis worktree already contains (committed) the "
+                f"changes of the plan tasks this one depends on:\n{report}"
+            )
+            return
+        failed = [r for r in results if r.status == "failed"]
+        run.packet.instruction += (
+            "\n\n--- THE TEAM'S CHANGES, APPLIED TO THIS WORKTREE ---\n"
+            f"{report}\n"
+            "These changes are uncommitted in this worktree. Resolve every conflict marker, "
+            "make the pieces work together, and make the plan's checks pass."
+            + (
+                " Changes that could not be applied must be re-done by hand from the plan."
+                if failed
+                else ""
+            )
+        )
+
+    def _check_seed_conflicts(self, run: _DispatchRun) -> None:
+        """Step 4c': an integration run must not land a file with conflict markers."""
+        if not (run.seed_conflicts and run.result is not None and run.result.success):
+            return
+        if run.worktree is None:
+            return
+        left = unresolved_markers(Path(run.worktree), run.seed_conflicts)
+        if not left:
+            return
+        result = run.result
+        run.result = DriverResult(
+            success=False,
+            output=result.output,
+            error=f"Conflict markers left unresolved in {', '.join(left[:10])}; not landed",
+            cost_usd=result.cost_usd,
+            duration_ms=result.duration_ms,
+            metadata={**(result.metadata or {}), "stop_reason": "unresolved_conflicts"},
+        )
+
+    async def _record_handoff(self, run: _DispatchRun, branch: str) -> None:
+        """A team worker's hand-off: where its own change starts and ends."""
+        head = await _head_sha(run.worktree)
+        handoff = {
+            "task_id": run.task_id,
+            "branch": branch,
+            "base_commit": run.base_commit,
+            "head_commit": head,
+        }
+        run.result.metadata = {**(run.result.metadata or {}), "handoff": handoff}
+        task_events.emit(
+            run.tenant_id, run.task_id, "handoff", f"handed off on {branch}",
+            data=handoff, source="dispatcher",
+        )  # fmt: skip
+
+    async def _pinned_task_driver(self, name: str):
+        """The driver an arena racer is pinned to; never another one."""
+        driver = driver_registry.get(name)
+        if driver is None or not await driver.available():
+            raise DispatchError(f"Pinned driver {name!r} is not available")
+        return driver
 
     async def _finish_dispatch(self, run: _DispatchRun) -> None:
         """Step 7: record stats and emit the result event."""
@@ -1425,8 +1750,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 continue
 
         if available:
-            # Sort by cost (cheapest first)
-            available.sort(key=lambda d: d.cost_per_task())
+            # Cheapest first; at equal cost local < subscription < api.
+            available.sort(key=selection_key)
 
             # What the user did with a driver's work on this project outranks
             # whether that work passed the checks: a free driver whose PRs keep
@@ -1475,8 +1800,13 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         verify_chain: list[str],
         acceptance_tests: list[str] | None = None,
         run: _DispatchRun | None = None,
+        attempt: int = 2,
     ) -> DriverResult | None:
         """Re-dispatch once with failure context appended to instruction.
+
+        *attempt* is the verification attempt this re-dispatch records: 2 for
+        the bounce, 3+ for an owner-enabled fix round (which also books its
+        spend with the Governor; the bounce's booking is unchanged).
 
         Returns:
             DriverResult if bounce succeeded verification, None if it also failed;
@@ -1515,6 +1845,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             persona_system_prompt=packet.persona_system_prompt,
             allowed_tools=packet.allowed_tools,
             persona_model=packet.persona_model,
+            unattended=packet.unattended,
         )
 
         await self._emit(
@@ -1529,10 +1860,15 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         # Re-dispatch. The attempt-1 verification row is committed first: no
         # transaction stays open across the second agent run.
         await self._end_transaction(session)
-        bounce_result = await driver.dispatch(
-            bounced_packet, workdir, timeout=_driver_timeout(driver, run)
+        bounce_result, steps_attempt = await self._drive(
+            run, driver, bounced_packet, workdir, attempt=attempt, book_first=attempt > 2
         )
-        await self._emit_steps(tenant_id, task_id, driver.name, 2, bounce_result)
+        await self._emit_steps(tenant_id, task_id, driver.name, steps_attempt, bounce_result)
+        if run is not None:
+            await self._book_spend(run, bounce_result, governor_too=attempt > 2)
+            run.bounce_outcome = "driver_failed"
+        elif attempt > 2:
+            await governor.record(tenant_id, BudgetCategory.DRIVER, bounce_result.cost_usd)
 
         if not bounce_result.success:
             return None
@@ -1545,6 +1881,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             run.result = bounce_result
             await self._check_worktree_link(run)
             if run.result.metadata.get("worktree_tampered"):
+                run.bounce_outcome = "tampered"
                 return run.result
 
         # Re-verify -- against the same acceptance tests as the first attempt,
@@ -1566,7 +1903,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             autofix = await mechanical_autofix(workdir, task_context)
             if autofix.get("fixed") and autofix.get("candidates"):
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
-        await self._record_verification(tenant_id, task_id, 2, v_results, session)
+        await self._record_verification(tenant_id, task_id, attempt, v_results, session)
 
         if run is not None:
             # These supersede the pre-bounce verdicts: they are the checks that
@@ -1574,12 +1911,16 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             run.verifier_results = list(v_results)
 
         if verifier_chain.all_passed(v_results):
+            if run is not None:
+                run.bounce_outcome = "passed"
             await self._emit(
                 EventType.VERIFICATION_PASSED,
                 {"task_id": task_id, "driver": driver.name, "bounce": True},
             )
             return bounce_result
 
+        if run is not None:
+            run.bounce_outcome = "verify_failed"
         return None
 
     async def _record_verification(
@@ -1590,7 +1931,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         v_results: list[VerifierResult],
         session: AsyncSession,
     ) -> None:
-        """Persist one verifier-chain run (attempt 2 is the post-bounce re-check).
+        """Persist one verifier-chain run (attempt 2 is the post-bounce re-check;
+        3+ are owner-enabled fix rounds, docs/specs/agent-drivers.md).
 
         ``verification_runs.task_id`` references ``agent_tasks``, so a run is
         recorded only for dispatches that have a task row (dashboard dev tasks);

@@ -9,13 +9,19 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
+from life_graph.api.approval_identity import owner_only
 from life_graph.api.responses import success_response
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.services.dev import tasks as _dev_tasks
+from life_graph.services.dev.continuation import ContinueError, continue_task
+from life_graph.services.dev.dependencies import DependencyError
+from life_graph.services.dev.review_stages import latest_per_stage
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -33,6 +39,10 @@ class DriverInfo(BaseModel):
     available: bool
     capabilities: list[str]
     cost_per_task: float
+    billing: str = "api"
+    # Readiness detail from drivers that probe a CLI (codex, gemini): enabled,
+    # installed, binary, version, logged_in, hint. None for the others.
+    detail: dict[str, Any] | None = None
 
 
 class DriverStatResponse(BaseModel):
@@ -101,7 +111,7 @@ async def list_drivers():
     Returns each driver's name, current availability status,
     supported task types, and estimated cost per task.
     """
-    from life_graph.drivers.registry import driver_registry
+    from life_graph.drivers.registry import billing_of, driver_registry
 
     drivers = driver_registry.list_all()
     result = []
@@ -110,6 +120,13 @@ async def list_drivers():
             avail = await d.available()
         except Exception:  # best-effort: a driver whose probe raises is listed as unavailable
             avail = False
+        detail = None
+        describe = getattr(d, "describe", None)
+        if describe is not None:
+            try:
+                detail = await describe()
+            except Exception:  # best-effort, like the probe above
+                detail = None
 
         result.append(
             DriverInfo(
@@ -117,6 +134,8 @@ async def list_drivers():
                 available=avail,
                 capabilities=d.capabilities(),
                 cost_per_task=d.cost_per_task(),
+                billing=billing_of(d),
+                detail=detail,
             ).model_dump()
         )
 
@@ -311,6 +330,16 @@ class DevTaskCreate(BaseModel):
             "default: the driver's own limit."
         ),
     )
+    depends_on: list[str] | None = Field(
+        None,
+        max_length=20,
+        description=(
+            "Dev-task ids this task waits for (Phase 4b): it stays queued until "
+            "each one's change is waiting for approval, its PR is open or merged, "
+            "or it handed off on its branch; a dependency that fails cancels it. "
+            "Unknown ids or a cycle: 422."
+        ),
+    )
 
 
 @router.post(
@@ -343,19 +372,23 @@ async def create_dev_task(body: DevTaskCreate, request: Request):
             status_code=400,
             detail=f"Persona {body.persona_name!r} has no driver and cannot run dev tasks",
         )
-    task = await dev_tasks.create_dev_task(
-        async_session,
-        tenant_id,
-        instruction=body.instruction,
-        project=project,
-        persona_name=body.persona_name,
-        task_type="plan" if body.plan_only else "code_change",
-        spec_first=body.spec_first or body.plan_only,
-        verify_chain=["no_diff_in_plan"] if body.plan_only else None,
-        start=not body.queue,
-        timeout_seconds=body.timeout_seconds,
-        properties={"requested_by": resolver(request)},
-    )
+    try:
+        task = await dev_tasks.create_dev_task(
+            async_session,
+            tenant_id,
+            instruction=body.instruction,
+            project=project,
+            persona_name=body.persona_name,
+            task_type="plan" if body.plan_only else "code_change",
+            spec_first=body.spec_first or body.plan_only,
+            verify_chain=["no_diff_in_plan"] if body.plan_only else None,
+            start=not body.queue,
+            timeout_seconds=body.timeout_seconds,
+            properties={"requested_by": resolver(request)},
+            depends_on=body.depends_on or None,
+        )
+    except DependencyError as exc:
+        raise HTTPException(status_code=422, detail=f"{exc.code}: {exc}") from exc
     return success_response(data=task)
 
 
@@ -485,6 +518,18 @@ async def put_presence(body: PresenceUpdate):
     if not await compute_router.set_presence(tenant_id, body.mode, body.minutes):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Redis is not available")
     return success_response(data=await _compute_status(tenant_id))
+
+
+@router.get("/tasks/parked", summary="Dev tasks parked until a plan limit resets")
+async def list_parked_dev_tasks() -> dict[str, Any]:
+    """Tasks whose driver stayed rate limited with no agent account left, on an
+    autonomy policy with ``wait_for_reset`` (docs/specs/agent-drivers.md,
+    "Phase 3b part 2"). Each carries ``park = {resume_at, resets_at, reason,
+    parked_at, count}``; the runner re-queues it at ``resume_at``, or the owner
+    can ``POST /tasks/{id}/resume`` now. Soonest first."""
+    async with async_session() as session:
+        data = await _dev_tasks.list_parked(session, get_current_tenant_id())
+    return success_response(data={"tasks": data, "count": len(data)})
 
 
 @router.get("/tasks/{task_id}", summary="Get one dev task")
@@ -633,6 +678,59 @@ async def cancel_dev_task(task_id: str):
     return success_response(data=state)
 
 
+class ContinueRequest(BaseModel):
+    """Feedback for a finished task's own agent session."""
+
+    model_config = {"extra": "forbid"}
+
+    feedback: str = Field(..., min_length=1, max_length=8000)
+    # Why it is being continued, for the timeline: "pr_feedback", "request_changes"...
+    reason: str | None = Field(None, max_length=200)
+
+
+@router.post(
+    "/tasks/{task_id}/continue",
+    summary="Continue a finished dev task in its own session and worktree (owner)",
+)
+async def continue_dev_task(
+    task_id: str, body: ContinueRequest, request: Request
+) -> dict[str, Any]:
+    """Resume the task's CLI session (same driver, account and worktree) with
+    the feedback, then verify and land as usual: the task's branch moves, its
+    pending PR approval is updated or a new one pushes to the open PR -- never
+    a second PR. Queued for the runner; poll the task (or its events).
+
+    Needs ``driver_continue_enabled``. 409 ``detail`` names why when the task
+    cannot be continued (running, no session, worktree gone, driver cannot
+    resume, PR merged, kill switch); 404 for no such task."""
+    owner_only(request, "Continuing a dev task")
+    _task_uuid(task_id)
+    try:
+        data = await continue_task(
+            async_session, get_current_tenant_id(), task_id, body.feedback, body.reason
+        )
+    except ContinueError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=f"{exc.code}: {exc}") from exc
+    return success_response(data=data)
+
+
+@router.post(
+    "/tasks/{task_id}/resume",
+    summary="Resume a parked dev task now, without waiting for its reset (owner)",
+)
+async def resume_parked_dev_task(task_id: str, request: Request) -> dict[str, Any]:
+    """A parked task goes to the front of the queue at once (e.g. after the
+    owner added an account). 409 when it is not parked."""
+    owner_only(request, "Resuming a parked dev task")
+    _task_uuid(task_id)
+    state = await _dev_tasks.resume_parked(async_session, get_current_tenant_id(), task_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Dev task not found")
+    if not state.get("resumed"):
+        raise HTTPException(status_code=409, detail=f"Dev task is {state['status']}, not parked")
+    return success_response(data=state)
+
+
 @router.post(
     "/tasks/{task_id}/conformance",
     summary="Re-check a task's spec against the project's current code",
@@ -689,6 +787,43 @@ async def get_dev_task_diff(task_id: str):
     if data is None:
         raise HTTPException(status_code=404, detail="No landed change for this dev task")
     return success_response(data=data)
+
+
+@router.get(
+    "/tasks/{task_id}/review-stages",
+    summary="Every review-stage result of a dev task, and the latest per stage",
+)
+async def get_dev_task_review_stages(task_id: str) -> dict[str, Any]:
+    """The owner's review stages as they ran on this task's last dispatch
+    (docs/specs/agent-drivers.md, "Autonomy policy"): ``results`` in order,
+    re-reviews after a review-fix round included (``fix_round`` > 0), and
+    ``latest`` one per stage. 404 when the task ran no stage."""
+    _task_uuid(task_id)
+    async with async_session() as session:
+        data = await _dev_tasks.get_dev_task(session, get_current_tenant_id(), task_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Dev task not found")
+    results = data.get("review_stages")
+    if not results:
+        raise HTTPException(status_code=404, detail="No review stage ran for this dev task")
+    return success_response(
+        data={"task_id": task_id, "results": results, "latest": latest_per_stage(results)}
+    )
+
+
+@router.get("/tasks/{task_id}/risk", summary="The risk report of a dev task's change")
+async def get_dev_task_risk(task_id: str) -> dict[str, Any]:
+    """Block/warn findings with file and line for the change the task landed
+    (services/dev/risk_report.py). Matched values are never stored. 404 when
+    the task landed nothing (no report)."""
+    _task_uuid(task_id)
+    async with async_session() as session:
+        data = await _dev_tasks.get_dev_task(session, get_current_tenant_id(), task_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Dev task not found")
+    if not data.get("risk_report"):
+        raise HTTPException(status_code=404, detail="No risk report for this dev task")
+    return success_response(data={"task_id": task_id, **data["risk_report"]})
 
 
 # ── Plans, scorecards, failures (docs/specs/agent-observability.md) ──

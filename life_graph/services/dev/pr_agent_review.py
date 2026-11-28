@@ -62,9 +62,13 @@ class PRAgentReviewer:
         self._bin = bin_path
 
     async def review(
-        self, task_type: str, instruction: str, diff_text: str | None
+        self, task_type: str, instruction: str, diff_text: str | None, focus: str | None = None
     ) -> ReviewVerdict:
-        """Review a real unified diff. Approves unless a concrete concern is found."""
+        """Review a real unified diff. Approves unless a concrete concern is found.
+
+        *focus* (a review stage's focus text, services/dev/review_stages.py)
+        goes to PR-Agent as its reviewer's extra instructions.
+        """
         if not self._enabled or not diff_text or not diff_text.strip():
             return ReviewVerdict(approved=True, ran=False)
 
@@ -78,6 +82,8 @@ class PRAgentReviewer:
                     # chain on failure would defeat the point of picking a
                     # specific model here; fail-open below handles failure.
                     argv += [f"--config.model={self._model}", "--config.fallback_models=[]"]
+                if focus and focus.strip():
+                    argv.append(f"--pr_reviewer.extra_instructions={focus.strip()[:2000]}")
 
                 proc = await asyncio.create_subprocess_exec(
                     *argv,

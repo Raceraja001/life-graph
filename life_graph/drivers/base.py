@@ -44,6 +44,11 @@ class ContextPacket:
         persona_model: The dispatching persona's model id (e.g.
             ``ollama_chat/qwen3-coder:30b``). Drivers that run a model themselves
             (``local``) use it; ``None`` keeps the driver's default.
+        account_id: Pin this run to one agent account (Phase 3b part 2: the
+            next account after a rate limit). ``None`` = the pool decides.
+        unattended: Nobody asked for this run right now (queued/nightly work):
+            subscription accounts over their plan-window share are skipped
+            (risk D4). Only read when agent accounts are enabled.
     """
 
     task_id: uuid.UUID
@@ -60,6 +65,8 @@ class ContextPacket:
     persona_system_prompt: str | None = None
     allowed_tools: list[str] | None = None
     persona_model: str | None = None
+    account_id: str | None = None
+    unattended: bool = False
 
 
 @dataclass

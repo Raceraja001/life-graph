@@ -49,20 +49,41 @@ BASELINE = {
     "cold_start": 6,
     "connectors": 26,
     "core": 26,
-    "drivers": 54,
+    # 54 -> 56: drivers/setup.py imports the codex and gemini drivers inside
+    # register_default_drivers, like the four drivers before them (Phase 3a).
+    # 56 -> 57: drivers/accounts_hook.py's _sf() imports storage.database
+    # lazily, like services/dev/task_events.py (no engine at import) (Phase 3b).
+    "drivers": 57,
     "extraction": 10,
     "integrations": 25,
     "jobs": 5,
     "kernel": 24,
-    "main": 46,
+    # 46 -> 47 (Phase 4a): the dev-automation notice handler's startup step
+    # imports what it wires, like every other startup step.
+    "main": 47,
     "mcp_server": 1,
     "runtime": 53,
     "self_improving": 59,
-    "services": 621,  # +11 / api -14: the chat turn moved from api/kernel.py (M16)
+    # +11 / api -14: the chat turn moved from api/kernel.py (M16). 621 -> 622:
+    # services/agent_accounts/limits.py imports drivers.codex inside the probe
+    # (codex -> cli_driver -> accounts_hook -> limits is a cycle at import).
+    # 622 -> 626 (Phase 3b part 2): services/dev/tasks.py imports core.events
+    # (_emit_bus), services.dev.runner (resume_parked wakes it; runner imports
+    # tasks) and drivers.dispatcher (sweep_kept_worktrees; the dispatcher
+    # pulls in the driver stack) lazily, as its other event/runner calls do;
+    # runner.housekeep imports tasks lazily like its __init__ does.
+    # 626 -> 628 (Phase 4b): tasks.create_dev_task imports services.dev.dependencies
+    # lazily (dependencies imports tasks at module level), and runner.housekeep
+    # imports dependencies/teams lazily like the tasks import beside it.
+    "services": 628,
     "storage": 7,
     "tools": 101,
     "watchers": 28,
-    "workers": 104,
+    # 104 -> 105 (Phase 4a): WorkerSettings.on_startup subscribes the
+    # dev-automation notice handler inside its guarded try, like its siblings.
+    # 105 -> 106 (Phase 4b): workers.tasks.poll_pr_feedback imports its service
+    # inside the job, like every other job in that module.
+    "workers": 106,
 }
 
 

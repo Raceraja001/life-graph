@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from life_graph.config import settings
 from life_graph.core.redaction import SECRET_SHAPES
-from life_graph.services.dev import sandbox
+from life_graph.services.dev import risk_report, sandbox
 from life_graph.services.dev.acceptance import is_js_test_ref, is_safe_test_ref
 
 if TYPE_CHECKING:
@@ -163,6 +163,7 @@ class VerifierChain:
         self.register("build_ok_diff", _verify_build_ok_diff)
         self.register("lint_clean_diff", _verify_lint_clean_diff)
         self.register("no_secrets_in_diff", _verify_no_secrets_in_diff)
+        self.register("no_high_entropy_in_diff", _verify_no_high_entropy_in_diff)
         self.register("no_vulnerable_deps_in_diff", _verify_no_vulnerable_deps_in_diff)
         self.register("diff_within_scope", _verify_diff_within_scope)
         self.register("tests_exercise_code", _verify_tests_exercise_code)
@@ -958,6 +959,52 @@ async def _verify_no_secrets_in_diff(workdir: Path, ctx: dict) -> tuple[bool, di
     return not findings, {"findings": findings[:20], "checked": len(changed)}
 
 
+async def _verify_no_high_entropy_in_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+    """Refuse a change whose ADDED lines hold a random-looking string no known
+    pattern names: a key, a token, a password (docs/specs/agent-drivers.md,
+    "Autonomy policy").
+
+    Opt-in (a project's ``required_checks`` or a persona's chain), unlike
+    ``no_secrets_in_diff``: entropy has false positives that a pattern list
+    does not. Only ``block`` findings of services/dev/risk_report.py fail it
+    (tests/fixtures, digests and pure hex are warnings there). Added lines
+    only -- tracked changes from ``git diff``, untracked files whole -- so a
+    string that was already in the file is not the change's fault. Evidence
+    names file, line and shape, never the value.
+    """
+    if not in_git_worktree(workdir):
+        return True, {"note": "not a git worktree: nothing to scan"}
+    base = diff_base(workdir)
+    diff = git_diff_query(workdir, "diff", "--no-color", "--no-ext-diff", "--no-textconv", base)
+    added = {path: info["added"] for path, info in risk_report.parse_unified_diff(diff).items()}
+    for rel in git_diff_query(workdir, "ls-files", "--others", "--exclude-standard").splitlines():
+        rel = rel.strip()
+        path = workdir / rel
+        try:
+            if not rel or not path.is_file() or path.stat().st_size > _MAX_SCANNED_FILE_BYTES:
+                continue
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        added[rel] = list(enumerate(text.splitlines(), start=1))
+    findings: list[dict] = []
+    for rel, lines in added.items():
+        if risk_report.skipped_path(rel):
+            continue
+        for lineno, line in lines:
+            findings.extend(
+                f for f in risk_report.scan_line(rel, lineno, line) if f["severity"] == "block"
+            )
+    evidence: dict = {"findings": findings[:20], "checked": len(added)}
+    if findings:
+        evidence["hint"] = (
+            "These lines hold what looks like a credential. Read it from the environment "
+            "or a secret store instead; if it is not a secret (test data), move it to a "
+            "tests/ or fixtures/ file."
+        )
+    return not findings, evidence
+
+
 _DEPENDENCY_MANIFESTS = frozenset(
     {
         "requirements.txt",
@@ -1200,10 +1247,14 @@ def _test_smells(source: str, local: set[str]) -> list[str]:
                     for sub in ast.walk(part):
                         if isinstance(sub, ast.Name) and sub.id in imported:
                             used = True
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            elif (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
                 # patch("pkg.mod.name") targets the code by its dotted path.
-                if node.value.split(".")[0] in local and "." in node.value:
-                    used = True
+                and node.value.split(".")[0] in local
+                and "." in node.value
+            ):
+                used = True
         if not used:
             smells.append(f"imports {', '.join(sorted(imported))} but never calls or patches it")
     smells.extend(_calendar_arithmetic(tree))

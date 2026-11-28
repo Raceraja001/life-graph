@@ -24,6 +24,8 @@ from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_scoped
 from life_graph.models.db import Approval, Memory, Project
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
+from life_graph.services.dev import teams
+from life_graph.services.dev.autonomy_policy import with_policy_note
 from life_graph.services.memory import links, supersession
 
 if TYPE_CHECKING:
@@ -528,6 +530,8 @@ class ApprovalService:
             **(merge_appr.payload or {}),
         }
         allowed, why, _record = await auto_gate(self.session, merge_appr.tenant_id, gate_payload)
+        # Kept where the owner sees it; cleared when a retry's check passes.
+        merge_appr.payload = with_policy_note(merge_appr.payload, None if allowed else why)
         if not allowed:
             logger.info("Auto-merge skipped for %s: %s", driver_name, why)
             return
@@ -558,6 +562,8 @@ class ApprovalService:
         # Never the PR approval's execution claim: that is its own attempt, and
         # a copy would leave the new merge approval "being applied" for good.
         pr_payload = {k: v for k, v in (pr_approval.payload or {}).items() if k != "execution"}
+        # Nor why opening was not automatic: the merge gets its own decision.
+        pr_payload = with_policy_note(pr_payload, None)
         fields = merge_approval_fields(pr_payload)
         merge = Approval(
             tenant_id=pr_approval.tenant_id,
@@ -948,6 +954,16 @@ class ApprovalService:
             )
             return
 
+        if teams.team_mode(tasks):
+            # Phase 4b: the tasks declare file scopes and parallel plans are on.
+            await self._fan_out_team(
+                session_factory, tenant_id, appr, project_dict, tasks,
+                cited=[[ac for ac in acceptance.cited_criteria(t) if ac in defined] for t in tasks],
+                defined=defined, criteria_block=_criteria_block,
+                bound_tests=lambda ids: acceptance.bound_tests(criteria, ids), skipped=skipped,
+            )  # fmt: skip
+            return
+
         plan_group_id = str(uuid.uuid4())
         dispatched_ids = []
         for i, item in enumerate(tasks, start=1):
@@ -993,6 +1009,59 @@ class ApprovalService:
             queued += f"; skipped {skipped} check-only task{'s' if skipped > 1 else ''}"
         # Appended, not assigned: the reviewer's own note (why it was approved)
         # used to be overwritten here.
+        appr.resolution_note = (
+            f"{appr.resolution_note} | {queued}" if appr.resolution_note else queued
+        )
+
+    async def _fan_out_team(
+        self,
+        session_factory,
+        tenant_id: str,
+        appr: Approval,
+        project_dict: dict,
+        tasks: list[str],
+        *,
+        cited: list[list[str]],
+        defined: list[str],
+        criteria_block,
+        bound_tests,
+        skipped: int,
+    ) -> None:
+        """An approved plan as a team: parallel workers + one integration task.
+
+        services/dev/teams.py (docs/specs/agent-drivers.md, "Phase 4b"); the
+        integration task files the plan's one ``driver_pr`` approval.
+        """
+        payload = appr.payload or {}
+        team = await teams.fan_out(
+            session_factory,
+            tenant_id,
+            plan_task_id=payload.get("task_id"),
+            project=project_dict,
+            persona_name=payload.get("persona_name"),
+            instruction=payload.get("instruction") or "",
+            spec=payload.get("spec") or "",
+            items=tasks,
+            cited=cited,
+            defined=defined,
+            criteria_block=criteria_block,
+            bound_tests=bound_tests,
+        )
+        appr.payload = {
+            **payload,
+            "dispatched_task_ids": team["worker_ids"] + [team["integration_task_id"]],
+            "plan_group_id": team["group_id"],
+            "team": {
+                "max_parallel": team["max_parallel"],
+                "integration_task_id": team["integration_task_id"],
+            },
+        }
+        queued = (
+            f"Queued a team of {len(team['worker_ids'])} parallel tasks + 1 integration "
+            f"task (group {team['group_id'][:8]}, at most {team['max_parallel']} at once)"
+        )
+        if skipped:
+            queued += f"; skipped {skipped} check-only task{'s' if skipped > 1 else ''}"
         appr.resolution_note = (
             f"{appr.resolution_note} | {queued}" if appr.resolution_note else queued
         )

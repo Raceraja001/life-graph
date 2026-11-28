@@ -146,6 +146,35 @@ class EventType(StrEnum):
     # Every step of one driver attempt (drivers/steps.py shape), for the
     # trajectory recorder. Emitted once per attempt, after the attempt ends.
     DRIVER_STEPS = "driver:steps"
+    # Run health (drivers/run_health.py, Phase 3b part 2): a rate-limited run
+    # moved to the next agent account; a nudge / stall retry / account switch
+    # round; a dev task parked until its plan limit resets, resumed from park,
+    # or continued in its own session (continue_task).
+    DRIVER_ACCOUNT_SWITCHED = "driver:account:switched"
+    DRIVER_RUN_HEALTH_ROUND = "driver:run_health:round"
+    TASK_PARKED = "driver:task:parked"
+    TASK_UNPARKED = "driver:task:unparked"
+    TASK_CONTINUED = "driver:task:continued"
+    # Dev automation (services/dev/automation, migration 066): a notice for the
+    # owner -- a circuit breaker tripped ("Automation paused: ...") or the
+    # morning digest. NoticeHandler turns it into a notification + push + Telegram.
+    AUTOMATION_NOTICE = "dev:automation:notice"
+    # Phase 4b: a held dev task's dependencies all finished (it may start) or
+    # one failed (it was cancelled); a parallel plan (team) started, began
+    # integrating, is waiting on its one approval, or failed; the PR feedback
+    # loop sent a round, needs the owner, or stopped; an arena race was
+    # created or decided.
+    TASK_DEPENDENCIES_MET = "driver:task:dependencies_met"
+    TASK_DEPENDENCY_FAILED = "driver:task:dependency_failed"
+    TEAM_STARTED = "driver:team:started"
+    TEAM_INTEGRATING = "driver:team:integrating"
+    TEAM_AWAITING_APPROVAL = "driver:team:awaiting_approval"
+    TEAM_FAILED = "driver:team:failed"
+    PR_WATCH_FEEDBACK = "driver:pr_watch:feedback"
+    PR_WATCH_NEEDS_YOU = "driver:pr_watch:needs_you"
+    PR_WATCH_STOPPED = "driver:pr_watch:stopped"
+    ARENA_CREATED = "driver:arena:created"
+    ARENA_DECIDED = "driver:arena:decided"
 
 
 @dataclass

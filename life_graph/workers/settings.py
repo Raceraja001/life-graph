@@ -115,6 +115,15 @@ class WorkerSettings:
         except Exception:
             logger.warning("Autonomous action bridges not available in worker", exc_info=True)
 
+        # Dev automation's tick runs here: its notices (a tripped breaker, the
+        # morning digest) are delivered by a handler subscribed in this process.
+        try:
+            from life_graph.services.dev.automation.wiring import notice_handler
+
+            notice_handler.subscribe()
+        except Exception:
+            logger.warning("Dev automation notices not available in worker", exc_info=True)
+
         # The daily brief cron runs in THIS process, so its BRIEF_COMPOSED
         # event is only heard by handlers subscribed here.
         try:
@@ -188,6 +197,7 @@ class WorkerSettings:
         "life_graph.workers.tasks.decay_trust_scores",
         "life_graph.workers.tasks.check_approval_timeouts",
         "life_graph.workers.tasks.sync_dev_task_prs",
+        "life_graph.workers.tasks.poll_pr_feedback",
         "life_graph.workers.tasks.run_nightly_dev_suggestions",
         "life_graph.workers.tasks.learn_project_task",
         "life_graph.workers.tasks.send_approval_escalations",
@@ -201,6 +211,7 @@ class WorkerSettings:
         "life_graph.workers.distill.distill_conversation",
         "life_graph.workers.distill.distill_idle_conversations",
         "life_graph.workers.distill_transcript.distill_transcript",
+        "life_graph.workers.dev_automation.tick_dev_automation",
         "life_graph.workers.tasks.tick_scheduled_jobs",
         "life_graph.workers.telegram.purge_telegram_pairing_codes",
         "life_graph.workers.capture_sweep.sweep_stuck_captures",
@@ -371,6 +382,12 @@ class WorkerSettings:
             minute={0, 15, 30, 45},
             run_at_startup=False,
         ),
+        # ── Phase 4b: PR feedback loop (off unless driver_pr_feedback_enabled) ──
+        cron(
+            "life_graph.workers.tasks.poll_pr_feedback",
+            minute=set(range(2, 60, 5)),
+            run_at_startup=False,
+        ),
         cron(
             "life_graph.workers.tasks.run_nightly_dev_suggestions",
             hour=21,
@@ -492,6 +509,13 @@ class WorkerSettings:
             "life_graph.workers.distill.distill_idle_conversations",
             minute={0, 15, 30, 45},
             run_at_startup=False,
+        ),
+        # ── Dev automation (services/dev/automation): schedules, intake, digest ──
+        cron(
+            "life_graph.workers.dev_automation.tick_dev_automation",
+            minute=set(range(60)),
+            run_at_startup=False,
+            timeout=600,
         ),
         # ── Ambient Advisory Roles: scheduler ticker, every minute ──
         cron(

@@ -13,6 +13,7 @@ model has a `tenant_id` column."""
 
 from __future__ import annotations
 
+from life_graph.models.agent_accounts import AgentAccount, AgentAccountLimit
 from life_graph.models.agents import (
     AdvisorSession,
     AgentMessage,
@@ -21,6 +22,7 @@ from life_graph.models.agents import (
     AgentSession,
     AgentTask,
     Approval,
+    AutonomyPolicy,
     CrossSystemSync,
     DevTaskEvent,
     DriverStat,
@@ -36,6 +38,15 @@ from life_graph.models.agents import (
 )
 from life_graph.models.authorization import Capability, StandingRuleRecord
 from life_graph.models.base import _EMBED_DIM, Base, _utcnow
+from life_graph.models.dev_automation import (
+    DevAutomationBreaker,
+    DevAutomationSettings,
+    DevBacklogItem,
+    DevIntakeSource,
+    DevSchedule,
+    DevScheduleRun,
+)
+from life_graph.models.dev_groups import DevTaskGroup, PrWatch
 from life_graph.models.judgment import (
     CalibrationSnapshot,
     Challenge,
@@ -117,6 +128,7 @@ __all__ = [
     "DriverStat",
     "VerificationRun",
     "DevTaskEvent",
+    "AutonomyPolicy",
     "AgentRunStep",
     "Preference",
     "Evidence",
@@ -126,6 +138,16 @@ __all__ = [
     "CalibrationSnapshot",
     "Challenge",
     "VaultSecret",
+    "AgentAccount",
+    "AgentAccountLimit",
+    "DevAutomationSettings",
+    "DevIntakeSource",
+    "DevBacklogItem",
+    "DevSchedule",
+    "DevScheduleRun",
+    "DevAutomationBreaker",
+    "DevTaskGroup",
+    "PrWatch",
 ]
 
 # NOTE: The Era-8 autonomy models (AutoAction, ApprovalQueueEntry, AuditLogEntry,

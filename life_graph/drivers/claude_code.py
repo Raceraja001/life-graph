@@ -19,12 +19,15 @@ import contextlib
 import json
 import logging
 import os
+import re
 import shutil
 import time
 from pathlib import Path
 
 from life_graph.config import settings
+from life_graph.drivers import accounts_hook
 from life_graph.drivers.base import ContextPacket, DriverResult
+from life_graph.drivers.cli_failure import classify_failure
 from life_graph.drivers.context import render_memory_block
 from life_graph.drivers.host_exec import (
     STREAM_LIMIT,
@@ -34,11 +37,17 @@ from life_graph.drivers.host_exec import (
 )
 from life_graph.drivers.steps import claude_event_steps, parse_claude_stream
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
+from life_graph.services.agent_accounts.limits import claude_windows
 from life_graph.services.dev import sandbox
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_COST_PER_TASK_USD = 0.10  # frontier cost class; actual cost read from CLI output
+
+LOGIN_HINT = "run `claude auth login`"
+
+# A Claude session id (a UUID); anything else is refused before argv.
+_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{7,63}$")
 
 _ALLOWED_TOOLS_FLAG = "--allowedTools"
 _DISALLOWED_TOOLS_FLAG = "--disallowedTools"
@@ -314,6 +323,7 @@ class ClaudeCodeDriver:
 
     name = "claude_code"
     max_concurrency = 2
+    supports_resume = True
 
     def __init__(self, binary: str | None = None) -> None:
         self._binary = binary or getattr(settings, "driver_claude_code_bin", "claude")
@@ -322,6 +332,11 @@ class ClaudeCodeDriver:
     def dispatch_timeout(self) -> int:
         """Read by the dispatcher in place of its 300s fallback."""
         return settings.driver_claude_code_timeout_seconds
+
+    @property
+    def billing(self) -> str:
+        """``subscription`` on the personal login, ``api`` with an API key."""
+        return "api" if settings.driver_claude_code_auth == "api_key" else "subscription"
 
     # ── Protocol ──────────────────────────────────────────────
 
@@ -332,8 +347,48 @@ class ClaudeCodeDriver:
             logger.debug("claude_code unavailable: %r not on PATH", self._binary)
         return found
 
+    async def resume(
+        self,
+        packet: ContextPacket,
+        workdir: Path,
+        session_id: str,
+        prompt: str,
+        timeout: int = 300,
+        *,
+        account_id: object = None,
+    ) -> DriverResult:
+        """Continue session *session_id* with *prompt*: ``claude -p <prompt> --resume <id>``.
+
+        Used by continue_task and run-health rounds (Phase 3b part 2). Host mode only: a task-runtime
+        container's config dir is thrown away after each run, so there is no
+        session to resume there (refused as ``resume_unsupported``). With
+        accounts on, pass the *account_id* the session ran on (its home holds
+        the session). The packet's tool scoping applies as in a dispatch.
+        """
+        if not session_id or not _SESSION_ID.fullmatch(session_id):
+            return DriverResult(
+                success=False,
+                error="claude_code: not a session id",
+                metadata={"exit_status": "bad_session"},
+            )
+        if sandbox.driver_sandbox_enabled():
+            return DriverResult(
+                success=False,
+                error="claude_code: a sandboxed run keeps no session to resume",
+                metadata={"exit_status": "resume_unsupported"},
+            )
+        return await self.dispatch(
+            packet, workdir, timeout, _resume=(session_id, prompt), _account_id=account_id
+        )
+
     async def dispatch(
-        self, packet: ContextPacket, workdir: Path, timeout: int = 300
+        self,
+        packet: ContextPacket,
+        workdir: Path,
+        timeout: int = 300,
+        *,
+        _resume: tuple[str, str] | None = None,
+        _account_id: object = None,
     ) -> DriverResult:
         """Run Claude Code headless on the packet and normalize the result.
 
@@ -365,7 +420,7 @@ class ClaudeCodeDriver:
                 metadata={"exit_status": "refused_unscoped"},
             )
 
-        prompt = self._format_prompt(packet)
+        prompt = _resume[1].strip() if _resume else self._format_prompt(packet)
 
         # On the host the CLI's Bash tool would run as this process's user
         # with nothing in between: deny it unless the operator said the host
@@ -419,11 +474,47 @@ class ClaudeCodeDriver:
                     metadata={"exit_status": "refused_host_web"},
                 )
 
+        lease = await accounts_hook.acquire(
+            self.name,
+            packet.tenant_id,
+            account_id=_account_id or packet.account_id,
+            unattended=packet.unattended,
+        )
+        if lease.refusal is not None:
+            lease.refusal.duration_ms = int((time.monotonic() - start) * 1000)
+            return lease.refusal
+        result = await self._run_cli(
+            packet, workdir, timeout, prompt, cli_tools, lease,
+            host_mode=host_mode, host_shell_denied=host_shell_denied, start=start,
+            resume_id=_resume[0] if _resume else None,
+        )  # fmt: skip
+        await accounts_hook.release(lease, result)
+        return result
+
+    async def _run_cli(
+        self,
+        packet: ContextPacket,
+        workdir: Path,
+        timeout: int,
+        prompt: str,
+        cli_tools: list[str] | None,
+        lease: accounts_hook.AccountLease,
+        *,
+        host_mode: bool,
+        host_shell_denied: bool,
+        start: float,
+        resume_id: str | None,
+    ) -> DriverResult:
+        """The run itself, once scoping and the account are settled."""
         cwd, worktree = await resolve_workdir(packet, workdir)
         try:
             # stream-json (which -p only allows with --verbose) instead of
             # json: the same final result, plus every step that led to it.
             args = [self._binary, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+            if resume_id:
+                args += ["--resume", resume_id]
+            if lease.model:
+                args += ["--model", lease.model]
             args += _permission_args(
                 cli_tools, host_mode=host_mode, host_shell_denied=host_shell_denied
             )
@@ -433,7 +524,7 @@ class ClaudeCodeDriver:
             audit: dict = {}
             try:
                 returncode, out, err = await self._exec_cli(
-                    args, cwd, timeout, packet=packet, audit=audit
+                    args, cwd, timeout, packet=packet, audit=audit, lease=lease
                 )
             except TimeoutError:
                 return DriverResult(
@@ -454,8 +545,32 @@ class ClaudeCodeDriver:
                 )
 
             duration = int((time.monotonic() - start) * 1000)
-            data, steps = parse_claude_stream((out or b"").decode(errors="replace"))
+            stream = (out or b"").decode(errors="replace")
+            data, steps = parse_claude_stream(stream)
             success = returncode == 0 and not data.get("is_error", False)
+            # Plan windows from rate_limit_event, read passively from the
+            # run's own output (Claude's usage endpoint is never polled, U4).
+            windows, limit_info = claude_windows(stream)
+            extra_md: dict = {"rate_limits": windows} if windows else {}
+            if resume_id:
+                extra_md["resumed_from"] = resume_id
+            if lease.active:
+                # The account's kind, not driver_claude_code_auth: an API-key or
+                # Vertex account is billed per use, a subscription login is not
+                # (risk D4; the dispatcher books only api-billed spend then).
+                extra_md["billing"] = lease.billing(self.billing)
+            if not success:
+                rejected = bool(limit_info) and limit_info.get("status") == "rejected"
+                extra_md["failure"] = classify_failure(
+                    final_error=str(data.get("result") or ""),
+                    stderr=err.decode(errors="replace"),
+                    exit_code=returncode,
+                    rate_limit_resets=[limit_info["resets_at"]]
+                    if rejected and limit_info.get("resets_at")
+                    else None,
+                    rejected=rejected,
+                    login_hint=LOGIN_HINT,
+                )
             return DriverResult(
                 success=success,
                 output=str(data.get("result", ""))[:20000],
@@ -487,6 +602,7 @@ class ClaudeCodeDriver:
                         if host_mode
                         else {}
                     ),
+                    **extra_md,
                     **audit,
                 },
             )
@@ -526,6 +642,7 @@ class ClaudeCodeDriver:
         *,
         packet: ContextPacket | None = None,
         audit: dict | None = None,
+        lease: accounts_hook.AccountLease | None = None,
     ) -> tuple[int, bytes, bytes]:
         """Run the CLI invocation, sandboxed or on the host per settings.
 
@@ -541,8 +658,14 @@ class ClaudeCodeDriver:
                 available, or the fenced "docker" mode is set. Never falls back to the host path — see
                 driver_claude_sandbox's comment in config/drivers.py.
         """
-        api_key = _api_key()
+        account = lease if lease is not None and lease.active else None
+        # An account brings its own login (home) or key; the configured
+        # driver_claude_code_auth applies only when no account is in use.
+        api_key = None if account else _api_key()
         if not sandbox.driver_sandbox_enabled():
+            env = host_driver_env({"ANTHROPIC_API_KEY": api_key} if api_key else None)
+            if account:
+                env = account.apply(env)
             # Allowlisted environment, never the API process's own (database
             # URL, provider keys, LIFE_GRAPH_*); own session so a timeout can
             # kill whatever the CLI started, not just the CLI.
@@ -551,7 +674,7 @@ class ClaudeCodeDriver:
                 cwd=str(cwd),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=host_driver_env({"ANTHROPIC_API_KEY": api_key} if api_key else None),
+                env=env,
                 start_new_session=True,
                 limit=STREAM_LIMIT,
             )
@@ -575,6 +698,17 @@ class ClaudeCodeDriver:
         # The old open-network "docker" mode is fenced (D25): refuse before
         # any login is staged or container started.
         sandbox.refuse_legacy_driver_sandbox()
+
+        if account:
+            # The task runtime gets secrets by name and a throwaway config
+            # dir: an API-key account works; a login home cannot be mounted
+            # (a refresh inside would revoke it, as with the staged copy).
+            if account.kind != "api_key":
+                raise sandbox.SandboxUnavailableError(
+                    f"claude_code account {account.name!r} ({account.kind}) runs on the host "
+                    "only; the task runtime takes an api_key account or the configured token"
+                )
+            api_key = account.env.overlay.get("ANTHROPIC_API_KEY")
 
         # API-key mode stages no personal credentials at all. OAuth mode uses
         # the long-lived token (nothing copied, nothing refreshed); copying

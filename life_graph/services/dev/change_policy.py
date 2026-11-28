@@ -19,6 +19,9 @@ landing time, and both auto-open and auto-merge go through :func:`auto_gate`:
   ``protected_paths``.
 * **Size** — at most ``auto_merge_max_lines`` changed lines and
   ``auto_merge_max_files`` files land without a person.
+* **The owner's policy** (services/dev/autonomy_policy.py, 2026-11-27) --
+  extra conditions, a daily cap, review stages -- asked last, and only able
+  to add refusals: no policy row adds nothing.
 
 None of this blocks the work: a change that fails the gate waits for review
 as if auto-open/auto-merge were off, and the approval says why.
@@ -30,6 +33,8 @@ import fnmatch
 import logging
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
+
+from life_graph.services.dev.autonomy_policy import owner_policy_reasons
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -239,6 +244,12 @@ async def auto_gate(
     label = f"{driver} has {record['merged']}/{record['total']} {record['kind']} PRs merged"
     if not (record["established"] and rate >= AUTO_PR_MERGE_RATE):
         return False, f"not yet trusted for {record['kind']} changes: {label}", record
+    # The owner's own conditions (services/dev/autonomy_policy.py), asked only
+    # once everything above passed: they can add refusals, never remove one.
+    # No policy row = nothing added.
+    owner = await owner_policy_reasons(session, tenant_id, payload, change)
+    if owner:
+        return False, "owner policy: " + "; ".join(owner), record
     return True, label, record
 
 

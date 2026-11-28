@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from life_graph.autonomy.safety.classifier import RiskLevel
 from life_graph.config import settings
 from life_graph.core.events import EventType
 from life_graph.drivers.plan_spec import _PLAN_SPEC_MAX_CHARS, _parse_tasks
+from life_graph.models.db import Approval
+from life_graph.services.dev.autonomy_policy import with_policy_note
 from life_graph.services.dev.change_policy import describe_change, second_opinion
 
 if TYPE_CHECKING:
@@ -117,7 +119,6 @@ class ApprovalFilingMixin:
         verified cleanly (no file changes, a real spec).
         """
         try:
-            from life_graph.models.db import Approval
             from life_graph.services.dev.acceptance import parse_criteria, spec_gaps
 
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else "Plan"
@@ -282,6 +283,8 @@ class ApprovalFilingMixin:
         auto_merge: bool = False,
         base_branch: str | None = None,
         change_policy: dict | None = None,
+        autonomy: dict | None = None,
+        continuation: dict | None = None,
     ) -> None:
         """File a ``driver_pr`` approval for a landed branch.
 
@@ -301,15 +304,30 @@ class ApprovalFilingMixin:
         ``auto_merge`` is stored in the payload (not acted on here) so the
         trust check runs at merge-approval time, whichever path files it —
         a human approving ``driver_pr`` normally, or :meth:`_auto_open_pr`.
+
+        ``autonomy`` (review-stage verdicts, the risk counts, fix rounds) is
+        stored in the payload as ``autonomy`` for the owner's conditions
+        (services/dev/autonomy_policy.py); absent, conditions that need it
+        refuse.
+
+        ``continuation`` (``{round, base_commit}``, continue_task) keeps the
+        approval path single: the change is described from the task's first
+        base commit (the whole branch, as the PR shows it); a still-pending
+        ``driver_pr`` approval is updated in place, else a new one is filed
+        for the same branch -- approving it pushes the new head into the PR
+        that is already open (``open_pull_request`` finds it). A pending
+        ``driver_merge`` for the old head is rejected as superseded (it could
+        never merge anyway: the PR head moved).
         """
         try:
-            from life_graph.models.db import Approval
             from life_graph.services.dev.github_pr import describe_landing
 
             # Drafting the description and the second opinion call a model;
             # the resume path arrives here mid-transaction (audit H7).
             await end_transaction(session)
             landing = await describe_landing(repo_path, branch, base_branch=base_branch)
+            if continuation and continuation.get("base_commit"):
+                landing["base_commit"] = continuation["base_commit"]
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else branch
             pr_description = await self._draft_pr_description(repo_path, landing, instruction)
             # What the change is (kind, size, protected paths), fixed now:
@@ -350,6 +368,8 @@ class ApprovalFilingMixin:
                 "change": change,
                 **landing,
             }
+            if autonomy:
+                payload["autonomy"] = autonomy
             from life_graph.services.dev.local_merge import pr_mode
 
             # In local mode approving is the merge (services/approvals.py), so say that.
@@ -390,18 +410,17 @@ class ApprovalFilingMixin:
                 # Shown before approving, since `detail` is all an approvals
                 # surface renders: the reviewer sees what the PR will say.
                 detail += f"\n\nProposed PR description:\n\n{pr_description[:1500]}"
-            appr = Approval(
+            appr = await self._store_pr_approval(
+                session,
                 tenant_id=tenant_id,
-                kind="driver_pr",
-                title=f"{title_prefix}: {title_line[:100]}",
+                task_id=task_id,
+                title=(title_prefix, title_line),
                 detail=detail,
-                source="driver",
-                source_ref=str(task_id),
                 payload=payload,
+                verified=verified,
+                continuation=continuation,
             )
-            async with session.begin_nested():
-                session.add(appr)
-            logger.info("Task %s: PR approval filed for %s", task_id, branch)
+            logger.info("Task %s: PR approval %s filed for %s", task_id, appr.id, branch)
         except Exception:
             logger.warning("Failed to file PR approval for task %s", task_id, exc_info=True)
             return
@@ -422,6 +441,116 @@ class ApprovalFilingMixin:
                     "detail": appr.detail,
                 },
             )
+
+    async def _store_pr_approval(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: str,
+        task_id: str,
+        title: tuple[str, str],
+        detail: str,
+        payload: dict,
+        verified: bool,
+        continuation: dict | None,
+    ) -> Any:
+        """Add the ``driver_pr`` approval, or update a continuation's pending one."""
+
+        title_prefix, title_line = title
+        pending = None
+        if continuation:
+            pending, title_prefix, detail = await self._continuation_fields(
+                session, tenant_id, task_id, continuation, payload, verified, detail,
+                title_prefix,
+            )  # fmt: skip
+        if pending is not None:
+            pending.title = f"{title_prefix}: {title_line[:100]}"
+            pending.detail = detail
+            pending.payload = payload
+            return pending
+        appr = Approval(
+            tenant_id=tenant_id,
+            kind="driver_pr",
+            title=f"{title_prefix}: {title_line[:100]}",
+            detail=detail,
+            source="driver",
+            source_ref=str(task_id),
+            payload=payload,
+        )
+        async with session.begin_nested():
+            session.add(appr)
+        return appr
+
+    async def _continuation_fields(
+        self,
+        session: AsyncSession,
+        tenant_id: str,
+        task_id: str,
+        continuation: dict,
+        payload: dict,
+        verified: bool,
+        detail: str,
+        title_prefix: str,
+    ) -> tuple[Any, str, str]:
+        """For a continuation: ``(pending approval to update, title prefix, detail)``.
+
+        Sets ``payload.continuation`` (round, the previous approval, its PR).
+        """
+        pending, previous = await self._supersede_for_continuation(session, tenant_id, task_id)
+        prior = previous if previous is not None and previous is not pending else None
+        pr_url = (previous.payload or {}).get("pr_url") if previous is not None else None
+        payload["continuation"] = {
+            "round": continuation.get("round"),
+            **({"previous_approval": str(prior.id)} if prior is not None else {}),
+            **({"pr_url": pr_url} if pr_url else {}),
+        }
+        if pr_url:
+            title_prefix = "Update PR" if verified else "Update PR (UNVERIFIED)"
+            detail += (
+                f"\n\nContinuation {continuation.get('round')}: approving pushes the new "
+                f"commits to the open PR {pr_url}."
+            )
+        return pending, title_prefix, detail
+
+    async def _supersede_for_continuation(
+        self, session: AsyncSession, tenant_id: str, task_id: str
+    ) -> tuple[Any, Any]:
+        """``(pending driver_pr to update, newest earlier driver_pr)`` for a continuation.
+
+        Rejects the task's pending ``driver_merge`` approvals: they name the
+        old head, which the continuation's push replaces. Tenant-scoped.
+        """
+        from sqlalchemy import select
+
+        rows = (
+            (
+                await session.execute(
+                    select(Approval)
+                    .where(
+                        Approval.tenant_id == tenant_id,
+                        Approval.source_ref == str(task_id),
+                        Approval.kind.in_(("driver_pr", "driver_merge")),
+                    )
+                    .order_by(Approval.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        now = datetime.now(UTC)
+        for row in rows:
+            if row.kind == "driver_merge" and row.status == "pending":
+                row.status = "rejected"
+                row.resolved_at = now
+                row.resolved_by = "system: continued"
+                row.resolution_note = (
+                    "Superseded: the task was continued, so the PR head will move; "
+                    "a new merge approval follows the updated PR."
+                )
+        prs = [r for r in rows if r.kind == "driver_pr"]
+        pending = next((r for r in reversed(prs) if r.status == "pending"), None)
+        previous = prs[-1] if prs else None
+        return pending, previous
 
     async def _auto_open_pr(
         self,
@@ -453,6 +582,8 @@ class ApprovalFilingMixin:
             )
             return
         allowed, why, _record = await auto_gate(session, appr.tenant_id, appr.payload or {})
+        # The refusal is kept where the owner sees it (payload.autonomy.policy_note).
+        appr.payload = with_policy_note(appr.payload, None if allowed else why)
         if not allowed:
             logger.info("Auto-open PR skipped for %s: %s", driver_name, why)
             return
@@ -499,8 +630,13 @@ class ApprovalFilingMixin:
         driver_name: str,
         v_results: list[VerifierResult],
         session: AsyncSession,
+        attempts: int = 1,
     ) -> None:
-        """Create an approval queue entry for tasks that need human review."""
+        """Create an approval queue entry for tasks that need human review.
+
+        *attempts* is how many re-dispatches the task had (1 = the bounce;
+        more when the owner enabled verify-fix rounds).
+        """
         try:
             from life_graph.autonomy.models import ApprovalQueueEntry
 
@@ -522,9 +658,14 @@ class ApprovalFilingMixin:
             else:
                 failures = ", ".join(r.verifier for r in v_results if not r.passed)
                 action_name = "driver_verification_failed"
+                after = (
+                    "one bounce"
+                    if attempts <= 1
+                    else f"one bounce and {attempts - 1} verify-fix round(s)"
+                )
                 detail = (
                     f"Driver '{driver_name}' failed verification for task {task_id} "
-                    f"after one bounce. Failures: {failures}"
+                    f"after {after}. Failures: {failures}"
                 )
             entry = ApprovalQueueEntry(
                 tenant_id=tenant_id,

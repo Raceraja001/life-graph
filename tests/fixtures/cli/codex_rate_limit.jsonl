@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"0199c0de-0000-7000-8000-00000000c0de"}
+{"type":"turn.started"}
+{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","limit_name":null,"primary":{"used_percent":100,"window_minutes":300,"resets_at":1795708800},"secondary":{"used_percent":64,"window_minutes":10080,"resets_at":1796140800},"credits":null,"plan_type":"plus","rate_limit_reached_type":"rate_limit_reached"}}
+{"type":"error","message":"You've hit your usage limit. Upgrade to Pro or try again in 2 hours 5 minutes."}
+{"type":"turn.failed","error":{"message":"You've hit your usage limit. Upgrade to Pro or try again in 2 hours 5 minutes."}}

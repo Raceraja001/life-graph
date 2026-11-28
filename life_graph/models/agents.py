@@ -1071,3 +1071,36 @@ class DevTaskEvent(Base):
         Index("ix_dev_task_events_tenant_task_seq", "tenant_id", "task_id", "seq"),
         Index("ix_dev_task_events_created", "created_at"),
     )
+
+
+class AutonomyPolicy(Base):
+    """The owner's autonomy policy: global (``scope='global'``) or one project's.
+
+    docs/specs/agent-drivers.md, "Autonomy policy" (migration 064). ``policy``
+    holds the auto-approval conditions, the daily cap (global only), review
+    stages and fix rounds, validated by services/dev/autonomy_policy.py. No
+    row anywhere = today's behaviour: conditions can only narrow
+    ``change_policy.auto_gate``, and rounds default to 0.
+    """
+
+    __tablename__ = "autonomy_policies"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # "global", or the project's UUID as text.
+    scope: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    updated_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "scope", name="uq_autonomy_policies_tenant_scope"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AutonomyPolicy(tenant={self.tenant_id}, scope={self.scope})>"

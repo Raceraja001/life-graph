@@ -63,6 +63,70 @@ class DriverSettings(BaseModel):
     # The host is not sandboxed for this driver, so OpenCode's shell stays
     # denied unless this is set. Tests run in the verifier sandbox regardless.
     driver_opencode_allow_bash: bool = False
+    # Subscription coding CLIs (drivers/codex.py, drivers/gemini.py; spec
+    # agent-drivers.md, Phase 3a). Off until the owner opts in: each sends the
+    # task and the code to its provider (never memories or preferences), and
+    # runs on the host. On, a driver is still unavailable until its binary is
+    # found (PATH or ~/.local/node/bin) and it is not signed out (`codex login`;
+    # `gemini` once, Login with Google). Codex also needs driver_allow_host_shell:
+    # its shell cannot be turned off and its sandbox does not confine reads.
+    driver_codex_enabled: bool = False
+    driver_codex_bin: str = "codex"
+    driver_codex_model: str = ""  # empty = the CLI's own default model
+    driver_codex_timeout_seconds: int = 1200
+    driver_gemini_enabled: bool = False
+    driver_gemini_bin: str = "gemini"
+    driver_gemini_model: str = ""  # empty = the CLI's own default model
+    driver_gemini_timeout_seconds: int = 1200
+    # Agent accounts (services/agent_accounts; spec agent-drivers.md, Phase 3b):
+    # several named logins per CLI, each in its own life-graph-managed home
+    # under driver_accounts_home_root, tried in pool order, skipped while
+    # cooling down after a rate limit. Off: every driver runs on the host's
+    # single login exactly as before and the accounts table is never read.
+    # On with no enabled account for a driver: that driver also runs as before.
+    driver_accounts_enabled: bool = False
+    driver_accounts_home_root: str = "~/.local/share/life-graph/agent-homes"
+    # Cooldown after a rate limit that named no reset time.
+    driver_accounts_default_cooldown_minutes: int = 15
+    # Read Codex plan windows with `codex app-server` (account/rateLimits/read,
+    # no prompt sent) when GET .../limits?refresh=true asks. Off: only the
+    # windows the last run reported are shown. Claude is never polled (U4).
+    driver_accounts_codex_probe_enabled: bool = False
+    # Subscription budget (risk D4, Phase 3b part 2): an unattended run skips
+    # a subscription account whose latest plan window (agent_account_limits)
+    # is at or above this share of its limit, falling to the next account;
+    # every account over it refuses the run as rate_limited until the window
+    # resets (which parks the task when the owner's wait_for_reset is on).
+    # Only applies with driver_accounts_enabled. 1.0 = never skip.
+    driver_accounts_subscription_max_share: float = 0.9
+    # continue_task (Phase 3b part 2): keep a dispatch's worktree and CLI
+    # session so the owner (or race-app's PR-feedback loop) can continue the
+    # task in place. Off: every worktree is removed after its dispatch, as
+    # before. On: a kept worktree is removed once its task has no open PR
+    # (or pending PR approval) and it is older than driver_continue_keep_hours.
+    driver_continue_enabled: bool = False
+    driver_continue_keep_hours: int = 24
+    # Phase 4b (docs/specs/agent-drivers.md, "Phase 4b"): parallel plans. A plan
+    # whose Tasks declare file scopes ("Files: a.py, src/**") runs its
+    # non-overlapping tasks at once, at most this many per plan (also bounded by
+    # the per-project WIP limit and dev_runner_max_concurrency), each ending on
+    # its own branch, then ONE integration task files the single PR approval.
+    # 1 = today's sequential, merge-gated fan-out, unchanged.
+    driver_team_max_parallel: int = 1
+    # PR feedback loop (Phase 4b): for a task whose PR is open and whose
+    # worktree is kept (driver_continue_enabled), read the PR with gh every
+    # poll_minutes and hand new failing checks / review comments / merge
+    # conflicts back to the task as one continue_task round, at most
+    # max_rounds per PR (then "needs you"). Read-only on GitHub.
+    driver_pr_feedback_enabled: bool = False
+    driver_pr_feedback_poll_minutes: int = 10
+    driver_pr_feedback_max_rounds: int = 3
+    driver_pr_feedback_on_failing_checks: bool = True
+    driver_pr_feedback_on_review_comments: bool = True
+    driver_pr_feedback_on_conflicts: bool = True
+    # Arena (Phase 4b): the owner races one instruction on several drivers or
+    # accounts and picks the winner. Off: POST /kernel/drivers/arena is 409.
+    driver_arena_enabled: bool = False
     # A plan approves itself only for a project with auto_approve_plans set,
     # at most this many tasks, and every other rule in services/dev/plan_policy.py.
     auto_plan_max_tasks: int = 3
