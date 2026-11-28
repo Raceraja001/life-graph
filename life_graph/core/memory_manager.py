@@ -23,9 +23,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, literal
-from sqlalchemy.dialects.postgresql import JSONB
-
 from life_graph.core.evidence import UNKNOWN_SOURCE
 from life_graph.core.said_at import said_at
 from life_graph.core.tenant import get_current_tenant_id
@@ -36,6 +33,7 @@ from life_graph.services.contradiction import (
     differs_in_detail,
     differs_in_scope,
 )
+from life_graph.services.memory import supersession
 
 if TYPE_CHECKING:
     from life_graph.extraction.pipeline import ExtractionPipeline
@@ -240,55 +238,35 @@ class MemoryManager:
               (services/memory/retrieval.py is_known_at)
             - New memory: supersedes=old_id
 
-        Both memories are preserved in history for audit trail.
+        Both memories are preserved in history for audit trail. The writes are
+        services/memory/supersession.py ``apply``, in one transaction with both
+        rows locked. Any old status is replaced, as before (the targets were
+        active when found). Both rows must be this tenant's.
 
         Args:
             old_memory_id: UUID string of the memory being superseded.
             new_memory_id: UUID string of the replacing memory.
             reason: Human-readable reason for the supersession.
+
+        Raises:
+            ValueError: If the old memory is not this tenant's (as before).
         """
-        old_uuid = uuid.UUID(old_memory_id)
-        new_uuid = uuid.UUID(new_memory_id)
-
-        # Mark old as superseded
-        await self._store.update(
-            old_uuid,
-            MemoryUpdate(
-                status="superseded",
-            ),
-        )
-
-        # Update supersession chain via direct attribute patching
-        # (MemoryUpdate doesn't expose superseded_by, so we update directly)
-        from sqlalchemy import update
-
         from life_graph.storage.database import async_session
 
+        tenant_id = get_current_tenant_id()
         async with async_session() as session:
-            # Set superseded_by on old memory, and when it was replaced: without
-            # superseded_at a query "as of now" still read it as current belief.
-            # literal(dict, JSONB), never cast(str, JSONB): the JSONB type
-            # encodes its bind value, so a JSON string became a JSON *string*
-            # and `object || string` an array.
-            stamp = {"superseded_at": datetime.now(UTC).isoformat()}
-            await session.execute(
-                update(Memory)
-                .where(Memory.id == old_uuid)
-                .where(Memory.tenant_id == get_current_tenant_id())
-                .values(
-                    superseded_by=new_uuid,
-                    properties=func.coalesce(Memory.properties, literal({}, JSONB)).op("||")(
-                        literal(stamp, JSONB)
-                    ),
+            old, new = await supersession.load(
+                session, tenant_id, old_memory_id, new_memory_id, lock=True
+            )
+            if old is None:
+                raise ValueError(f"Memory {old_memory_id} not found")
+            if not supersession.apply(tenant_id, old, new, why=reason, old_statuses=None):
+                logger.warning(
+                    "Supersede %s → %s refused: the new memory is not this tenant's",
+                    old_memory_id[:8],
+                    new_memory_id[:8],
                 )
-            )
-            # Set supersedes on new memory
-            await session.execute(
-                update(Memory)
-                .where(Memory.id == new_uuid)
-                .where(Memory.tenant_id == get_current_tenant_id())
-                .values(supersedes=old_uuid)
-            )
+                return
             await session.commit()
 
         logger.info(
