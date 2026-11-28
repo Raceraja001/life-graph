@@ -48,6 +48,13 @@ The confidence tiers of ADR §5.2 (high, medium, low, none) are decided by
 :func:`file_possible_update`. The save path (core/memory_manager.py) uses them
 only with the flag on.
 
+Same slot means the same canonical key, and, with ``ingest_slot_pairing`` also
+on, one attribute filed under two keys (:func:`same_attribute`,
+:func:`slot_pairs`): the local model's keys are free text and drift between
+messages (``money.budget`` one day, ``work.salary`` the next, for the same
+"take-home salary"). No list of attributes is added: the pair is found from the
+two sentences and the two keys the tenant's own memories already carry.
+
 Callers keep their own rules through parameters: which old and new statuses
 are allowed (``old_statuses`` / ``new_statuses``), whether the new memory is
 activated, and whether the rows are locked while they are read (:func:`load`).
@@ -65,10 +72,12 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select, text
 
 from life_graph.connectors.tools import user_tz
+from life_graph.core import slots
 from life_graph.core.trust import TrustTier
 from life_graph.models.db import Approval, Memory
 from life_graph.services import decision_lifecycle
-from life_graph.services.contradiction import differs_in_detail, differs_in_scope
+from life_graph.services.contradiction import _details, differs_in_detail, differs_in_scope
+from life_graph.services.memory.typed_links import _stem, tokens
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -318,6 +327,139 @@ def possible_updates(
             continue
         preview = " ".join(old_text.split())[:120]
         found.append((str(memory.id), f"Possible update (was: {preview})"))
+    return found
+
+
+#: The verbs a frame ends at: "<attribute> is <value>". Not "was": two past
+#: values can both have been true.
+_COPULAS = frozenset({"is", "are"})
+#: Words that may stand between the verb and the value ("is a Nexon", "is now ₹48,000").
+_VALUE_LEAD = frozenset({"a", "an", "the", "now", "currently", "still", "about", "around"})
+
+
+def _words(text: str) -> list[str]:
+    """Lower-case words of any script (the D10 rule, typed_links.tokens), plurals
+    and possessives folded ("owner's" and "owners" are "owner")."""
+    return [_stem(w) for w in tokens(text)]
+
+
+def _frame(words: list[str]) -> tuple[list[str], list[str]] | None:
+    """The words before the first "is"/"are" (the attribute) and after it (the value)."""
+    for i, word in enumerate(words):
+        if word in _COPULAS:
+            return words[:i], words[i + 1 :]
+    return None
+
+
+def _value(after: list[str], details: set[str]) -> tuple[bool, str | None] | None:
+    """How the value after the verb starts: (a number?, the word after the value).
+
+    The value is a run of numbers, names, dates, number or colour words
+    (contradiction._details). None when the words after the verb do not start
+    with one: "is credited on the 1st" says something else about the attribute.
+    """
+    i = 0
+    while i < len(after) and after[i] in _VALUE_LEAD:
+        i += 1
+    j = i
+    while j < len(after) and (any(c.isdigit() for c in after[j]) or after[j] in details):
+        j += 1
+    if j == i:
+        return None
+    return any(c.isdigit() for c in after[i]), after[j] if j < len(after) else None
+
+
+def _key_words(key: str) -> tuple[set[str], set[str]]:
+    """All the words of a slot key after its topic, and those of its last part
+    (the field): ``family.arjun.take_home_pay`` -> ({arjun, take, home, pay},
+    {take, home, pay})."""
+    parts = key.split(".")[1:]
+    every = {_stem(w) for part in parts for w in part.split("_") if w}
+    field = {_stem(w) for w in parts[-1].split("_") if w} if parts else set()
+    return every, field
+
+
+def same_attribute(new_slot: str, new_content: str, old_slot: str, old_content: str) -> bool:
+    """Whether two facts filed under two different slot keys are one attribute changing.
+
+    Deterministic and narrow on purpose: a wrong pair supersedes a true fact,
+    while a missed pair only leaves two values to review. All must hold:
+
+    * both sentences say "<attribute> is <value>" with the very same words
+      before "is"/"are" ("The owner's take-home salary is ...");
+    * neither key names a word that only one of the two sentences has (a
+      second child's name, "account", "date");
+    * at least one key's field is in those shared words, so a key names the
+      attribute (``work.salary``; ``money.budget`` names nothing there and is
+      only the model's other spelling). When both keys name it from two
+      different topics (``money.goal``, ``health.goal``) the model kept them
+      apart on purpose, and so do we;
+    * both values start the same way (both a number, or both a name) and are
+      followed by the same word ("₹1,50,000 a month" / "₹1,80,000 a month"),
+      and they differ (contradiction.differs_in_detail).
+
+    Words are split by the D10 rule (typed_links.tokens), so Tamil script stays whole.
+    """
+    if not new_slot or not old_slot or new_slot == old_slot:
+        return False
+    new_words, old_words = _words(new_content), _words(old_content)
+    new_frame, old_frame = _frame(new_words), _frame(old_words)
+    if new_frame is None or old_frame is None or new_frame[0] != old_frame[0]:
+        return False
+    attribute = set(new_frame[0])
+    only_one = set(new_words) ^ set(old_words)
+    named: list[bool] = []
+    for key in (new_slot, old_slot):
+        every, field = _key_words(key)
+        if every & only_one:
+            return False
+        named.append(bool(field) and field <= attribute)
+    if not any(named):
+        return False
+    if all(named) and slots.topic_of(new_slot) != slots.topic_of(old_slot):
+        return False
+    new_value = _value(new_frame[1], {d.lower() for d in _details(new_content)})
+    old_value = _value(old_frame[1], {d.lower() for d in _details(old_content)})
+    if new_value is None or new_value != old_value:
+        return False
+    return differs_in_detail(new_content, old_content)
+
+
+def slot_pairs(
+    *,
+    content: str,
+    slot: str,
+    subject: str | None,
+    context: Mapping[str, Any] | None,
+    candidates: Iterable[tuple[Any, float]],
+    taken: set[str],
+) -> list[tuple[str, str]]:
+    """Active memories that hold the new fact's attribute under another slot key.
+
+    Read from the save path's own similarity candidates (no extra query), each
+    must be active, firm and affirmed, not already paired (*taken*), about the
+    same subject and scope, and carry a slot that, read through today's rules
+    (core/slots.py ``normalise``), is :func:`same_attribute` as *slot*. They are
+    same-slot (S1) pairs: :func:`slot_tier` decides high or medium. Only with
+    ``ingest_slot_pairing`` (and the tiers) on. Returns (old id, reason).
+    """
+    found: list[tuple[str, str]] = []
+    for memory, _score in candidates:
+        props = getattr(memory, "properties", None) or {}
+        if str(memory.id) in taken or getattr(memory, "status", None) != "active":
+            continue
+        if props.get("polarity") == "negate" or props.get("certainty") == "hedged":
+            continue
+        if not same_subject(subject, props) or differs_in_scope(context, props):
+            continue
+        old_text = getattr(memory, "content", "") or ""
+        theirs = slots.normalise(
+            props.get("slot"), subject=props.get("subject") or "owner", content=old_text
+        )
+        if not theirs or not same_attribute(slot, content, theirs, old_text):
+            continue
+        preview = " ".join(old_text.split())[:120]
+        found.append((str(memory.id), f"New value for {slot}, filed as {theirs} (was: {preview})"))
     return found
 
 

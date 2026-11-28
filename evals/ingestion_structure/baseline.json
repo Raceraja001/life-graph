@@ -6,10 +6,10 @@
   },
   "supersession": {
     "precision": 1.0,
-    "recall": 0.7619,
-    "tier_accuracy": 0.8378,
+    "recall": 0.7917,
+    "tier_accuracy": 0.8723,
     "world_end_precision": 1.0,
-    "world_end_recall": 0.6
+    "world_end_recall": 0.6667
   },
   "links": {
     "because_precision": 1.0,

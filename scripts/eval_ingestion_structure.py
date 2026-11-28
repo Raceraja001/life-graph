@@ -2,9 +2,9 @@
 """Does ingestion write the right structure? (M8 ingestion ADR §6.1; synthetic, no DB, no model)
 
 Scores the labelled cases in ``evals/ingestion_structure/cases.json`` against
-the real save-path code, with all four M8 ingestion flags on
-(``ingest_world_time``, ``ingest_supersession_tiers``, ``ingest_typed_links``,
-``decision_lifecycle``):
+the real save-path code, with all the M8 ingestion flags on
+(``ingest_world_time``, ``ingest_supersession_tiers``, ``ingest_slot_pairing``,
+``ingest_typed_links``, ``decision_lifecycle``):
 
 * ``world_time`` -- extraction/world_time.py ``world_time_of`` on one fact.
 * ``supersession`` -- an active old memory and a new fact (the extractor's raw

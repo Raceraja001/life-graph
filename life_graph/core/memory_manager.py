@@ -630,6 +630,17 @@ class MemoryManager:
         # exact clash. Your firm statement of a new value is not held back by it —
         # the old value is replaced (undoably) — while any other clash still is.
         same_slot = await self._same_slot_active(fact.slot) if fact.slot else []
+        if fact.slot and settings.ingest_supersession_tiers and settings.ingest_slot_pairing:
+            # The same attribute filed under another key by the model on another
+            # day (money.budget, then work.salary): also a same-slot pair.
+            same_slot += supersession.slot_pairs(
+                content=fact.content,
+                slot=fact.slot,
+                subject=fact.subject,
+                context=context,
+                candidates=candidates,
+                taken={old for old, _ in same_slot},
+            )
         slot_ids = {old for old, _ in same_slot}
         other_clashes = [t for t in auto_supersede_targets if str(t[0]) not in slot_ids]
         tiers_on = settings.ingest_supersession_tiers
