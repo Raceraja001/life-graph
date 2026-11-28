@@ -14,13 +14,15 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from life_graph.api.auth import ingress_for
 from life_graph.api.responses import success_response
 from life_graph.core.errors import DomainError
 from life_graph.core.events import event_bus
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import (
+    OWNER_DECISION_STATUSES,
     ChallengeRequest,
     ChallengeResolveRequest,
     ChallengeResponse,
@@ -93,6 +95,7 @@ async def _get_adversarial_advisor() -> AsyncGenerator:
 )
 async def create_decision(
     body: DecisionCreate,
+    request: Request,
     svc: JudgmentService = Depends(_get_judgment_service),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
@@ -100,21 +103,41 @@ async def create_decision(
 
     Records the decision with options, reasoning, and domain tags.
     Emits a DECISION_RECORDED event for downstream consumers.
+
+    Only the owner can say what the owner decided. ``decided``, ``discarded``
+    and the other owner statuses are kept only for an owner-verified caller
+    (an owner key, a paired phone, or a dev stack with auth off; api/auth.py
+    ``ingress_for``). Any other caller, such as an agent's service key, gets a
+    ``candidate``, and ``meta.status_downgraded`` says so. This holds whatever
+    ``approvals_require_owner`` says (docs/design/adr-m8-ingestion-structure.md
+    §5.4).
     """
+    stored_status = body.status
+    meta = None
+    if body.status in OWNER_DECISION_STATUSES and not ingress_for(request).is_owner:
+        stored_status = "candidate"
+        meta = {
+            "status_downgraded": True,
+            "requested_status": body.status,
+            "reason": (
+                f"Only the owner can record a '{body.status}' decision. "
+                "It was saved as a candidate for the owner to confirm."
+            ),
+        }
     decision = await svc.create_decision(
         tenant_id=tenant_id,
         title=body.title,
         reasoning=body.reasoning,
         options=body.options,
         chosen_option=body.chosen_option,
-        status=body.status,
+        status=stored_status,
         source=body.source,
         domain_tags=body.domain_tags,
         importance=body.importance,
         capture_event_id=body.capture_event_id,
         review_at=body.review_at,
     )
-    return success_response(data=DecisionResponse.model_validate(decision))
+    return success_response(data=DecisionResponse.model_validate(decision), meta=meta)
 
 
 @router.get(
