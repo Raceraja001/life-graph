@@ -29,7 +29,6 @@ from life_graph.config import settings
 from life_graph.drivers import accounts_hook
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.cli_failure import classify_failure
-from life_graph.drivers.context import render_memory_block
 from life_graph.drivers.host_exec import (
     STREAM_LIMIT,
     communicate_streaming,
@@ -911,10 +910,13 @@ class ClaudeCodeDriver:
     def _format_prompt(packet: ContextPacket) -> str:
         """Render the context packet as a headless prompt.
 
-        Private packets get instruction + project context only — memories
-        and preferences never leave the local system. The persona's own
-        system prompt (when the dispatch was pinned to one) leads the
-        prompt, same as LocalDriver's system_prompt construction.
+        Personal data (CHARTER invariant 7): Claude runs on a cloud model, so
+        memories, preferences and procedures are never in the prompt,
+        whatever ``packet.private`` says — the same rule as the codex and
+        gemini drivers (``cli_driver.build_prompt``). Before 2026-11-28 a
+        non-private packet carried all three. What leaves the machine is the
+        persona's system prompt (when the dispatch was pinned to one), the
+        task and the project metadata; the code is read from the worktree.
         """
         parts = []
         if packet.persona_system_prompt:
@@ -926,16 +928,4 @@ class ClaudeCodeDriver:
             }
             if safe_project:
                 parts.append(f"\n## Project context\n{json.dumps(safe_project, default=str)}")
-        if not packet.private:
-            if packet.procedures:
-                parts.append(f"\n## Known procedures\n{json.dumps(packet.procedures, default=str)}")
-            if packet.preferences:
-                parts.append(
-                    f"\n## User preferences\n{json.dumps(packet.preferences, default=str)}"
-                )
-            # Immune System: memories are trust-tiered; untrusted ones are
-            # rendered inside a data fence, never as bare instructions.
-            memory_block = render_memory_block(packet.memories)
-            if memory_block:
-                parts.append(memory_block)
         return "\n".join(parts)

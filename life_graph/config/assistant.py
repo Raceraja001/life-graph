@@ -98,7 +98,9 @@ class AssistantSettings(BaseModel):
     # ── Web Push Notifications ──────────────────────────
     vapid_public_key: str = ""  # Set LIFE_GRAPH_VAPID_PUBLIC_KEY
     vapid_private_key: str = ""  # Set LIFE_GRAPH_VAPID_PRIVATE_KEY (VM only, never git)
-    vapid_subject: str = "mailto:tolokanathan@gmail.com"  # VAPID contact
+    # VAPID contact (RFC 8292: a mailto: or https: URI). The default is a
+    # placeholder; a deployment sets its own via LIFE_GRAPH_VAPID_SUBJECT.
+    vapid_subject: str = "mailto:owner@example.invalid"
 
     # ── Telegram Bridge ─────────────────────────────────
     # Empty token disables the bridge entirely: the poller never starts and the

@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 09:40 UTC` from `race/sandbox-followups` @ `dad87af6`
+Generated `2026-11-28 10:48 UTC` from `race/privacy-defaults` @ `3f54bf9c`
 
 ---
 
@@ -24,9 +24,9 @@ Generated `2026-11-28 09:40 UTC` from `race/sandbox-followups` @ `dad87af6`
 | Agent tools | **15** |
 | Scheduled jobs | **38** |
 | Config settings | **368** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6967** in 718 files |
+| Test functions | **6971** in 719 files |
 | Dashboard pages | **23** |
-| Python | 591 files, 173,928 lines |
+| Python | 591 files, 173,931 lines |
 
 ---
 
@@ -1119,10 +1119,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 552 | 5883 |
+| `tests/unit/` | 553 | 5887 |
 | `tests/integration/` | 165 | 1072 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **718** | **6967** |
+| **total** | **719** | **6971** |
 
 ---
 
@@ -1478,7 +1478,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_STUDY_NUDGE_HOUR` | `18` |
 | `LIFE_GRAPH_VAPID_PUBLIC_KEY` | `''` |
 | `LIFE_GRAPH_VAPID_PRIVATE_KEY` | `''` |
-| `LIFE_GRAPH_VAPID_SUBJECT` | `'mailto:tolokanathan@gmail.com'` |
+| `LIFE_GRAPH_VAPID_SUBJECT` | `'mailto:owner@example.invalid'` |
 | `LIFE_GRAPH_TELEGRAM_BOT_TOKEN` | `''` |
 | `LIFE_GRAPH_TELEGRAM_POLL_TIMEOUT` | `25` |
 | `LIFE_GRAPH_TELEGRAM_RATE_LIMIT_PER_MIN` | `20` |

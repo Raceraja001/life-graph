@@ -126,6 +126,13 @@ class LocalDriver:
             )
             orchestrator.MAX_ITERATIONS = self.MAX_AGENT_ITERATIONS
 
+            # The model the orchestrator runs (AgentOrchestrator's own default),
+            # and whether the whole run -- failover chain included -- stays on
+            # the machine. Both the personal context below and the tool cut
+            # further down are decided by it.
+            run_model = packet.persona_model or settings.agent_llm_model
+            run_local = run_is_local(run_model)
+
             # Build a system prompt from the context packet
             system_parts = [
                 packet.persona_system_prompt or "You are an AI agent executing a task.",
@@ -141,11 +148,17 @@ class LocalDriver:
                 system_parts.append(
                     f"Project context: {json.dumps(packet.project_context, default=str)}"
                 )
-            if packet.preferences:
+            # Personal data (CHARTER invariant 7): preferences and procedures
+            # go only to a model on the machine. A cloud run_model (a cloud
+            # persona model, or the cloud default agent_llm_model) gets
+            # neither -- the claude_code / codex / gemini rule. Before
+            # 2026-11-28 they were added whatever the model. Memories are
+            # never rendered by this driver.
+            if run_local and packet.preferences:
                 system_parts.append(
                     f"User preferences: {json.dumps(packet.preferences, default=str)}"
                 )
-            if packet.procedures:
+            if run_local and packet.procedures:
                 system_parts.append(
                     f"Relevant procedures: {json.dumps(packet.procedures, default=str)}"
                 )
@@ -166,11 +179,9 @@ class LocalDriver:
             # does not.
             from life_graph.tools.registry import registry as tool_registry
 
-            # The model the orchestrator runs (AgentOrchestrator's own default).
-            run_model = packet.persona_model or settings.agent_llm_model
             allow = resolve_run_tools(
                 {"allowed_tools": packet.allowed_tools},
-                cloud=not run_is_local(run_model),
+                cloud=not run_local,
                 temporary=False,  # a dispatched task is never a temporary chat
                 registry=tool_registry,
             )

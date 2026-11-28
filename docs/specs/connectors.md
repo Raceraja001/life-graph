@@ -59,7 +59,7 @@
 | Question | Decision | Why |
 |---|---|---|
 | Architecture | Connector plugins + core runtime (option C) | Sources stay independent; privacy is enforced once, centrally. An external MCP server would hand mail straight to whichever model called it. |
-| Accounts | Any number per connector | Personal Gmail and the work account (`logimaxindia.com`, Google Workspace — checked via MX; the user is not its admin) from day one; the work account defaults to `local_only`. |
+| Accounts | Any number per connector | Personal Gmail and the work account (`work.example.com`, Google Workspace — checked via MX; the user is not its admin) from day one; the work account defaults to `local_only`. |
 | Connection | **Both, chosen per account**: app password (IMAP + ICS secret link) or Google OAuth (IMAP via XOAUTH2 + Calendar API). Life Graph recommends one; the user can override and switch later | See *Authentication* below: each method wins in a different case. |
 | Cloud visibility | Calendar details yes; mail metadata + a locally written summary yes; mail bodies never; secrets redacted; per-account `local_only` switch | Keeps the standing rule (personal data is processed by local models) while chat stays useful. |
 | Storage | A 90-day local index, bodies fetched on demand, nothing becomes a memory without the approval gate | Search and "needs reply" work without copying whole mailboxes; retention bounds what a leak or a backup can contain. |
@@ -83,7 +83,7 @@ connector. Both connectors accept both methods.
 - *Google Workspace account whose admin the user is* → OAuth with an **Internal**
   app: read-only by Google's enforcement, no verification, no expiry, no warning.
 - *Personal Gmail* → app password.
-- *Workplace account the user does not administer* (the user's `logimaxindia.com`
+- *Workplace account the user does not administer* (the user's `work.example.com`
   account) → app password if the organisation allows them (Google account →
   Security → App passwords is present); otherwise OAuth through the user's own
   External app, which the organisation's third-party-app controls may also block
@@ -291,9 +291,9 @@ accounts:
     username: someone@gmail.com
     exposure: standard
   - key: work
-    display_name: Logimax
+    display_name: Work
     host: imap.gmail.com
-    username: service@logimaxindia.com
+    username: someone@work.example.com
     auth: app_password     # not a Workspace admin: OAuth would need an External app
     exposure: local_only   # employer data: cloud chat and off-machine delivery get counts only
 # secrets: ~/.config/life-graph/connectors/raja/personal-gmail.secret, …/work.secret

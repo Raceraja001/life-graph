@@ -22,6 +22,7 @@ from life_graph.drivers.context import (
     ProjectScope,
     _scope_clause,
     memory_in_scope,
+    render_memory_block,
 )
 from life_graph.models.db import Memory
 
@@ -121,8 +122,10 @@ async def test_same_project_items_still_arrive(monkeypatch):
     contents = [m["content"] for m in packet.memories]
     assert LEAK not in contents
     assert len(contents) == 6
-    prompt = ClaudeCodeDriver._format_prompt(packet)
-    assert "biome flags noExplicitAny" in prompt and "by id" in prompt
+    # claude_code never sends memories (CHARTER invariant 7); the rendered
+    # block is what a driver allowed to see them would get.
+    block = render_memory_block(packet.memories)
+    assert "biome flags noExplicitAny" in block and "by id" in block
 
 
 @pytest.mark.asyncio

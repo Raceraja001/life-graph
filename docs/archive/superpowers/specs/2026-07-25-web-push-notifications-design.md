@@ -72,7 +72,7 @@ Daily brief cron (run_daily_brief, 02:00 UTC ≈ 07:30 IST)
   `LIFE_GRAPH_VAPID_PUBLIC_KEY` (backend, to serve) and the dashboard build env
   `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (the browser needs it to subscribe — it is public by design).
 - New settings in `config.py`: `vapid_public_key: str = ""`, `vapid_private_key: str = ""`,
-  `vapid_subject: str = "mailto:tolokanathan@gmail.com"` (VAPID requires a contact).
+  `vapid_subject: str = "mailto:owner@example.invalid"` (VAPID requires a contact).
 
 ### 2. `push_subscriptions` table (+ migration)
 

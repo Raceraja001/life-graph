@@ -45,7 +45,7 @@ RESPONSE = {
             "nodes": [
                 _pr(36, "Contacts connector", author="teammate"),
                 _pr(7, "Draft idea", draft=True),
-                _pr(9, "Secret payroll change", repo="logimax/payroll", private=True),
+                _pr(9, "Secret payroll change", repo="workco/payroll", private=True),
             ]
         },
         "mine": {
@@ -138,7 +138,7 @@ async def test_sync_maps_the_three_searches(fake_github):
     assert set(by_id) == {
         "pr:Raceraja001/life-graph#36",
         "pr:Raceraja001/life-graph#7",
-        "pr:logimax/payroll#9",
+        "pr:workco/payroll#9",
         "pr:Raceraja001/life-graph#35",
         "pr:Raceraja001/life-graph#34",
         "pr:Raceraja001/life-graph#33",
@@ -153,7 +153,7 @@ async def test_sync_maps_the_three_searches(fake_github):
     assert by_id["pr:Raceraja001/life-graph#40"].flags["dev_agent"] is True
     assert "ci" not in by_id["pr:Raceraja001/life-graph#33"].flags
     assert by_id["issue:Race-projects/pulse#12"].flags["labels"] == ["bug"]
-    assert by_id["pr:logimax/payroll#9"].flags["private"] is True
+    assert by_id["pr:workco/payroll#9"].flags["private"] is True
     assert fake_github.requests[0].headers["Authorization"] == "Bearer t"
 
 
@@ -248,11 +248,11 @@ async def _rows(fake_github, **kw):
 async def test_private_repos_are_counts_for_the_cloud(fake_github):
     rows = await _rows(fake_github)
     cloud = view_items(rows, CLOUD)
-    assert all(c["repo"] != "logimax/payroll" for c in cloud["items"])
+    assert all(c["repo"] != "workco/payroll" for c in cloud["items"])
     assert cloud["withheld"] == {"GitHub (private repos)": 1}
-    assert any(c["repo"] == "logimax/payroll" for c in view_items(rows, LOCAL)["items"])
+    assert any(c["repo"] == "workco/payroll" for c in view_items(rows, LOCAL)["items"])
     shared = view_items(await _rows(fake_github, account_share_private=True), CLOUD)
-    payroll = next(c for c in shared["items"] if c["repo"] == "logimax/payroll")
+    payroll = next(c for c in shared["items"] if c["repo"] == "workco/payroll")
     assert "url" not in payroll  # a private repo's link never goes to the cloud
     local_only = view_items(await _rows(fake_github, account_exposure=EXPOSURE_LOCAL_ONLY), CLOUD)
     assert local_only["items"] == [] and local_only["withheld"] == {"GitHub": 8}

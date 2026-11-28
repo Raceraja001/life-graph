@@ -78,7 +78,7 @@ def test_push_subscription_columns():
     # ── Web Push Notifications ──────────────────────────
     vapid_public_key: str = ""  # Set LIFE_GRAPH_VAPID_PUBLIC_KEY
     vapid_private_key: str = ""  # Set LIFE_GRAPH_VAPID_PRIVATE_KEY (VM only, never git)
-    vapid_subject: str = "mailto:tolokanathan@gmail.com"  # VAPID contact
+    vapid_subject: str = "mailto:owner@example.invalid"  # VAPID contact
 ```
 
 `models/db.py` (near the other recent models, e.g. after `Conversation`):
