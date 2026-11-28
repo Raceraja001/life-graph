@@ -216,7 +216,7 @@ jobs:
       # because the venv links to setup-python's interpreter. On a hit the
       # `uv sync` below still runs: it checks the venv against the lock
       # (a no-op when they match) and installs this checkout's editable copy.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .venv
           key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-dev-local-nlp-${{ hashFiles('uv.lock') }}
@@ -306,7 +306,7 @@ jobs:
       - name: Install uv
         run: pip install uv==0.12.14
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .venv
           key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-dev-local-nlp-${{ hashFiles('uv.lock') }}
@@ -446,7 +446,7 @@ jobs:
         run: pip install uv==0.12.14
 
       # Same locked install and venv cache as the unit-tests job.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .venv
           key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-dev-local-nlp-${{ hashFiles('uv.lock') }}
@@ -600,7 +600,7 @@ jobs:
       - name: Install uv
         run: pip install uv==0.12.14
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .venv
           key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-dev-${{ hashFiles('uv.lock') }}
@@ -703,7 +703,7 @@ jobs:
       - name: Install uv
         run: pip install uv==0.12.14
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .venv
           key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-dev-local-nlp-${{ hashFiles('uv.lock') }}
