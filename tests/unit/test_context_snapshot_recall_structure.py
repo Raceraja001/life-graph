@@ -76,9 +76,9 @@ def test_the_new_options_parse_and_are_tunable():
         assert named[name] == getattr(xp, name)
 
 
-def test_no_mode_uses_the_new_options():
+def test_both_modes_use_the_new_options():
     for m in xp.MODES.values():
-        assert not m.experiments & {xp.UNDATED, xp.GOALS, xp.OVERVIEW, xp.DOMAIN}
+        assert {xp.UNDATED, xp.GOALS, xp.OVERVIEW, xp.DOMAIN} <= m.experiments
 
 
 @pytest.mark.parametrize(("query", "as_of_days"), ident.QUESTIONS)

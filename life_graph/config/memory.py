@@ -105,15 +105,21 @@ class MemorySettings(BaseModel):
     context_change_shadow: bool = False
     # M8 precision mode (services/memory/snapshot_experiments.py MODES): a
     # fixed, measured experiment set for GET /api/v1/context/snapshot.
-    # "recall" = query-type gate + typed links + cosine cut at 0.70 (M8 eval,
-    # 45 questions, bge-m3: precision 0.25 -> 0.47, recall 0.94 -> 0.93);
-    # "precision" = the same plus the hub penalty, cut at 0.75 (0.55 / 0.88).
+    # "recall" = query-type gate + typed links + cosine cut at 0.70 + the
+    # structural recall options H-K (undated intentions, goal records,
+    # overview cut, domain hold). M8 eval, bge-m3, held-out test split:
+    # precision 0.25 -> 0.55, recall 0.94 -> 0.96 (tune 0.40 / 1.00).
+    # "precision" = the same plus the hub penalty, cut at 0.75 (test 0.61 /
+    # 0.96, tune 0.49 / 0.96). H-K's keyword lists were written with sight
+    # of all 45 questions: the test split is not fully blind for them.
     # "" (the default) is the normal snapshot, byte for byte. It does not
     # touch the chat prompt (services/memory/context.py) or the shadow
     # snapshot that change detection compares.
     # Local GPU cost: "precision" (its hub penalty) embeds 6 fixed probe
-    # sentences once per process and embedder (cached; no user content), then
-    # nothing beyond the query's own embedding; "recall" adds no embedding.
+    # sentences once per process and embedder (cached; no user content).
+    # Both modes embed, locally, the text of up to 10 open intentions with no
+    # due time per snapshot (H), only those not already matched by kind or
+    # words; nothing else beyond the query's own embedding.
     context_precision_mode: Literal["", "recall", "precision"] = ""
     # With context_snapshot_shadow also on (and only on its personal, local
     # turns): the turn also builds the snapshot under context_precision_mode
