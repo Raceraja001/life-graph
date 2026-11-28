@@ -13,6 +13,7 @@ Pure parsing, no I/O. Idea adapted from FORGE's spec-driven development
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
@@ -145,6 +146,76 @@ def describe(criteria: list[AcceptanceCriterion], ac_ids: list[str]) -> str:
         else:
             lines.append(f"- {c.id}: {c.text}")
     return "\n".join(lines)
+
+
+def _exact_name_line(c: AcceptanceCriterion) -> str:
+    """One AC's test as the verifier will look for it: the file, then the exact name."""
+    ref = c.test or ""
+    file, *nodes = ref.split("::")
+    head = f"- {c.id}: file `{file}` (create or update it at exactly this path)"
+    if not nodes:
+        return f"{head}; the whole file is run, so every test in it must pass."
+    if is_js_test_ref(ref):
+        name = nodes[0]
+        return (
+            f"{head}; test title exactly `{name}`: write `test({json.dumps(name)}, ...)` "
+            "(or `it(...)`) with that title character for character. A `describe(...)` "
+            "around it is fine, but the runner filters with `-t` on the full title "
+            f"`<describe> <test>`, which must contain `{name}` verbatim -- so the test's own "
+            "title is that exact string, not a variant split across describe and test."
+        )
+    *classes, func = nodes
+    base, bracket, param = func.partition("[")
+    where = f"inside `class {'::'.join(classes)}`" if classes else "at module level"
+    line = f"{head}; pytest node id exactly `{ref}`: define `def {base}(...)` {where}"
+    if bracket:
+        line += f", parametrized so one case's id is `[{param}`"
+    return line + "."
+
+
+def exact_test_names(criteria: list[AcceptanceCriterion], ac_ids: list[str]) -> str:
+    """The exact file and test name the verifier runs for each cited AC, one per line.
+
+    ``acceptance_tests_pass`` is strict (fail-closed): a bound test whose file
+    is elsewhere or whose name differs is a missing test, so the task fails.
+    Workers on a live team run wrote close-but-different names (2026-11-28);
+    this spells out each name so nothing is left to paraphrase. Format, as the
+    verifier reads a reference: pytest ``<file>::<test>`` or
+    ``<file>::<Class>::<test>`` (node id, run as given); JS/TS
+    ``<file>::<title>``, run as ``<runner> <file> -t <escaped title>``, which
+    matches the title anywhere in the full ``<describe> <test>`` title.
+    """
+    by_id = {c.id: c for c in criteria}
+    lines = [
+        _exact_name_line(c)
+        for ac_id in ac_ids
+        if (c := by_id.get(ac_id)) is not None and is_safe_test_ref(c.test)
+    ]
+    return "\n".join(lines)
+
+
+def criteria_block(criteria: list[AcceptanceCriterion], ac_ids: list[str]) -> str:
+    """The instruction block for a task citing *ac_ids* (empty when none are defined)."""
+    text = describe(criteria, ac_ids)
+    if not text:
+        return ""
+    block = (
+        "\n\n--- ACCEPTANCE CRITERIA THIS TASK MUST SATISFY ---\n"
+        f"{text}\n"
+        "Write or update each criterion's test, and make it pass. These "
+        "tests are run to verify this task."
+    )
+    names = exact_test_names(criteria, ac_ids)
+    if names:
+        block += (
+            "\n\n--- EXACT TEST NAMES (checked strictly) ---\n"
+            "The verifier runs exactly these tests and fails this task if a file is "
+            "missing or a test is named differently. Use each path and test name below "
+            "character for character: do not rename, reword, re-case, pluralise or move "
+            "them, and do not substitute a test with a similar name.\n"
+            f"{names}"
+        )
+    return block
 
 
 # A task that only runs checks changes nothing: verification already runs

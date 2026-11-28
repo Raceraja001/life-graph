@@ -1970,3 +1970,60 @@ turn is its own attempt (`run.next_attempt`), with its steps emitted and its spe
 - Other unlocked whole-`properties` writers (checkpoint flushes, the runner's final write) can
   still, in a millisecond window, overwrite a message written at the same moment — as for every
   other key on that column today.
+
+## Runtime git access, read-only (2026-11-28)
+
+Found on a live team run: the integration agent reported "This worktree's git metadata is broken
+(`git status` failed)". The task worktree is a linked `git worktree` whose `.git` file says
+`gitdir: <origin>/.git/worktrees/<name>` (an absolute host path), and only the worktree was mounted
+(at `/work`). Fix (`services/dev/sandbox_git.py`, `task_runtime._git_binds`, policy
+`2026-11-28.2`): the claude_code task runtime now mounts, **read-only and each at its own absolute
+host path** (so the `gitdir:` pointer and the worktree dir's `commondir` resolve unchanged):
+
+- `<common>/objects`, `<common>/refs`, `<common>/packed-refs`, `<common>/HEAD`, and `<common>/info`
+  / `<common>/reftable` when present;
+- `<common>/worktrees/<name>/` (this worktree's HEAD, index);
+- `<common>/config` ← a **synthesized** file staged under the driver-creds root
+  (`git-<rid>/config`, removed after the run): `[core] repositoryformatversion`, `bare = false`, and
+  only the `[extensions]` git needs to read the repo (`objectformat`, `refstorage`). Never the
+  real config: no remotes (token-bearing URLs), credential helpers, includes, `core.fsmonitor`,
+  `core.hooksPath`, aliases.
+
+Never mounted: the real config, `hooks/`, `logs/`, `modules/`, `lfs/`, other worktrees. A workspace
+that is not a linked worktree, or whose worktree dir has a `config.worktree`, gets no git binds.
+
+**Validator** (`sandbox._git_bind_violations`): binds marked `git=True` skip the normal bind-root
+rule and must all be read-only; the layout is re-derived from the `/work` bind's own `.git` file
+(`gitdir` must be canonical, under `<common>/worktrees/`, with `commondir` leading back to
+`<common>` and `gitdir` pointing back to the worktree); each git bind's target must equal its
+source and be one of that layout's paths, except exactly one config bind at `<common>/config`
+whose source is a regular file under the writable bind roots and whose content passes
+`sandbox_git.config_violations` (only the allowed sections/keys/values). Anything else is refused.
+The network policy is unchanged.
+
+`git status`, `git diff`, `git log`, `git show` work; anything that writes (`git add`, `commit`,
+the index lock, `stash`, checkout) fails on the read-only mounts. That is stated to the agent
+(`claude_code.GIT_NOTE`, appended with the deps note in a single `--append-system-prompt`): do not
+repair git, do not commit; Life Graph commits on the host. Only the claude_code driver uses the task
+runtime; codex/gemini do not run through it and are unchanged. Tests:
+`tests/unit/test_task_runtime_git.py` (layout/argv, config content, validator accept/refuse, real
+git through the exact layout rebuilt in a temp dir, and an opt-in real-container check with
+`LIFE_GRAPH_DOCKER_SMOKE=1`, image `LIFE_GRAPH_SMOKE_DRIVER_IMAGE`).
+
+## Acceptance criteria: exact test names in the instruction (2026-11-28)
+
+Workers wrote tests whose names differed slightly from the plan's `test: <file>::<name>`, and
+`acceptance_tests_pass` (strict, fail-closed, unchanged) did not find them. Every task that cites
+ACs now gets, after the criteria list (`acceptance.criteria_block`, used for single plan tasks,
+sequential fan-out, team workers and the integration task), an `--- EXACT TEST NAMES (checked
+strictly) ---` block listing each cited AC's exact file and test name (`acceptance.exact_test_names`)
+and requiring them character for character:
+
+- pytest `<file>::<test>` / `<file>::<Class>::<test>[<param>]`: the node id exactly, `def <test>`
+  at module level or inside `class <Class>`, the parametrize id if given;
+- JS/TS `<file>::<title>` (vitest/jest/bun, run as `<runner> <file> -t <escaped title>`, which
+  matches anywhere in the full `<describe> <test>` title): `test("<title>", ...)` with that exact
+  title; a surrounding `describe(...)` is fine, but the title is not split across describe and test;
+- a bare `<file>`: the whole file runs.
+
+ACs without a safe bound test are listed as criteria but not in the strict block.

@@ -915,15 +915,9 @@ class ApprovalService:
         defined = [c.id for c in criteria]
 
         def _criteria_block(ac_ids: list[str]) -> str:
-            text = acceptance.describe(criteria, ac_ids)
-            if not text:
-                return ""
-            return (
-                "\n\n--- ACCEPTANCE CRITERIA THIS TASK MUST SATISFY ---\n"
-                f"{text}\n"
-                "Write or update each criterion's test, and make it pass. These "
-                "tests are run to verify this task."
-            )
+            # The criteria plus each one's exact file and test name (the
+            # acceptance_tests_pass check is strict).
+            return acceptance.criteria_block(criteria, ac_ids)
 
         if len(tasks) < 2:
             combined_instruction = (
