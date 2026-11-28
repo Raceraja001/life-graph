@@ -62,6 +62,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from life_graph.config import settings
+from life_graph.services.dev import sandbox_git
 
 if TYPE_CHECKING:
     from life_graph.services.dev.sandbox_deps import DepsPlan
@@ -1377,6 +1378,10 @@ class Bind:
     source: str
     target: str
     read_only: bool = False
+    # Git metadata of the workspace's linked worktree (sandbox_git): checked by
+    # _git_bind_violations against the layout derived from the workspace bind
+    # itself, never by the root rules below. Always read-only.
+    git: bool = False
 
 
 def allowed_bind_roots() -> tuple[Path, ...]:
@@ -1462,6 +1467,65 @@ def _bind_violations(bind: Bind) -> list[str]:
             f"bind source {src!r} is outside the runtime's bind roots"
             f" ({', '.join(str(r) for r in roots + ro_roots)})"
         )
+    return bad
+
+
+def _git_bind_violations(binds: tuple[Bind, ...]) -> list[str]:
+    """The ``git=True`` binds must be exactly the workspace's git metadata, read-only.
+
+    The layout is derived again here from the workspace bind's (target
+    ``/work``) own ``.git`` file (:func:`sandbox_git.worktree_layout`), never
+    taken from the binds themselves. Allowed, each read-only:
+
+    - a path of that layout (``objects``, ``refs``, ``packed-refs``, ``HEAD``,
+      ``info``/``reftable`` when present, ``worktrees/<name>``), mounted at
+      its own canonical host path, no symlink;
+    - one synthesized config at ``<common>/config`` whose source is a regular
+      file under :func:`allowed_bind_roots` and whose content passes
+      :func:`sandbox_git.config_violations` (no remotes, helpers, includes).
+    """
+    git_binds = [b for b in binds if b.git]
+    if not git_binds:
+        return []
+    work = [b for b in binds if not b.git and str(b.target) == WORK]
+    if len(work) != 1:
+        return ["git metadata binds need exactly one workspace bind at /work"]
+    try:
+        layout = sandbox_git.worktree_layout(Path(work[0].source))
+    except sandbox_git.GitLayoutError as exc:
+        return [f"git metadata binds refused: {exc}"]
+    allowed = {str(p) for p in layout.paths}
+    bad: list[str] = []
+    configs = 0
+    for bind in git_binds:
+        src, dst = str(bind.source), str(bind.target)
+        if _BIND_UNSAFE.search(src) or _BIND_UNSAFE.search(dst):
+            bad.append(
+                f"git bind {src!r} -> {dst!r} holds a character that changes --mount's meaning"
+            )
+            continue
+        if not bind.read_only:
+            bad.append(f"git bind {dst!r} must be read-only")
+        path = Path(src)
+        if not path.is_absolute() or path.is_symlink() or str(path.resolve()) != src:
+            bad.append(f"git bind source {src!r} is not a canonical, non-symlink path")
+            continue
+        if dst == layout.config_target:
+            configs += 1
+            roots = allowed_bind_roots()
+            if not path.is_file() or not any(root in path.parents for root in roots):
+                bad.append(f"git config bind source {src!r} is not a staged file in the bind roots")
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                bad.append(f"git config bind source {src!r} is unreadable: {exc}")
+                continue
+            bad.extend(sandbox_git.config_violations(text))
+        elif dst != src or src not in allowed:
+            bad.append(f"git bind {src!r} -> {dst!r} is not part of the worktree's git metadata")
+    if configs != 1:
+        bad.append("git metadata binds need exactly one synthesized config")
     return bad
 
 
@@ -1636,7 +1700,9 @@ def spec_violations(spec: SandboxSpec) -> list[str]:
 
     # ── Task-runtime extras ──
     for bind in spec.binds:
-        bad.extend(_bind_violations(bind))
+        if not bind.git:
+            bad.extend(_bind_violations(bind))
+    bad.extend(_git_bind_violations(spec.binds))
     targets = [str(b.target) for b in spec.binds]
     if len(set(targets)) != len(targets):
         bad.append("two binds share a target")

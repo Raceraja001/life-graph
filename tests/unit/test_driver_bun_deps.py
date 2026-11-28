@@ -389,3 +389,20 @@ def test_opencode_says_why_tests_are_not_offered(monkeypatch):
     monkeypatch.setattr(settings, "verifier_sandbox", "docker")
     packet = _packet(allowed_tools=["file_read"])
     assert opencode._run_tests_status(packet) == "not offered: not in the persona's tools"
+
+
+async def test_a_linked_worktree_adds_the_read_only_git_note_in_the_same_prompt_flag(
+    task_mode, work, env_dirs, monkeypatch
+):
+    from life_graph.drivers import claude_code
+
+    seen = _capture(monkeypatch, plan=_plan(env_dirs))
+    monkeypatch.setattr(claude_code, "_git_mountable", lambda cwd: True)
+    await ClaudeCodeDriver(binary="claude").dispatch(_packet(BUN_CTX), work)
+
+    command = seen["req"].command
+    assert command.count("--append-system-prompt") == 1
+    note = command[command.index("--append-system-prompt") + 1]
+    assert "`bun` is on PATH" in note and claude_code.GIT_NOTE in note
+    assert "READ-ONLY" in claude_code.GIT_NOTE and "`git commit`" in claude_code.GIT_NOTE
+    assert "commits them on the host" in claude_code.GIT_NOTE

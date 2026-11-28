@@ -8,7 +8,10 @@ nothing about what the agent's *process* can reach. This module gives one
 dispatch one container that can reach almost nothing:
 
 - **Filesystem.** The task's worktree is the only writable host path, plus
-  (OAuth mode) a throwaway copy of the CLI token. Both are typed
+  (OAuth mode) a throwaway copy of the CLI token. A linked worktree also gets
+  its git metadata read-only (``sandbox_git``: objects, refs, HEAD, its own
+  worktree dir, and a synthesized config instead of the real one), so
+  ``git status``/``diff``/``log`` work; git writes fail. Both are typed
   :class:`~life_graph.services.dev.sandbox.Bind` entries that
   :func:`~life_graph.services.dev.sandbox.validate_spec` refuses unless they
   sit under the dispatch scratch root or the staged-credentials root — never
@@ -60,7 +63,7 @@ from pathlib import Path
 from typing import Protocol
 
 from life_graph.config import settings
-from life_graph.services.dev import sandbox
+from life_graph.services.dev import sandbox, sandbox_git
 from life_graph.services.dev.sandbox import (
     RUNTIME_LABEL,
     RUNTIME_NETWORK_PREFIX,
@@ -81,7 +84,9 @@ logger = logging.getLogger(__name__)
 #   where its addresses come from changed).
 # 2026-11-28.1: a Bun project's prepared node_modules trees may be mounted
 #   read-only below /work (sandbox_deps.DepsPlan).
-POLICY_VERSION = "2026-11-28.1"
+# 2026-11-28.2: a linked worktree's git metadata is mounted read-only at its
+#   own host paths, with a synthesized minimal config (sandbox_git).
+POLICY_VERSION = "2026-11-28.2"
 
 OUTBOUND_NETWORK = "lg-rt-outbound"
 EGRESS_PORT = 8080
@@ -145,6 +150,9 @@ class RuntimeRequest:
     # prepared dependency trees (sandbox_deps.DepsPlan), each at its
     # workspace's node_modules strictly below /work.
     read_only_binds: tuple[tuple[Path, str], ...] = ()
+    # Mount the worktree's git metadata read-only (sandbox_git) when the
+    # workspace is a linked worktree; otherwise nothing is added.
+    git_metadata: bool = True
     env: dict[str, str] = field(default_factory=dict)
     # NAME -> value, handed to the docker client only and passed into the
     # container by name (sandbox.PASSTHROUGH_ENV_ALLOWED limits the names).
@@ -341,9 +349,11 @@ class DockerTaskRuntime:
             "started_at": _now(),
         }
         start = time.monotonic()
+        git_stage: Path | None = None
         try:
             meta["image_id"] = await self._image_id(req.image)
-            spec = self._driver_spec(req, names, labels)
+            git_binds, git_stage, meta["git"] = _git_binds(req, rid)
+            spec = self._driver_spec(req, names, labels, git_binds)
             meta["user"] = spec.user
             meta["binds"] = [{"target": b.target, "read_only": b.read_only} for b in spec.binds]
             meta["subnet"] = await self._create_network(names["network"], labels, rid)
@@ -386,6 +396,8 @@ class DockerTaskRuntime:
             exc.runtime_metadata = meta  # type: ignore[attr-defined]
             raise
         finally:
+            if git_stage is not None:
+                shutil.rmtree(git_stage, ignore_errors=True)
             meta["finished_at"] = _now()
             meta["duration_ms"] = int((time.monotonic() - start) * 1000)
             try:
@@ -664,7 +676,11 @@ class DockerTaskRuntime:
         raise SandboxUnavailableError("egress proxy never became ready")
 
     def _driver_spec(
-        self, req: RuntimeRequest, names: dict[str, str], labels: dict[str, str]
+        self,
+        req: RuntimeRequest,
+        names: dict[str, str],
+        labels: dict[str, str],
+        git_binds: Sequence[Bind] = (),
     ) -> SandboxSpec:
         binds = [Bind(str(Path(req.workspace).resolve()), sandbox.WORK)]
         if req.credentials is not None:
@@ -682,6 +698,7 @@ class DockerTaskRuntime:
                     [f"read-only bind target {target!r} is not under {sandbox.WORK}"],
                 )
             binds.append(Bind(str(Path(source).resolve()), target, read_only=True))
+        binds.extend(git_binds)
         env = {"HOME": "/tmp", "LANG": "C.UTF-8", "TZ": "UTC", **req.env}
         if req.egress_allowlist:
             proxy = f"http://{names['proxy']}:{EGRESS_PORT}"
@@ -709,6 +726,32 @@ class DockerTaskRuntime:
             timeout=req.timeout,
         )
         return sandbox.validate_spec(spec)
+
+
+def _git_binds(req: RuntimeRequest, rid: str) -> tuple[list[Bind], Path | None, dict]:
+    """The worktree's git metadata binds, the staged config dir to remove, and what to record.
+
+    Each layout path read-only at its own host path; the synthesized config
+    (sandbox_git.synthesize_config) staged under the credentials root -- a
+    bind root -- and mounted read-only over ``<common>/config``. A workspace
+    that is not a linked worktree gets nothing (and git inside reports "not a
+    git repository", as before).
+    """
+    if not req.git_metadata:
+        return [], None, {"mounted": False, "reason": "disabled"}
+    try:
+        layout = sandbox_git.worktree_layout(Path(req.workspace))
+        config = sandbox_git.synthesize_config(layout.common)
+    except sandbox_git.GitLayoutError as exc:
+        return [], None, {"mounted": False, "reason": str(exc)[:200]}
+    stage = sandbox.driver_creds_root().resolve() / f"git-{rid}"
+    stage.mkdir(parents=True)
+    staged = stage / sandbox_git.CONFIG_NAME
+    staged.write_text(config, encoding="utf-8")
+    os.chmod(staged, 0o444)
+    binds = [Bind(str(p), str(p), read_only=True, git=True) for p in layout.paths]
+    binds.append(Bind(str(staged), layout.config_target, read_only=True, git=True))
+    return binds, stage, {"mounted": True, "common": str(layout.common), "binds": len(binds)}
 
 
 # The process-wide runtime. Tests construct their own with a fake runner.

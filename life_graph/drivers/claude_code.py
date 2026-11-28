@@ -38,7 +38,7 @@ from life_graph.drivers.host_exec import (
 from life_graph.drivers.steps import claude_event_steps, parse_claude_stream
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.services.agent_accounts.limits import claude_windows
-from life_graph.services.dev import sandbox, sandbox_deps
+from life_graph.services.dev import sandbox, sandbox_deps, sandbox_git
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +278,20 @@ _DEPS_NOTE = (
 )
 
 
+# What the agent is told when the worktree's git metadata is mounted
+# (task_runtime._git_binds / sandbox_git): read-only, so reads work and
+# writes do not; Life Graph commits on the host.
+GIT_NOTE = (
+    "Git in this container is READ-ONLY: `git status`, `git diff`, `git log`, `git show` and "
+    "`git blame` work on /work, but the repository metadata is mounted read-only, so "
+    "`git add`, `git commit`, `git stash`, `git checkout`/`switch`, branch or tag changes "
+    "and anything that takes the index lock fail -- that is expected, not a broken worktree. "
+    "Do not try to repair or re-initialise git and do not commit: leave your changes in the "
+    "working tree; Life Graph reviews and commits them on the host. There are no remotes "
+    "(no fetch, pull or push)."
+)
+
+
 def _under_work(path: str) -> bool:
     """A container path strictly below /work, with nothing that changes its meaning."""
     parts = path.split("/")
@@ -315,6 +329,15 @@ def _checked_deps_plan(plan: sandbox_deps.DepsPlan) -> sandbox_deps.DepsPlan:
 def _deps_env(plan: sandbox_deps.DepsPlan) -> dict[str, str]:
     """The container env for a (checked) dependency plan: its PATH first, then the image's."""
     return {**plan.env, "PATH": ":".join((*plan.path_prepend, _BASE_PATH))}
+
+
+def _git_mountable(cwd: Path) -> bool:
+    """Whether the task runtime will mount *cwd*'s git metadata (a linked worktree)."""
+    try:
+        sandbox_git.worktree_layout(cwd)
+    except sandbox_git.GitLayoutError:
+        return False
+    return True
 
 
 def _deps_note(plan: sandbox_deps.DepsPlan) -> str:
@@ -872,9 +895,14 @@ class ClaudeCodeDriver:
         command: tuple[str, ...] = (sandbox.DRIVER_CLI, *args[1:])
         if venv is not None:
             env.update(_PROJECT_ENV_VARS)
+        notes: list[str] = []
         if deps is not None:
             env.update(_deps_env(deps))
-            command = (*command, "--append-system-prompt", _deps_note(deps))
+            notes.append(_deps_note(deps))
+        if _git_mountable(cwd):
+            notes.append(GIT_NOTE)
+        if notes:
+            command = (*command, "--append-system-prompt", "\n\n".join(notes))
         if audit is not None:
             audit["tool_env"] = tool_note
         req = task_runtime.RuntimeRequest(
