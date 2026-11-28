@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 15:34 UTC` from `race/task-routing-fields-2` @ `959926b2`
+Generated `2026-11-28 16:25 UTC` from `race/team-upgrades` @ `a40f7421`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-28 15:34 UTC` from `race/task-routing-fields-2` @ `959926b2`
 
 | | |
 |---|---|
-| HTTP operations | **445** across 383 paths, 49 tags |
+| HTTP operations | **448** across 385 paths, 49 tags |
 | Database tables | **101** |
 | Migrations | **68** (head: `068_dev_outcome_log`) |
 | Event types | **96** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **38** |
-| Config settings | **381** (prefix `LIFE_GRAPH_`) |
-| Test functions | **7170** in 729 files |
+| Config settings | **383** (prefix `LIFE_GRAPH_`) |
+| Test functions | **7236** in 732 files |
 | Dashboard pages | **23** |
-| Python | 597 files, 177,619 lines |
+| Python | 603 files, 179,935 lines |
 
 ---
 
 ## HTTP API
 
-445 operations, grouped by OpenAPI tag.
+448 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -80,7 +80,7 @@ Generated `2026-11-28 15:34 UTC` from `race/task-routing-fields-2` @ `959926b2`
 | POST | `/api/v1/study/generate` | Generate Cards |
 | GET | `/api/v1/study/progress` | Study Progress |
 
-### `drivers` — 37
+### `drivers` — 40
 
 | Method | Path | Summary |
 |---|---|---|
@@ -96,6 +96,7 @@ Generated `2026-11-28 15:34 UTC` from `race/task-routing-fields-2` @ `959926b2`
 | GET | `/api/v1/kernel/drivers/outcomes` | Per dispatch: driver, model, ladder rung and why, verdicts, outcome, shadow tier |
 | GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
 | GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
+| POST | `/api/v1/kernel/drivers/plans/{plan_id}/workers/{task_id}/retry` | Re-run one failed worker of a parallel plan (owner) |
 | GET | `/api/v1/kernel/drivers/pr-watch` | Watched pull requests of the PR feedback loop |
 | POST | `/api/v1/kernel/drivers/pr-watch/poll` | Check every watched PR now (owner) |
 | POST | `/api/v1/kernel/drivers/pr-watch/{task_id}/stop` | Stop watching a task's PR (owner) |
@@ -116,6 +117,8 @@ Generated `2026-11-28 15:34 UTC` from `race/task-routing-fields-2` @ `959926b2`
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/events` | The task's live session events after a sequence number (long-poll) |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/events/stream` | The task's live session as Server-Sent Events (resumes from Last-Event-ID) |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/messages` | A dev task's steering messages |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/messages` | Send a steering message to a queued or running dev task (owner) |
 | POST | `/api/v1/kernel/drivers/tasks/{task_id}/resume` | Resume a parked dev task now, without waiting for its reset (owner) |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/review-stages` | Every review-stage result of a dev task, and the latest per stage |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/risk` | The risk report of a dev task's change |
@@ -1121,16 +1124,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 562 | 6081 |
+| `tests/unit/` | 565 | 6147 |
 | `tests/integration/` | 166 | 1077 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **729** | **7170** |
+| **total** | **732** | **7236** |
 
 ---
 
 ## Configuration
 
-381 settings, all overridable by environment variable.
+383 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1330,6 +1333,8 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CONTINUE_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_CONTINUE_KEEP_HOURS` | `24` |
 | `LIFE_GRAPH_DRIVER_TEAM_MAX_PARALLEL` | `1` |
+| `LIFE_GRAPH_DRIVER_TEAM_WORKER_RETRIES` | `1` |
+| `LIFE_GRAPH_DRIVER_STEER_MAX_TURNS` | `2` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_POLL_MINUTES` | `10` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_MAX_ROUNDS` | `3` |

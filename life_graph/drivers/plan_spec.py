@@ -119,6 +119,8 @@ _FILES_RULE = (
     "- End each task with the files it will change, as paths or globs relative "
     'to the repository root, e.g. "Files: life_graph/api/x.py, tests/unit/test_x.py" '
     'or "Files: src/ui/**". Tasks that touch different files run in parallel.\n'
+    '- Optionally add how hard a task is, "Tier: cheap", "Tier: balanced" or '
+    '"Tier: best" (best only for the hardest task); leave it out when unsure.\n'
 )
 
 
@@ -136,6 +138,7 @@ _FILES_RE = re.compile(r"(?:^|(?<=[\s(*_]))(?:files?|scope)\s*:\s*\**\s*([^\n]*)
 _SCOPE_TOKEN_RE = re.compile(r"^[\w.*?/\-\[\]{}@+~]+$")
 _NOT_A_PATH = frozenset({"and", "or", "none", "n/a", "etc", "-"})
 _MAX_SCOPE_ENTRIES = 50
+_AGENT_TIER_KEY_RE = re.compile(r"(?:^|(?<=[\s(*_]))(?:agent|persona|tier)\s*:", re.IGNORECASE)
 
 
 def parse_task_files(item: str | None) -> list[str]:
@@ -151,6 +154,10 @@ def parse_task_files(item: str | None) -> list[str]:
     out: list[str] = []
     for match in _FILES_RE.finditer(item):
         text = match.group(1)
+        # "Files: a.py Tier: best" -- the Agent:/Tier: that follow are not paths.
+        tail = _AGENT_TIER_KEY_RE.search(text)
+        if tail:
+            text = text[: tail.start()]
         cut = re.search(r"\s\(", text)
         if cut:
             text = text[: cut.start()]
@@ -166,3 +173,40 @@ def parse_task_files(item: str | None) -> list[str]:
             if token not in out:
                 out.append(token[:300])
     return out[:_MAX_SCOPE_ENTRIES]
+
+
+# Team upgrades (2026-11-28, docs/specs/agent-drivers.md "Team upgrades"): a
+# plan task may also ask for who does it -- "Agent: <persona name>" and/or
+# "Tier: cheap|balanced|best" -- next to its "Files:". Parsed here as text;
+# services/dev/teams.py validates them (an unknown value is a warning on the
+# team, never a failed plan).
+TIERS = ("cheap", "balanced", "best")
+_AGENT_RE = re.compile(
+    r"(?:^|(?<=[\s(*_]))(?:agent|persona)\s*:\s*\**\s*[`'\"]?([A-Za-z0-9][\w.\-]{0,99})",
+    re.IGNORECASE,
+)
+_TIER_RE = re.compile(
+    r"(?:^|(?<=[\s(*_]))tier\s*:\s*\**\s*[`'\"]?([A-Za-z][\w\-]{0,39})", re.IGNORECASE
+)
+
+
+def parse_task_agent(item: str | None) -> str | None:
+    """The persona a plan task asks for (``Agent: code-fixer``), or None.
+
+    The first ``Agent:`` (or ``Persona:``) wins; trailing punctuation is
+    dropped. Whether that persona exists is the caller's question.
+    """
+    match = _AGENT_RE.search(item or "")
+    if not match:
+        return None
+    return match.group(1).rstrip(".-") or None
+
+
+def parse_task_tier(item: str | None) -> str | None:
+    """The tier a plan task asks for (``Tier: best``), lower-cased, or None.
+
+    Returned as written (lower-cased) even when it is not one of
+    :data:`TIERS`, so the caller can warn about it.
+    """
+    match = _TIER_RE.search(item or "")
+    return match.group(1).lower() if match else None

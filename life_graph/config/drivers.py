@@ -113,6 +113,19 @@ class DriverSettings(BaseModel):
     # its own branch, then ONE integration task files the single PR approval.
     # 1 = today's sequential, merge-gated fan-out, unchanged.
     driver_team_max_parallel: int = 1
+    # Team upgrades (docs/specs/agent-drivers.md, "Team upgrades (2026-11-28)"):
+    # a team worker that ends failed (or timed out) -- not one that was
+    # cancelled -- is retried this many times as a fresh worker on the next
+    # escalation rung (same rung when no higher one may run) before the team
+    # fails. The other workers keep going meanwhile. 0 = the old behaviour: the
+    # first failed worker cancels the rest.
+    driver_team_worker_retries: int = Field(1, ge=0, le=3)
+    # Steering messages (docs/specs/agent-drivers.md, "Steering messages
+    # (2026-11-28)"): the owner's messages to a running task are delivered at
+    # the next turn boundary, at most this many extra turns per dispatch (each
+    # gated like any other round). 0 = no steering turns (messages sent before
+    # the task started still ride in its instruction).
+    driver_steer_max_turns: int = Field(2, ge=0, le=5)
     # PR feedback loop (Phase 4b): for a task whose PR is open and whose
     # worktree is kept (driver_continue_enabled), read the PR with gh every
     # poll_minutes and hand new failing checks / review comments / merge

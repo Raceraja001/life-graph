@@ -1301,7 +1301,8 @@ dispatch applies the Governor (unattended workers) and D4 as for any task.
   the run a file that was conflicted and still holds `<<<<<<<` / `>>>>>>>` / `|||||||` lines fails
   it (`stop_reason = unresolved_conflicts`); then the normal verifier chain, landing and the
   plan's **single** `driver_pr` approval (auto-open/auto-merge rules as for any task).
-- Any worker `failed` / `cancelled` / `timeout` THEN `teams.reconcile` (runner loop) cancels
+- Any worker `failed` / `cancelled` / `timeout` (since 2026-11-28 a failed / timed-out worker is
+  first retried: "Team upgrades" below) THEN `teams.reconcile` (runner loop) cancels
   every other open team task (queued at once, running through its runner), the team is
   `failed` with the reason, the owner is told once (`approval:filed`, kind `plan_stopped`) and
   `driver:team:failed` fires. Re-approving the plan starts a new team.
@@ -1487,8 +1488,8 @@ cancelled, rejected`). Notifications reuse `driver:approval:filed` with kind `pl
 
 ### Not in 4b
 
-A lead agent planning a team (the plan task's spec is the plan); retrying one failed worker in
-place (re-approve the plan); per-project overrides of the new settings; settings editable at
+A lead agent planning a team (the plan task's spec is the plan); retrying one failed worker
+(added 2026-11-28, "Team upgrades"); per-project overrides of the new settings; settings editable at
 runtime (they are env); cancelling a whole team or race in one call (cancel each task); racing
 plan tasks. Integration tests against Postgres, a real GitHub PR and signed-in CLIs.
 
@@ -1714,3 +1715,315 @@ cost_usd, shadow: {tier, reasons}, error, created_at}`.
   written (start reason `resumed`).
 - The floor knows only failures logged since migration 068; there is no backfill.
 - Model availability on Ollama is not probed: a local rung is "available" when the driver is.
+
+## Team upgrades (2026-11-28): worker retry, per-worker agent/tier, notes board
+
+> **Status: Built, fixture-tested.** Branch `race/team-upgrades`. No migration: new state lives
+> in `dev_task_groups.properties` (the team) and `agent_tasks.properties` (its tasks). Code:
+> `services/dev/team_retry.py` (retry, re-pointing, the owner's retry), `services/dev/team_rungs.py`
+> (tier → rung, retry rung, the dispatcher hook), `services/dev/team_notes.py` (the board),
+> `services/dev/teams.py` (fan-out, `reconcile`, `team_view`), `drivers/plan_spec.py`
+> (`Agent:` / `Tier:`), `api/drivers_automation.py` (retry route), `api/drivers.py`
+> (`DevTaskCreate` team defaults). Teams themselves stay off by default
+> (`driver_team_max_parallel = 1`). Ideas from PandaCode (retry a failed worker on a stronger
+> model; a shared notes board) and Orchestrator.inc / Paperclip (choose the agent per worker),
+> per race-app `docs/research/2026-11-28-router-council/02-study-a-pandacode.md`; nothing ported.
+> Motivated by the first live team run on race-app, where one failing worker cancelled the rest.
+
+### Worker retry (`driver_team_worker_retries`, default 1, 0–3)
+
+- GIVEN a team worker (the current attempt of its plan task) WHEN it ends `failed` or `timeout`
+  AND its `team_attempt ≤ driver_team_worker_retries` AND the team is `running` THEN
+  `teams.reconcile` does **not** fail the team: it marks `retry_pending[<id>]` on the group,
+  and (after its commit) queues a **fresh** worker task: same plan task, `team_attempt + 1`,
+  `team_replaces = <failed id>`, `team_retry_reason` (the failed task's error, redacted, ≤ 500),
+  `team_retry_by = "team"`, `team_retry_why`, and an instruction = the original + a delimited
+  "WHY THE PREVIOUS ATTEMPT FAILED" block + the teammates' notes it may see.
+- Its rung (`team_rungs.RungPicker.for_retry`): the rung the failed attempt ran on (its latest
+  `dev_outcome_log` row, else its `team_rung`, else its metadata driver); then the **first rung
+  above it** that passes the ladder's own per-rung checks (`LadderMixin._rung_blocker`:
+  registered + available, metered only with `driver_escalation_allow_metered` and within the
+  Governor / per-task cap, the subscription share, the daily top-rung cap). WHEN none passes,
+  the run was on the top rung, `driver_escalation_enabled` is off, or the kill switch is on (or
+  unreadable) THEN the retry runs on the **same rung**. A run off the ladder retries with no
+  pin. A persona that pins a driver (not `auto`, no `allow_escalation`) retries on that persona
+  unchanged — the pin wins, as in the ladder.
+- The chosen rung is pinned: `driver_pin = rung.driver`, `team_rung = {driver, model, label,
+  tier, why}`. A pinned worker does not climb inside its run (the team retry is its climb).
+- While the retry runs the other workers continue; every queued team row's `depends_on`,
+  `seed_from` and `dependency_wait.waiting_on`, and the group's `worker_ids` /
+  `integration_task_id`, are re-pointed at the newest attempt **in the same runner pass, before
+  `release_dependencies`**, so dependents keep waiting instead of being cancelled. Which attempt
+  is current is read from the rows (a row another row's `team_replaces` names is superseded),
+  so a restart resumes exactly.
+- GIVEN a worker `cancelled` (the owner's cancel, the kill switch's, the team's own) THEN it is
+  **never** retried: the team fails as before. GIVEN a worker out of retries THEN the team fails
+  as before (the rest cancelled, `TEAM_FAILED`, the owner told once), now also recording
+  `failed_task_id` and `team_cancelled` (the ids it cancelled). GIVEN a `retry_pending` mark
+  whose replacement never appeared (it could not be queued) THEN the next pass fails the team
+  (no retry loop). With `driver_team_worker_retries = 0` nothing changes from Phase 4b.
+- Each retry is a task event (`kind = team`) on both the failed task (`retry as <id> on
+  <rung>`) and the new one (`attempt N of task I`), and a `history` entry on the group
+  (`worker I retried (attempt N on <rung>)`).
+
+### Owner retry
+
+`POST /kernel/drivers/plans/{plan_id}/workers/{task_id}/retry` (owner only), body optional
+`{"tier": "cheap|balanced|best", "persona": "<name>"}` (unknown fields 422).
+
+- GIVEN *task_id* is the current attempt of a worker of a team of plan *plan_id* (this tenant),
+  its status is `failed`, `timeout` or `cancelled`, and no retry is pending for it THEN a fresh
+  attempt is queued exactly as above, `team_retry_by = <resolver>`; *persona* replaces the
+  worker's persona; *tier* picks the rung by tier (below) instead of "one up". The owner's
+  retry is not counted against `driver_team_worker_retries` (later automatic retries of that
+  attempt are: with the default 1, an owner retry of attempt 2 gets none).
+- GIVEN the team is `failed` AND it failed because of **this** worker (`failed_task_id`, or for
+  older teams a `reason` starting `worker <id[:8]> `) THEN the team is **reopened**: status
+  `running`, `reason` / `failed_task_id` cleared, a history entry `reopened: owner retried worker
+  I`, `reopened + 1`; and every current row that is `cancelled` and was cancelled by the team
+  (`team_cancelled`) or by a failed dependency (`dependency_failed`) is queued again as a fresh
+  copy (same attempt, same pins, `team_replaces` = it), in plan order with the integration task
+  last, its `depends_on` / `seed_from` pointing at the new attempts.
+- GIVEN the team is `running` THEN only the worker is retried (nothing reopened).
+- Refusals: 404 `not_found` (no such worker in this plan's team / another tenant's); 409
+  `superseded` (a newer attempt exists), `retry_pending`, `not_failed`, `team_busy` (team
+  `integrating` / `awaiting_approval`), `failed_elsewhere` (the team failed because of another
+  task — retry that one); 422 `unknown_persona` (no active persona with a driver), a bad tier;
+  400 non-UUID ids.
+- → 202 `{group_id, status, reopened, retry: {task_id, replaces, index, attempt, rung, why,
+  refused}, requeued: [same shape]}`.
+
+### Per-worker agent / tier
+
+Plan task line format (extends `Files:`; any order, same line or not):
+
+```
+2. Add the parser (AC-1) Files: life_graph/x.py, tests/unit/test_x.py Agent: code-fixer-auto Tier: best
+```
+
+- `Agent: <persona>` (or `Persona:`) and `Tier: cheap|balanced|best` are parsed by
+  `plan_spec.parse_task_agent` / `parse_task_tier`; `parse_task_files` stops at them (they are
+  never paths). With teams on, the plan prompt mentions the optional `Tier:`.
+- Team defaults: `POST /kernel/drivers/tasks` with `plan_only: true` accepts
+  `team_worker_persona?: str (1..100)` and `team_worker_tier?: cheap|balanced|best` (other
+  values 422), stored on the plan task's properties; a line's own value wins. Without
+  `plan_only` they are ignored. They also show as the group's `defaults`.
+- GIVEN neither THEN the worker is exactly as before (the plan's persona, today's selection).
+- GIVEN an `Agent:` that is not an active persona of this tenant with a driver THEN it is
+  ignored, the plan's persona is used and a warning is added to the team
+  (`task N: unknown agent 'x' …`). GIVEN a tier that is not one of the three THEN ignored with a
+  warning. The plan never fails over these.
+- GIVEN a valid tier THEN the ladder position is `cheap` = 0, `best` = n − 1, `balanced` =
+  (n − 1) // 2 (on the default 3-rung ladder: qwen3:14b / qwen3-coder:30b / claude_code). The
+  rung must pass the same per-rung checks; a refused rung falls to the next **lower** one, then
+  upward — so `best` over the daily top-rung cap lands on the highest allowed rung — with a
+  warning naming what was refused. The checks count the fan-out's own top-rung picks. No rung
+  allowed (or no ladder) → today's selection, with a warning.
+- GIVEN the worker's persona pins a driver (e.g. the built-in `code-fixer` → `claude_code`)
+  THEN the pin wins: the tier is ignored with a warning. Use an `auto` persona (built-in
+  `code-fixer-auto`) or `allow_escalation: true` for tiers and retry climbs to apply.
+- Worker properties: `team_agent = {requested, resolved}`, `team_tier = {requested, resolved}`,
+  plus the rung pin above. Tiers are resolved when the team is queued (and when a retry is).
+
+### Notes board
+
+- Workers are told: end the final summary with a section headed exactly
+  `## Notes for the team` of short bullets (≤ 20), never secrets.
+- GIVEN a worker (current attempt) `completed` THEN on the next pass its output's **last** such
+  section is read once (`notes_read`): bullets (`-`, `*`, `+`, `•`, `1.`), a non-bullet line
+  continues the previous bullet, the section ends at the next heading; ≤ 20 notes, each ≤ 500
+  chars (whitespace collapsed, `…` when cut), secrets redacted (`core.redaction.redact_secrets`);
+  the board holds ≤ 200. Each note: `{task_id, author_index, author_title, author_wave, text,
+  at}` on `dev_task_groups.properties.notes`.
+- THEN every **queued** task of the same team whose wave is later than the note's author's
+  (`waves`), and the integration task (all notes), gets one block in its instruction, between
+  `--- NOTES FROM YOUR TEAMMATES (same plan) ---` and `--- END OF TEAMMATES' NOTES ---`
+  (replaced, never stacked; described as teammates' information, not the owner's instructions).
+  A same-wave or running task is not changed; a retry gets the notes of earlier waves.
+- Notes are read and written only through the team's own rows (tenant + `plan_group_id`): never
+  another team or project.
+
+### Team view (`GET /kernel/drivers/plans/{id}` → `team`)
+
+Only the plan's newest team's rows; one row per plan task (its current attempt). Added to
+`Row`: `attempts`, `attempt_task_ids` (oldest first), `rungs` (per attempt: the rung its latest
+dispatch ended on, from `dev_outcome_log`, else its planned `team_rung`), `agent: {requested,
+resolved}`, `tier: {requested, resolved}`, `rung` (the current attempt's pin), `retry_reasons:
+[{attempt, reason, by, why}]`. Added to `team`: `notes: [{author_index, author_title, task_id,
+text, at}]`, `warnings: [str]`, `retries_per_worker`, `reopened`.
+
+### Dispatcher hook (one line, owned by `drivers/dispatcher.py`)
+
+The dispatcher already honours `driver_pin`. For a `local:<model>` rung to run its model, and
+for a pinned top rung to count against the top-rung cap, `TaskDispatcher.dispatch` Step 3 calls,
+right before `await self._apply_start_floor(run)`:
+
+```python
+await team_rungs.apply_team_rung(run)  # life_graph.services.dev.team_rungs
+```
+
+It sets `run.packet.persona_model` from `team_rung.model` and `run.reached_top` for a non-local
+`best` rung; it does nothing for any other task and never raises. **Added** with the steering
+messages below (`tests/unit/test_steering_messages.py` checks it runs before the floor and leaves
+a non-team task alone).
+
+### Settings
+
+| Env (`LIFE_GRAPH_…`) | Setting | Default | Meaning |
+|---|---|---|---|
+| `DRIVER_TEAM_WORKER_RETRIES` | `driver_team_worker_retries` | 1 | retries per failed worker before the team fails (0–3); 0 = Phase 4b behaviour |
+
+### Not in this step
+
+- The integration task is not retried (re-approve the plan, as before).
+- A retry starts from scratch on a fresh worktree (no `continue_task` of the failed attempt).
+- No new EventBus event types (retries are task events and group history).
+
+## Steering messages (2026-11-28)
+
+> **Status: Built, fixture-tested.** Branch `race/team-upgrades`. No migration: messages live in
+> `agent_tasks.properties.steer_messages`. Code: `services/dev/task_messages.py` (the store, the
+> prompts), `drivers/steering.py` (`SteeringMixin`: start-time append, steering turns, worktree
+> snapshot/restore), `drivers/dispatcher.py` (Steps 2a′ and 4s), `drivers/continue_run.py`
+> (continue_task), `api/drivers_automation.py` (routes). The owner's answer to "steer a running
+> worker", like PandaCode's / race-app's follow-up queue; nothing ported.
+
+Headless coding CLIs take no input mid-run, so a message is delivered at the **next turn
+boundary**, never injected into a running process.
+
+### API
+
+`POST /kernel/drivers/tasks/{id}/messages` (owner only) body `{"text": str}` (unknown fields
+422) → 200 `{queued: <undelivered count incl. this one>, id}`.
+
+- GIVEN *text* trimmed is empty THEN 422 `empty: …`; longer than 4000 chars THEN 422
+  `too_long: …`. Stored trimmed and redacted (`core.redaction.redact_secrets`).
+- GIVEN the task is not `queued` or `running` (completed, failed, parked, cancelled …) THEN 409
+  `not_running: …`. GIVEN 10 messages of the task are undelivered THEN 409 `too_many: …`.
+  404 no such dev task of this tenant; 400 a non-UUID id. A service key is 403.
+- Stored as `{id, text, at, delivered_at: null}` under the task row's lock (`SELECT … FOR
+  UPDATE`, the list rewritten in that transaction); at most 100 kept (delivered ones dropped
+  oldest first). A task event `steer` (`state: queued`).
+
+`GET /kernel/drivers/tasks/{id}/messages` (tenant read) → `{messages: [{id, text, at,
+delivered_at|null, via?, undelivered_reason?}]}`, oldest first. `via` = `instruction` | `turn` |
+`continue` once delivered; `undelivered_reason` = why a message is still waiting (kill switch,
+budget, turn limit, a failed turn, a failed run).
+
+### Delivery
+
+- **Start (no extra turn).** GIVEN messages are undelivered WHEN `dispatch_task` starts (Step
+  2a′, after the WIP check, before the packet is built — i.e. at claim) THEN they are appended
+  to the instruction between `--- MESSAGES FROM THE OWNER (sent after this task was queued) ---`
+  and `--- END OF THE OWNER'S MESSAGES ---`, numbered, and marked delivered (`via:
+  instruction`) once the driver was called (a seed failure, a budget denial or a crash before
+  the run leaves them waiting). continue_task does the same with its follow-up (`via:
+  continue`).
+- **Turn boundary (Step 4s).** GIVEN the run (its first attempt, with any rate-limit rotation
+  or stall retry inside it) ended **successfully** AND messages are undelivered WHEN the run
+  returns, before the tamper / no-change guards and the verifier chain THEN the dispatcher runs
+  one more turn in the same session and workdir — `driver.resume(session_id, prompt)` with
+  prompt "The owner sent these messages while you were working on this task: 1. … Your changes
+  so far are in this working tree; build on them, do not start over. …" — marks them delivered
+  (`via: turn`), and checks again. Its result replaces the run's; then the normal chain
+  (guards, verify, bounce, land) judges the steered worktree.
+- **Bounded:** at most `driver_steer_max_turns` steering turns per dispatch (default 2, 0–5;
+  0 = no steering turns, the start-time append still applies). GIVEN messages still wait when
+  the limit is reached THEN they stay undelivered (`undelivered_reason: the steering turn
+  limit (N) was reached`).
+- **Gated** before every turn like every other extra round (`_round_allowed`): the kill switch
+  (on or unreadable), the per-task cost cap, the Governor (skipped for a subscription-account
+  run, which the account hook gates on plan-window share). GIVEN any says no THEN no turn; the
+  messages stay undelivered with the reason (`steer` event `state: skipped`).
+- **Failure fallback.** GIVEN a steering turn fails (error, timeout, crash) THEN the worktree is
+  put back to its state before the turn (a `git add -A` + `write-tree` snapshot, restored with
+  `read-tree --reset` + `checkout-index -a -f` + `clean -fd`; only in a worktree still linked to
+  its origin) and the **pre-steer result** goes on to verification; the messages stay
+  undelivered (`the steering turn failed: …`, events `failed` and `fallback`). No further
+  steering turn that dispatch.
+- GIVEN the run failed (or was rate-limited / parked) THEN nothing is delivered (`the run did
+  not succeed`).
+- **No resume.** GIVEN the driver cannot resume (`supports_resume` false, e.g. the local
+  driver) or the run left no session id THEN the steering turn is a **re-dispatch in the same
+  worktree** with the steering prompt prepended to the instruction — the run-health fallback
+  for nudges and stall retries (chosen over "deliver at a later continuation", which needs a
+  resumable session too, and over "undeliverable", which would leave local team workers
+  unsteerable).
+- Messages sent after the last boundary of a dispatch (or to a task that then ends) stay
+  undelivered; a later continue_task of that task carries them in its follow-up.
+
+Events (`dev_task_events`, kind `steer`, `data.state`): `queued` (api), `delivering` (with
+`turn`, `of`, `attempt`), `delivered` (`via`), `skipped` / `failed` (`reason`), `fallback`
+(`restored`). The approval payload's `autonomy.steering` lists each delivery. Each steering
+turn is its own attempt (`run.next_attempt`), with its steps emitted and its spend booked.
+
+### Settings
+
+| Env (`LIFE_GRAPH_…`) | Setting | Default | Meaning |
+|---|---|---|---|
+| `DRIVER_STEER_MAX_TURNS` | `driver_steer_max_turns` | 2 | steering turns per dispatch (0–5); 0 = none |
+
+### Not in this step
+
+- No mid-process input (CLIs cannot take it); no message to a parked task (409); no editing or
+  withdrawing a queued message.
+- Other unlocked whole-`properties` writers (checkpoint flushes, the runner's final write) can
+  still, in a millisecond window, overwrite a message written at the same moment — as for every
+  other key on that column today.
+
+## Runtime git access, read-only (2026-11-28)
+
+Found on a live team run: the integration agent reported "This worktree's git metadata is broken
+(`git status` failed)". The task worktree is a linked `git worktree` whose `.git` file says
+`gitdir: <origin>/.git/worktrees/<name>` (an absolute host path), and only the worktree was mounted
+(at `/work`). Fix (`services/dev/sandbox_git.py`, `task_runtime._git_binds`, policy
+`2026-11-28.2`): the claude_code task runtime now mounts, **read-only and each at its own absolute
+host path** (so the `gitdir:` pointer and the worktree dir's `commondir` resolve unchanged):
+
+- `<common>/objects`, `<common>/refs`, `<common>/packed-refs`, `<common>/HEAD`, and `<common>/info`
+  / `<common>/reftable` when present;
+- `<common>/worktrees/<name>/` (this worktree's HEAD, index);
+- `<common>/config` ← a **synthesized** file staged under the driver-creds root
+  (`git-<rid>/config`, removed after the run): `[core] repositoryformatversion`, `bare = false`, and
+  only the `[extensions]` git needs to read the repo (`objectformat`, `refstorage`). Never the
+  real config: no remotes (token-bearing URLs), credential helpers, includes, `core.fsmonitor`,
+  `core.hooksPath`, aliases.
+
+Never mounted: the real config, `hooks/`, `logs/`, `modules/`, `lfs/`, other worktrees. A workspace
+that is not a linked worktree, or whose worktree dir has a `config.worktree`, gets no git binds.
+
+**Validator** (`sandbox._git_bind_violations`): binds marked `git=True` skip the normal bind-root
+rule and must all be read-only; the layout is re-derived from the `/work` bind's own `.git` file
+(`gitdir` must be canonical, under `<common>/worktrees/`, with `commondir` leading back to
+`<common>` and `gitdir` pointing back to the worktree); each git bind's target must equal its
+source and be one of that layout's paths, except exactly one config bind at `<common>/config`
+whose source is a regular file under the writable bind roots and whose content passes
+`sandbox_git.config_violations` (only the allowed sections/keys/values). Anything else is refused.
+The network policy is unchanged.
+
+`git status`, `git diff`, `git log`, `git show` work; anything that writes (`git add`, `commit`,
+the index lock, `stash`, checkout) fails on the read-only mounts. That is stated to the agent
+(`claude_code.GIT_NOTE`, appended with the deps note in a single `--append-system-prompt`): do not
+repair git, do not commit; Life Graph commits on the host. Only the claude_code driver uses the task
+runtime; codex/gemini do not run through it and are unchanged. Tests:
+`tests/unit/test_task_runtime_git.py` (layout/argv, config content, validator accept/refuse, real
+git through the exact layout rebuilt in a temp dir, and an opt-in real-container check with
+`LIFE_GRAPH_DOCKER_SMOKE=1`, image `LIFE_GRAPH_SMOKE_DRIVER_IMAGE`).
+
+## Acceptance criteria: exact test names in the instruction (2026-11-28)
+
+Workers wrote tests whose names differed slightly from the plan's `test: <file>::<name>`, and
+`acceptance_tests_pass` (strict, fail-closed, unchanged) did not find them. Every task that cites
+ACs now gets, after the criteria list (`acceptance.criteria_block`, used for single plan tasks,
+sequential fan-out, team workers and the integration task), an `--- EXACT TEST NAMES (checked
+strictly) ---` block listing each cited AC's exact file and test name (`acceptance.exact_test_names`)
+and requiring them character for character:
+
+- pytest `<file>::<test>` / `<file>::<Class>::<test>[<param>]`: the node id exactly, `def <test>`
+  at module level or inside `class <Class>`, the parametrize id if given;
+- JS/TS `<file>::<title>` (vitest/jest/bun, run as `<runner> <file> -t <escaped title>`, which
+  matches anywhere in the full `<describe> <test>` title): `test("<title>", ...)` with that exact
+  title; a surrounding `describe(...)` is fine, but the title is not split across describe and test;
+- a bare `<file>`: the whole file runs.
+
+ACs without a safe bound test are listed as criteria but not in the strict block.

@@ -7,12 +7,13 @@ continued and queues it; the dev-task runner then calls this.
 
 The continuation runs in the task's kept worktree, on the same driver,
 session and account (``driver.resume``), then through the normal chain: the
-tamper and no-change guards, the verifier chain (with the bounce and the
-owner's rounds), landing and the PR approval. Landing commits on top of the
-task's ``lg/task-*`` branch, so the approval path stays single: a pending
-``driver_pr`` approval is updated in place; once its PR is open a new one is
-filed whose approval pushes the same branch into the same PR (``gh pr view``
-finds it), never a second PR.
+owner's steering messages (waiting ones ride in the follow-up, later ones get
+a steering turn, drivers/steering.py), the tamper and no-change guards, the
+verifier chain (with the bounce and the owner's rounds), landing and the PR
+approval. Landing commits on top of the task's ``lg/task-*`` branch, so the
+approval path stays single: a pending ``driver_pr`` approval is updated in
+place; once its PR is open a new one is filed whose approval pushes the same
+branch into the same PR (``gh pr view`` finds it), never a second PR.
 """
 
 from __future__ import annotations
@@ -130,6 +131,8 @@ class ContinueRunMixin:
                 caller_verify_chain=list(saved.get("verify_chain") or []) or None,
                 isolate_workdir=False,
             )
+            # The owner's waiting steering messages ride in the follow-up.
+            steer_block = await self._take_start_messages(run, into="continue")
             run.driver = driver
             run.worktree, run.worktree_origin, run.workdir = worktree, origin, worktree
             run.packet.project_context["path"] = str(worktree)
@@ -158,8 +161,14 @@ class ContinueRunMixin:
             await self._end_transaction(session)
             await self._run_driver(
                 run,
-                resume=(str(session_id), continue_text(feedback, reason), saved.get("account_id")),
+                resume=(
+                    str(session_id),
+                    continue_text(feedback, reason) + steer_block,
+                    saved.get("account_id"),
+                ),
             )
+            await self._settle_start_messages(run)
+            await self._steer(run)
             await self._check_worktree_link(run)
             await self._check_files_changed(run)
             self._decide_park(run)

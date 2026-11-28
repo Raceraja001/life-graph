@@ -290,6 +290,8 @@ def test_decide():
 
 
 async def test_a_failing_worker_cancels_the_rest_of_its_team(monkeypatch):
+    # driver_team_worker_retries = 0: the Phase 4b behaviour, no retry.
+    monkeypatch.setattr(settings, "driver_team_worker_retries", 0)
     group = DevTaskGroup(
         id=uuid.uuid4(), tenant_id="t1", kind="team", status="running", properties={},
         source_ref="plan-1",
@@ -367,3 +369,26 @@ async def test_the_plan_view_shows_the_team(monkeypatch):
     assert await teams.team_view(session, "t1", [_queued()], {}) is None
     # Another tenant's group is not shown.
     assert (await teams.team_view(session, "t2", [w1], {}))["status"] is None
+
+
+async def test_workers_and_integration_are_told_the_exact_test_names(monkeypatch, created):
+    """2026-11-28: workers wrote near-miss test names; the strict check failed them."""
+    monkeypatch.setattr(settings, "driver_team_max_parallel", 2)
+    await _approve_plan(monkeypatch, _Store())
+
+    workers, integ = created[:3], created[3]
+    exact_a = "pytest node id exactly `tests/unit/test_a.py::test_a`: define `def test_a(...)`"
+    exact_b = "pytest node id exactly `tests/unit/test_b.py::test_b`: define `def test_b(...)`"
+    assert "--- EXACT TEST NAMES (checked strictly) ---" in workers[0]["instruction"]
+    assert exact_a in workers[0]["instruction"]
+    assert exact_b not in workers[0]["instruction"]  # only the ACs it cites
+    assert exact_b in workers[1]["instruction"]
+    assert "EXACT TEST NAMES" not in workers[2]["instruction"]  # cites none
+    assert exact_a in integ["instruction"] and exact_b in integ["instruction"]
+
+
+async def test_sequential_plan_tasks_get_the_exact_test_names_too(monkeypatch, created):
+    await _approve_plan(monkeypatch, _Store())
+
+    assert "`tests/unit/test_a.py::test_a`" in created[0]["instruction"]
+    assert "character for character" in created[0]["instruction"]
