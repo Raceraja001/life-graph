@@ -1,0 +1,90 @@
+{
+  "benchmark": "life_graph_ingestion_structure_v1",
+  "cases_sha256": "9383814b9bab565fc3100e9664acdd3d65b72ccb7cd54d628e343ad937f0a65e",
+  "cases": 204,
+  "tamil_or_tanglish_share": 0.309,
+  "zero_tolerance": {
+    "world_time_set_where_unknown": 0,
+    "world_time_future_given_start": 0,
+    "wrong_auto_supersede": 0,
+    "decision_confirmed_without_owner": 0,
+    "outside_supersede_or_link": 0,
+    "correction_given_valid_until": 0,
+    "model_calls": 0
+  },
+  "world_time": {
+    "cases": 119,
+    "precision": 1.0,
+    "recall": 1.0,
+    "denominators": {
+      "precision": 65,
+      "recall": 65
+    },
+    "set_where_unknown": [],
+    "future_given_start": [],
+    "misses": []
+  },
+  "supersession": {
+    "cases": 37,
+    "precision": 1.0,
+    "recall": 0.7619,
+    "tier_accuracy": 0.8378,
+    "world_end_precision": 1.0,
+    "world_end_recall": 0.6,
+    "low_items_per_100_facts": 5.4,
+    "denominators": {
+      "precision": 19,
+      "recall": 21,
+      "tier_accuracy": 37,
+      "world_end_precision": 3,
+      "world_end_recall": 5
+    },
+    "wrong_auto_supersede": [],
+    "outside": [],
+    "correction_given_valid_until": [],
+    "misses": [
+      "s1-manager-tanglish: high (gold high +end)",
+      "s1-salary-tamil: high (gold high +end)",
+      "s2-negation: none (gold medium)",
+      "s2-negation-tamil: none (gold medium)",
+      "s2-value-sip: none (gold medium)",
+      "s2-negated-slot: none (gold medium)",
+      "s2-outside-negation: none (gold medium)",
+      "s2-value-tanglish: none (gold medium)"
+    ]
+  },
+  "links": {
+    "cases": 16,
+    "denominators": {
+      "because_precision": 5,
+      "because_recall": 5,
+      "leads_to_precision": 5,
+      "leads_to_recall": 5
+    },
+    "because_precision": 1.0,
+    "because_recall": 1.0,
+    "leads_to_precision": 1.0,
+    "leads_to_recall": 1.0,
+    "outside": [],
+    "misses": []
+  },
+  "decisions": {
+    "capture_cases": 14,
+    "moves_cases": 18,
+    "detection_precision": 1.0,
+    "detection_recall": 0.5714,
+    "lifecycle_accuracy": 1.0,
+    "denominators": {
+      "detection_precision": 4,
+      "detection_recall": 7,
+      "lifecycle_accuracy": 18
+    },
+    "confirmed_without_owner": [],
+    "outside": [],
+    "misses": [
+      "cap-tamil: 0 candidates (gold 1)",
+      "cap-tanglish: 0 candidates (gold 1)",
+      "cap-tanglish-venaam: 0 candidates (gold 1)"
+    ]
+  }
+}
