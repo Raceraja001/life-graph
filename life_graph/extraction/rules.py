@@ -58,6 +58,10 @@ class ExtractedFact:
     local model proposed it (extraction/llm.py, only with ingest_typed_links).
     Only a proposal: services/memory/typed_links.py links it when the owner's
     words hold a sequence cue ("so", "then", "அதனால்")."""
+    valid_from: str | None = None
+    """YYYY-MM-DD the model says it started being true (only asked for with
+    ``settings.ingest_world_time``). A proposal: it is kept only when a rule
+    agrees (extraction/world_time.py ``from_model``)."""
 
 
 # ---------------------------------------------------------------------------

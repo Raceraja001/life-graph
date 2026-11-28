@@ -133,13 +133,34 @@ _LEADS_TO_HINT = (
 #: Most leads_to positions read from one fact.
 _MAX_LEADS_TO = 3
 
+#: The optional ``valid_from`` field (M8 ingestion ADR §5.1 step 3): when the
+#: fact started being true, as the model reads it. Sent only with
+#: ``settings.ingest_world_time`` on, so with it off the request is exactly as
+#: before. Only a proposal: the save path keeps it only when a rule agrees
+#: (services/memory/world_time.py, extraction/world_time.py ``from_model``).
+_VALID_FROM_FIELD: dict[str, Any] = {
+    "type": ["string", "null"],
+    "description": (
+        "YYYY-MM-DD the fact started being true, only if the text says when"
+        " ('moved to Coimbatore last month', 'since March 2024'); otherwise null."
+    ),
+}
+
 
 def extraction_schema() -> dict[str, Any]:
-    """The schema sent to the model: today's, plus ``leads_to`` with ingest_typed_links."""
-    if not settings.ingest_typed_links:
+    """The schema sent to the model: today's, plus ``leads_to`` with
+    ingest_typed_links and ``valid_from`` with ingest_world_time.
+
+    With both flags off it is the very same object as before.
+    """
+    if not (settings.ingest_typed_links or settings.ingest_world_time):
         return _EXTRACTION_SCHEMA
     schema = copy.deepcopy(_EXTRACTION_SCHEMA)
-    schema["properties"]["facts"]["items"]["properties"]["leads_to"] = _LEADS_TO_FIELD
+    fields = schema["properties"]["facts"]["items"]["properties"]
+    if settings.ingest_world_time:
+        fields["valid_from"] = _VALID_FROM_FIELD
+    if settings.ingest_typed_links:
+        fields["leads_to"] = _LEADS_TO_FIELD
     return schema
 
 
@@ -744,18 +765,28 @@ class LLMExtractor:
 
 
 def _validity(item: dict) -> dict[str, Any]:
-    """``changes_over_time`` and ``valid_until`` from one extracted item, checked.
+    """``changes_over_time``, ``valid_until`` and ``valid_from`` from one item, checked.
 
-    A date that is not YYYY-MM-DD is dropped rather than guessed at.
+    A date that is not YYYY-MM-DD is dropped rather than guessed at. A
+    ``valid_from`` is read only with ``ingest_world_time`` on, and is only a
+    proposal: the save path keeps it only when a rule agrees
+    (services/memory/world_time.py).
     """
     from datetime import date
 
-    until = item.get("valid_until")
-    try:
-        until = date.fromisoformat(str(until)).isoformat() if until else None
-    except ValueError:
-        until = None
-    return {"changes_over_time": bool(item.get("changes_over_time")), "valid_until": until}
+    def _day(value: Any) -> str | None:
+        try:
+            return date.fromisoformat(str(value)).isoformat() if value else None
+        except ValueError:
+            return None
+
+    out: dict[str, Any] = {
+        "changes_over_time": bool(item.get("changes_over_time")),
+        "valid_until": _day(item.get("valid_until")),
+    }
+    if settings.ingest_world_time and item.get("valid_from"):
+        out["valid_from"] = _day(item.get("valid_from"))
+    return out
 
 
 def _meaning(item: dict) -> dict[str, Any]:

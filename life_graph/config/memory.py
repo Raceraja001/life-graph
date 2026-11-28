@@ -121,6 +121,13 @@ class MemorySettings(BaseModel):
     # never makes one. A real world change also ends the old fact's world
     # time (valid_until). Off means the save path behaves exactly as before.
     ingest_supersession_tiers: bool = False
+    # M8 ingestion step 3 (services/memory/world_time.py, ADR m8-ingestion
+    # §5.1): a new memory gets valid_from from its own words ("since 2019",
+    # "nethu", "போன மாதம்") by deterministic rules, recorded in
+    # properties.world_time, and the extraction call may propose a
+    # valid_from that a rule must agree with. Off: saves, the extraction
+    # schema and every row are exactly as before.
+    ingest_world_time: bool = False
     # The owner's lasting facts, put in front of every local Jarvis answer
     # whether or not search finds them (services/profile_card.py). 0 = off.
     profile_card_max_items: int = 40

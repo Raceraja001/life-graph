@@ -34,7 +34,7 @@ from typing import Any
 
 from life_graph.core.run_taint import TAINTED_REFUSAL, outside_content_seen
 from life_graph.scoring.ranking import INDEX_CONTENT_CHARS
-from life_graph.services.memory import supersession
+from life_graph.services.memory import supersession, world_time
 from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
@@ -472,18 +472,26 @@ async def memory_save(
                     # saved list find it (review 2026-10-24, H3).
                     await _activate(tenant_id, same.id, saved_props)
             else:
+                # When it started, from its words or the owner's message (ADR
+                # m8-ingestion §5.1). Only a new row: a waiting one keeps its own.
+                started = world_time.for_text(text_, said, saved_props)
                 row = await store.store(
                     MemoryCreate(
                         content=text_,
                         tags=["explicit_save"],
                         source_type="explicit",
                         importance=0.7,
-                        properties=saved_props,
+                        properties=(
+                            world_time.record(dict(saved_props), started)
+                            if started is not None
+                            else saved_props
+                        ),
                     ),
                     embedding=embedding or None,
                     trust_tier="self",
                     status="active" if asked else "pending",
                     extraction_tier="explicit",
+                    **world_time.store_kwargs(started),
                 )
             replaced = will_replace = None
             if old_id is not None and asked:
