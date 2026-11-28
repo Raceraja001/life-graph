@@ -4,7 +4,9 @@ Before 2026-11-28 ``ClaudeCodeDriver._format_prompt`` added memories,
 preferences and procedures to the prompt whenever the packet was not
 private, although Claude always runs on a cloud model. It now follows the
 codex/gemini rule (``cli_driver.build_prompt``): none of the three, ever.
-The local driver, whose model runs on the machine, is unchanged.
+The local driver gets the same rule when its resolved model is a cloud
+model (``run_is_local``); on a local model it still receives preferences and
+procedures.
 """
 
 from __future__ import annotations
@@ -47,8 +49,7 @@ def test_claude_code_prompt_has_no_personal_data(private):
         assert heading not in prompt
 
 
-@pytest.mark.asyncio
-async def test_local_driver_still_gets_preferences_and_procedures(monkeypatch, tmp_path):
+async def _local_system_prompt(monkeypatch, tmp_path, packet: ContextPacket) -> str:
     captured: dict = {}
 
     async def _run(**kwargs):
@@ -57,10 +58,56 @@ async def test_local_driver_still_gets_preferences_and_procedures(monkeypatch, t
             yield  # pragma: no cover — makes this an async generator
 
     class _FakeOrchestrator:
+        def __init__(self, *args, **kwargs):
+            pass
+
         def run(self, **kwargs):
             return _run(**kwargs)
 
     monkeypatch.setattr("life_graph.agents.orchestrator.AgentOrchestrator", _FakeOrchestrator)
-    await LocalDriver().dispatch(_packet(private=False), tmp_path)
-    assert "PREF-SECRET" in captured["system_prompt"]
-    assert "PROC-SECRET" in captured["system_prompt"]
+    await LocalDriver().dispatch(packet, tmp_path)
+    return captured["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_local_driver_on_a_local_model_still_gets_preferences_and_procedures(
+    monkeypatch, tmp_path
+):
+    seen: list[str | None] = []
+
+    def _local(model):
+        seen.append(model)
+        return True
+
+    monkeypatch.setattr("life_graph.drivers.local.run_is_local", _local)
+    packet = _packet(private=False)
+    packet.persona_model = "ollama_chat/qwen3:14b"
+    prompt = await _local_system_prompt(monkeypatch, tmp_path, packet)
+    assert seen == ["ollama_chat/qwen3:14b"]
+    assert "PREF-SECRET" in prompt and "PROC-SECRET" in prompt
+    assert "MEMORY-SECRET" not in prompt  # this driver never renders memories
+
+
+@pytest.mark.asyncio
+async def test_local_driver_on_a_cloud_model_gets_no_personal_data(monkeypatch, tmp_path):
+    monkeypatch.setattr("life_graph.drivers.local.run_is_local", lambda model: False)
+    packet = _packet(private=False)
+    packet.persona_model = "gemini/gemini-3.6-flash"
+    prompt = await _local_system_prompt(monkeypatch, tmp_path, packet)
+    assert "Fix the failing parser test." not in prompt  # the task is the user message
+    assert "You are code-fixer." in prompt
+    for secret in SECRETS:
+        assert secret not in prompt
+    for heading in ("User preferences", "Relevant procedures"):
+        assert heading not in prompt
+
+
+@pytest.mark.asyncio
+async def test_local_driver_on_the_real_cloud_default_gets_no_personal_data(monkeypatch, tmp_path):
+    """No stub: the default agent_llm_model is a cloud model, so it is cut."""
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "agent_llm_model", "gemini/gemini-3.6-flash")
+    prompt = await _local_system_prompt(monkeypatch, tmp_path, _packet(private=False))
+    for secret in SECRETS:
+        assert secret not in prompt

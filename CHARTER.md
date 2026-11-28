@@ -115,7 +115,8 @@ free tiers may train on what they are sent, and personal details are hidden firs
   and memories from the prompt and refuses any model that is not free.
 - **Coding CLIs** (`claude_code`, `codex`, `gemini`) run on their provider's cloud model, so
   their prompts never carry memories, preferences or procedures, private task or not
-  ([agent-drivers spec](docs/specs/agent-drivers.md), amended 2026-11-28).
+  ([agent-drivers spec](docs/specs/agent-drivers.md), amended 2026-11-28). The `local` driver
+  adds preferences and procedures only when its resolved model, failover chain included, is local.
 - **Research workers** (`services/workers.py`) read only public pages handed to them; every
   brief passes the scrub (`services/scrub.py`).
 - **Jarvis** picks its model per request (`services/lead.py`): a personal request runs on the
