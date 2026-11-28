@@ -765,3 +765,72 @@ All three passed health, UI, services, 0 log errors, the dev edition and the res
 **Open:**
 - Worker-side events reach no WebSocket; `ws_event_handler` must move below the API layer.
 - The dashboard Caddy key is not an owner key (owner action).
+
+### D34. M8 ingestion ADR: designed, built (steps 1–8, 10), released with every new flag off (2026-11-28)
+
+**Owner:** "proceed" to the ADR plus the fix of the three decision gaps it found, then "proceed" to the build.
+
+**1. ADR** `docs/design/adr-m8-ingestion-structure.md` (#424). Its finding: the save path never produced the structure M8 reads.
+- world time always equalled saved time;
+- supersession almost never completed;
+- every link was one generic type;
+- the decision lifecycle was dead code.
+
+**2. Decision gaps, fixed in #430:**
+- `POST /judgment/decisions` keeps `decided`/`discarded` only for owner-verified callers (`ingress_for(...).is_owner`). Everyone else gets `candidate`, and `meta.status_downgraded` says so.
+- Status values are validated.
+- `supersede_decision` refuses a cross-tenant, missing or self `new_id`.
+- Capture decision detection runs on SELF-tier surfaces only.
+- `require_owner()` was not used: it is a no-op while `approvals_require_owner` is off.
+
+**3. Build. Each step is its own PR; every new behaviour sits behind a flag that defaults to off.**
+
+| Step | PR | What | Flag |
+|---|---|---|---|
+| 1 | #429 | a late capture's `valid_from` follows its said time | none (fix) |
+| 2 | #433 | `extraction/world_time.py`: English, Tamil, Tanglish rules; 119 cases, 41 Tamil/Tanglish; precision and recall 1.0; 0 starts where unknown | none (not wired) |
+| 3 | #438 | world time wired into `_process_fact`, `memory_save` and the verbatim store; `properties.world_time`; a model date only when a rule agrees | `ingest_world_time` |
+| 4 | #431 | one `services/memory/supersession.py` helper for every supersede; closed two cross-tenant pointer gaps; one locked transaction | none (no behaviour change) |
+| 5 | #439 | world-change end (`valid_until`, `valid_until_by=supersession`); high/medium/low tiers; low capped at 5 a day; outside text never supersedes | `ingest_supersession_tiers` |
+| 6 | #435 | BECAUSE (from `reason`) and LEADS_TO (model plus cue word) links, within one message, same tier, new memories only | `ingest_typed_links` |
+| 7 | #434 | migration 063: `life_graph.decisions.superseded_at TIMESTAMPTZ NULL`, no default, no backfill | n/a |
+| 8 | #436 | decision lifecycle: owner-only confirm/discard/review/supersede routes (always on); `properties.lifecycle` trail; memory-side mirror | `decision_lifecycle` (mirror only) |
+| 10 | #441 | `scripts/shadow_context_structure.py`: read-only, label-only, tenant-scoped counts | n/a |
+| — | #440 | rejecting a pending memory deletes its links (tenant-scoped); `/deny` keeps them | none (fix) |
+
+- **Not done here:** step 9, the ingest eval arm (in progress).
+- **ADR deviations, all stricter, recorded in ADR §10:**
+  - "now" and "currently" give no start;
+  - a negated fact gets no start;
+  - `from_model` dates must fall inside a period the rules placed;
+  - `/deny` and identity keep their owner-made `valid_until`.
+
+**4. Released as `prod-20261128-0459`** (rollback `e87fb6b6`), at green `0b0febc`; only generated docs changed after it.
+- **Backups** in `~/life-graph-backups/release-20261128-1`: `.env`, the venv freeze, and `decisions-alembic.before.dump` (pg_dump of `life_graph.decisions` plus `alembic_version`).
+- **Stale lock:** a git `index.lock` (empty, from 2026-11-27 17:13 UTC, no git running) stopped the first run before any change. It was moved aside into the backup folder, and the release was rerun.
+- **Checks:**
+  - health and UI 200; services active; 0 log errors; dev edition 200;
+  - alembic 062 → 063; `superseded_at` is `timestamptz`, nullable;
+  - decisions before and after: `candidate:11`;
+  - all four new flags False, both shadow flags True;
+  - snapshot 17 items, about 117 ms warm;
+  - restore drill passed.
+- **Owner gates with the non-owner service key #2:**
+  - graph/query 403;
+  - decision confirm, discard and supersede 403;
+  - a bad status on create 422.
+  - Key #1 is also an owner key, so its 404/400 there are the owner answers.
+- **First shadow counts (2 test turns):**
+  - 0 of 9 memory items have world time;
+  - 0 relations;
+  - all 14 decision items are candidates;
+  - no baseline (both turns were temporary chats).
+
+  This is today's state, which the flags are meant to change.
+
+**Next:**
+- Step 9 (eval), then the owner's order for turning flags on: one at a time, 7 days of shadow counts each, each logged as its own decision.
+- Small follow-ups from #440:
+  - the AGE graph mirror never deletes edges;
+  - re-approving a rejected memory doesn't restore its links;
+  - the MCP `forget` docstring says "soft delete", but it is a hard delete.
