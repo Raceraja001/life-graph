@@ -605,8 +605,9 @@ async def test_the_team_view_shows_attempts_rungs_agents_notes_and_warnings():
     ]  # fmt: skip
     assert row["rung"] == "local:ollama_chat/qwen3-coder:30b"
     assert view["notes"] == [
-        {"author_index": 1, "author_title": "t", "task_id": "x", "text": "n", "at": "z"}
-    ]
+        {"author_index": 1, "author_title": "t", "task_id": "x", "text": "n", "at": "z",
+         "worker_index": 1, "author": "Worker 1 · t"}
+    ]  # fmt: skip
     assert view["warnings"][0].startswith("task 2: unknown tier")
     assert view["integration"]["attempts"] == 1
     assert view["retries_per_worker"] == settings.driver_team_worker_retries

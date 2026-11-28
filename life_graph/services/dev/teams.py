@@ -721,7 +721,17 @@ async def team_view(
         "workers": [row(w) for w in workers],
         "integration": row(integ) if integ is not None else None,
         "notes": [
-            {k: n.get(k) for k in ("author_index", "author_title", "task_id", "text", "at")}
+            {
+                **{k: n.get(k) for k in ("author_index", "author_title", "task_id", "text", "at")},
+                # Stable names for the cockpit: which worker wrote it, and a display label.
+                "worker_index": n.get("author_index"),
+                "author": (
+                    f"Worker {n.get('author_index')}"
+                    + (f" · {str(n['author_title'])[:80]}" if n.get("author_title") else "")
+                    if n.get("author_index") is not None
+                    else (str(n.get("author_title") or "")[:80] or None)
+                ),
+            }
             for n in gprops.get("notes") or []
         ],
         "warnings": list(gprops.get("warnings") or []),
