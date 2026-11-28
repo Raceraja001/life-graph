@@ -1,0 +1,4511 @@
+{
+  "benchmark": "life_graph_context_quality_v1",
+  "dataset_sha256": "8e66336dae89357eddfb2125335f5a815046441d945361207bcc038428ecb16c",
+  "questions_sha256": "3e58ee1ad579d06c9e80582e9d52c1f0e650445845520a1a82271e4860485562",
+  "judge": "off (assemble_context calls retrieve(judge=False)); no model call",
+  "arms": {
+    "bge-m3": {
+      "embedder": "bge-m3",
+      "by_category": {
+        "O": {
+          "questions": 7,
+          "precision": 0.4538,
+          "precision_without_standing": 0.4935,
+          "standing_items": 53,
+          "recall": 0.8788,
+          "forbidden_as_current": 0,
+          "noise_items": 71,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": 0.5,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 0.7143,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 24,
+            "decision": 1,
+            "due_intention": 29,
+            "neighbour": 4,
+            "open_intention": 2,
+            "search_hit": 70
+          },
+          "denominators": {
+            "precision": 130,
+            "recall": 33,
+            "current_vs_historical": 13,
+            "temporal": 19,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 2,
+            "provenance_coverage": 130,
+            "origin_accuracy": 130,
+            "field_accuracy": 7,
+            "abstention_accuracy": 7
+          }
+        },
+        "A": {
+          "questions": 1,
+          "precision": 0.2105,
+          "precision_without_standing": 0.3636,
+          "standing_items": 8,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 15,
+          "current_vs_historical": null,
+          "temporal": null,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 4,
+            "due_intention": 4,
+            "open_intention": 1,
+            "search_hit": 10
+          },
+          "denominators": {
+            "precision": 19,
+            "recall": 1,
+            "current_vs_historical": 0,
+            "temporal": 0,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 0,
+            "provenance_coverage": 19,
+            "origin_accuracy": 19,
+            "field_accuracy": 0,
+            "abstention_accuracy": 1
+          }
+        },
+        "B": {
+          "questions": 4,
+          "precision": 0.2078,
+          "precision_without_standing": 0.3256,
+          "standing_items": 34,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 61,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": 1.0,
+          "relationship_explicit": 0.0,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 1.0,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 15,
+            "decision": 1,
+            "due_intention": 19,
+            "neighbour": 1,
+            "open_intention": 1,
+            "search_hit": 40
+          },
+          "denominators": {
+            "precision": 77,
+            "recall": 5,
+            "current_vs_historical": 4,
+            "temporal": 4,
+            "relationship_both_ends": 1,
+            "relationship_explicit": 1,
+            "conflict_recall": 2,
+            "provenance_coverage": 77,
+            "origin_accuracy": 77,
+            "field_accuracy": 2,
+            "abstention_accuracy": 4
+          }
+        },
+        "C": {
+          "questions": 2,
+          "precision": 0.25,
+          "precision_without_standing": 0.4167,
+          "standing_items": 16,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 30,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 1.0,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 7,
+            "decision": 1,
+            "due_intention": 9,
+            "neighbour": 2,
+            "open_intention": 1,
+            "search_hit": 20
+          },
+          "denominators": {
+            "precision": 40,
+            "recall": 2,
+            "current_vs_historical": 2,
+            "temporal": 2,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 1,
+            "provenance_coverage": 40,
+            "origin_accuracy": 40,
+            "field_accuracy": 2,
+            "abstention_accuracy": 2
+          }
+        },
+        "D": {
+          "questions": 1,
+          "precision": 0.3,
+          "precision_without_standing": 0.4545,
+          "standing_items": 9,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 14,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "neighbour": 1,
+            "search_hit": 10
+          },
+          "denominators": {
+            "precision": 20,
+            "recall": 3,
+            "current_vs_historical": 1,
+            "temporal": 1,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 0,
+            "provenance_coverage": 20,
+            "origin_accuracy": 20,
+            "field_accuracy": 0,
+            "abstention_accuracy": 1
+          }
+        },
+        "E": {
+          "questions": 2,
+          "precision": 0.2727,
+          "precision_without_standing": 0.4,
+          "standing_items": 7,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 16,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": 1.0,
+          "relationship_explicit": 0.0,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 3,
+            "decision": 1,
+            "due_intention": 4,
+            "open_intention": 1,
+            "search_hit": 13
+          },
+          "denominators": {
+            "precision": 22,
+            "recall": 3,
+            "current_vs_historical": 2,
+            "temporal": 3,
+            "relationship_both_ends": 1,
+            "relationship_explicit": 1,
+            "conflict_recall": 0,
+            "provenance_coverage": 22,
+            "origin_accuracy": 22,
+            "field_accuracy": 0,
+            "abstention_accuracy": 2
+          }
+        },
+        "F": {
+          "questions": 1,
+          "precision": 0.35,
+          "precision_without_standing": 0.4615,
+          "standing_items": 7,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 13,
+          "current_vs_historical": null,
+          "temporal": null,
+          "relationship_both_ends": 1.0,
+          "relationship_explicit": 1.0,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 3,
+            "decision": 1,
+            "due_intention": 4,
+            "neighbour": 1,
+            "open_intention": 1,
+            "search_hit": 10
+          },
+          "denominators": {
+            "precision": 20,
+            "recall": 2,
+            "current_vs_historical": 0,
+            "temporal": 0,
+            "relationship_both_ends": 1,
+            "relationship_explicit": 1,
+            "conflict_recall": 0,
+            "provenance_coverage": 20,
+            "origin_accuracy": 20,
+            "field_accuracy": 0,
+            "abstention_accuracy": 1
+          }
+        },
+        "G": {
+          "questions": 3,
+          "precision": 0.1379,
+          "precision_without_standing": 0.25,
+          "standing_items": 26,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 50,
+          "current_vs_historical": null,
+          "temporal": null,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 1.0,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 11,
+            "decision": 1,
+            "due_intention": 15,
+            "neighbour": 1,
+            "search_hit": 30
+          },
+          "denominators": {
+            "precision": 58,
+            "recall": 2,
+            "current_vs_historical": 0,
+            "temporal": 0,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 1,
+            "provenance_coverage": 58,
+            "origin_accuracy": 58,
+            "field_accuracy": 5,
+            "abstention_accuracy": 3
+          }
+        }
+      },
+      "per_question": {
+        "O1": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 13,
+          "required": 8,
+          "found_required": 6,
+          "missed_required": [
+            "l_aws_goal",
+            "w_blocker"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_pgqueue",
+            "f_fund_old",
+            "f_injection",
+            "w_inferred_jobchange",
+            "w_job_new",
+            "w_not_leaving"
+          ],
+          "standing_items": 9,
+          "ok_standing": 8,
+          "item_log": [
+            {
+              "key": "f_injection",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "search_hit": 10
+          },
+          "temporal_checks": 5,
+          "temporal_correct": 5,
+          "cvh_checks": 3,
+          "cvh_correct": 3,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 31.0
+        },
+        "O2": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 7,
+          "required": 4,
+          "found_required": 3,
+          "missed_required": [
+            "l_aws_goal"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pgqueue",
+            "f_budget",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "p_constraint_travel",
+            "p_inferred_hobby",
+            "p_run"
+          ],
+          "standing_items": 9,
+          "ok_standing": 1,
+          "item_log": [
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_run",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 4,
+          "field_correct": 2,
+          "field_wrong": [
+            "l_aws_goal.origin: '<not included>' != 'model_proposed'",
+            "l_aws_goal.confirmed: '<not included>' != False"
+          ],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 31.21
+        },
+        "O4": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 6,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "l_aws_goal",
+            "p_constraint_travel",
+            "p_goal_marathon",
+            "p_inferred_hobby",
+            "p_no_meat",
+            "w_inferred_jobchange",
+            "w_proj_billing"
+          ],
+          "standing_items": 9,
+          "ok_standing": 4,
+          "item_log": [
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "p_no_meat",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 3,
+          "field_correct": 3,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 29.2
+        },
+        "O8": {
+          "items": 22,
+          "unresolved_items": 0,
+          "ok_items": 7,
+          "required": 4,
+          "found_required": 4,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "l_aws_goal",
+            "l_aws_prereq",
+            "p_back",
+            "p_goal_marathon",
+            "p_pickup",
+            "p_run",
+            "w_blocker",
+            "w_career_goal",
+            "w_dep",
+            "w_inferred_jobchange",
+            "w_proj_billing"
+          ],
+          "standing_items": 9,
+          "ok_standing": 5,
+          "item_log": [
+            {
+              "key": "p_pickup",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8981,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_task_demo",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_run",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "neighbour": 3,
+            "search_hit": 10
+          },
+          "temporal_checks": 5,
+          "temporal_correct": 5,
+          "cvh_checks": 1,
+          "cvh_correct": 1,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 22,
+          "origin_checked": 22,
+          "origin_correct": 22,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.2
+        },
+        "O9": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 9,
+          "required": 7,
+          "found_required": 7,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "i_clinic",
+            "i_demo",
+            "i_payflow_followup",
+            "i_runbook",
+            "w_job_new",
+            "w_not_leaving"
+          ],
+          "standing_items": 7,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9735,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9549,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9531,
+              "block": "search"
+            },
+            {
+              "key": "f_sip",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9291,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.914,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9108,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8955,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8804,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8748,
+              "block": "search"
+            },
+            {
+              "key": "f_injection",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8256,
+              "block": "search"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "buy",
+            "new laptop"
+          ],
+          "reasons": {
+            "current_decision": 3,
+            "decision": 1,
+            "due_intention": 4,
+            "open_intention": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 5,
+          "temporal_correct": 5,
+          "cvh_checks": 5,
+          "cvh_correct": 5,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.27
+        },
+        "O10": {
+          "items": 20,
+          "unresolved_items": 0,
+          "ok_items": 6,
+          "required": 4,
+          "found_required": 3,
+          "missed_required": [
+            "f_fund_old"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "i_clinic",
+            "i_demo",
+            "i_payflow_followup",
+            "i_runbook",
+            "l_aws_prereq",
+            "l_prereq",
+            "p_constraint_travel",
+            "p_mother_care",
+            "p_saturday",
+            "w_job_new"
+          ],
+          "standing_items": 8,
+          "ok_standing": 1,
+          "item_log": [
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9583,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9208,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8493,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8362,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.755,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            }
+          ],
+          "insufficient": true,
+          "missing": [
+            "second"
+          ],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 4,
+            "neighbour": 1,
+            "open_intention": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 0,
+          "conflicts_missed": [
+            {
+              "pair": [
+                "f_fund_old",
+                "f_fund_new_pending"
+              ],
+              "source": "approval"
+            }
+          ],
+          "provenance_covered": 20,
+          "origin_checked": 20,
+          "origin_correct": 20,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": true,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 31.44
+        },
+        "A3": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 4,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_husband_income_new",
+            "i_clinic",
+            "i_demo",
+            "i_payflow_followup",
+            "i_runbook",
+            "p_back",
+            "p_constraint_travel",
+            "p_mother_care",
+            "p_mother_hosp",
+            "p_run",
+            "p_saturday"
+          ],
+          "standing_items": 8,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_pickup",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "p_daughter_school",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "p_husband_job",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8955,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8825,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_hosp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_run",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 4,
+            "open_intention": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 26.76
+        },
+        "B1": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_fund_goal",
+            "f_fund_old",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "p_anniv",
+            "p_back",
+            "p_constraint_travel",
+            "w_inferred_jobchange",
+            "w_not_leaving"
+          ],
+          "standing_items": 8,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9735,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "p_anniv",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 3,
+            "decision": 1,
+            "due_intention": 5,
+            "search_hit": 10
+          },
+          "temporal_checks": 3,
+          "temporal_correct": 3,
+          "cvh_checks": 3,
+          "cvh_correct": 3,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 30.24
+        },
+        "B2": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_fund_goal",
+            "f_salary_new",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "p_back",
+            "p_inferred_hobby",
+            "w_goal_link",
+            "w_inferred_jobchange",
+            "w_proj_billing"
+          ],
+          "standing_items": 9,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_manager",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9787,
+              "block": "search"
+            },
+            {
+              "key": "w_goal_link",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9688,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9173,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "search_hit": 10
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 1,
+          "cvh_correct": 1,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 29.9
+        },
+        "B4": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 6,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_budget",
+            "f_injection",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "p_back",
+            "p_constraint_travel",
+            "w_goal_link",
+            "w_inferred_jobchange",
+            "w_not_leaving"
+          ],
+          "standing_items": 8,
+          "ok_standing": 2,
+          "item_log": [
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9894,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9735,
+              "block": "search"
+            },
+            {
+              "key": "f_injection",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9531,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "w_goal_link",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 4,
+            "open_intention": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 1,
+          "relations_both_ends": 1,
+          "relations_explicit": 0,
+          "relation_detail": [
+            {
+              "pair": [
+                "w_task_runbook",
+                "i_runbook"
+              ],
+              "relation": "task -> commitment",
+              "stored_as": "none",
+              "both_ends": true,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.25
+        },
+        "B5": {
+          "items": 20,
+          "unresolved_items": 0,
+          "ok_items": 4,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_budget",
+            "f_fund_goal",
+            "f_fund_old",
+            "f_salary_new",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "l_aws_prereq",
+            "p_constraint_travel",
+            "p_goal_marathon"
+          ],
+          "standing_items": 9,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "neighbour": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 20,
+          "origin_checked": 20,
+          "origin_correct": 20,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 2,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 29.65
+        },
+        "C1": {
+          "items": 20,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_budget",
+            "f_car_loan_closed",
+            "f_fund_goal",
+            "f_fund_old",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "p_back",
+            "p_mother_care"
+          ],
+          "standing_items": 8,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9536,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9484,
+              "block": "search"
+            },
+            {
+              "key": "f_sip",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9109,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.7696,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 4,
+            "neighbour": 1,
+            "open_intention": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 20,
+          "origin_checked": 20,
+          "origin_correct": 20,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 30.01
+        },
+        "C5": {
+          "items": 20,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_car_loan_closed",
+            "f_fund_old",
+            "f_husband_income_new",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "p_constraint_travel",
+            "p_no_meat",
+            "w_job_new"
+          ],
+          "standing_items": 8,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9632,
+              "block": "search"
+            },
+            {
+              "key": "f_sip",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9484,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.929,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9089,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_no_meat",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "essentials"
+          ],
+          "reasons": {
+            "current_decision": 3,
+            "decision": 1,
+            "due_intention": 5,
+            "neighbour": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 20,
+          "origin_checked": 20,
+          "origin_correct": 20,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 2,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 31.48
+        },
+        "D1": {
+          "items": 20,
+          "unresolved_items": 0,
+          "ok_items": 6,
+          "required": 3,
+          "found_required": 3,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pgqueue",
+            "f_salary_new",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "p_inferred_hobby",
+            "w_career_goal",
+            "w_job_new",
+            "w_not_leaving",
+            "w_proj_billing"
+          ],
+          "standing_items": 9,
+          "ok_standing": 1,
+          "item_log": [
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_topic",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "l_mastered",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "neighbour": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 1,
+          "cvh_correct": 1,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 20,
+          "origin_checked": 20,
+          "origin_correct": 20,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 30.99
+        },
+        "E2": {
+          "items": 3,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_emi",
+            "f_husband_income_old"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_salary_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9583,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9121,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 3
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 3,
+          "origin_checked": 3,
+          "origin_correct": 3,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 32.44
+        },
+        "E5": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "i_clinic",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "l_aws_goal",
+            "l_mastered",
+            "l_rust_topic",
+            "p_goal_marathon",
+            "w_dep",
+            "w_task_runbook"
+          ],
+          "standing_items": 7,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_task_demo",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9687,
+              "block": "search"
+            },
+            {
+              "key": "w_dep_done",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9632,
+              "block": "search"
+            },
+            {
+              "key": "w_goal_link",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9582,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_rp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9536,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_topic",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "l_mastered",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 3,
+            "decision": 1,
+            "due_intention": 4,
+            "open_intention": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 1,
+          "relations_both_ends": 1,
+          "relations_explicit": 0,
+          "relation_detail": [
+            {
+              "pair": [
+                "w_task_demo",
+                "i_demo"
+              ],
+              "relation": "task -> commitment",
+              "stored_as": "none",
+              "both_ends": true,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.09
+        },
+        "F4": {
+          "items": 20,
+          "unresolved_items": 0,
+          "ok_items": 7,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_fund_goal",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "l_aws_goal",
+            "l_prereq",
+            "p_constraint_travel",
+            "w_dep",
+            "w_manager",
+            "w_proj_rp"
+          ],
+          "standing_items": 7,
+          "ok_standing": 1,
+          "item_log": [
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "f_injection",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9787,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9632,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_rp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8121,
+              "block": "search"
+            },
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_manager",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "held"
+          ],
+          "reasons": {
+            "current_decision": 3,
+            "decision": 1,
+            "due_intention": 4,
+            "neighbour": 1,
+            "open_intention": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 1,
+          "relations_both_ends": 1,
+          "relations_explicit": 1,
+          "relation_detail": [
+            {
+              "pair": [
+                "w_blocker",
+                "w_proj_billing"
+              ],
+              "relation": "constraint -> affected project",
+              "stored_as": "typed_link:BECAUSE",
+              "both_ends": true,
+              "explicit_in_snapshot": true
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 20,
+          "origin_checked": 20,
+          "origin_correct": 20,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.68
+        },
+        "G1": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_car_loan_closed",
+            "f_salary_new",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "l_mastered",
+            "p_back",
+            "p_inferred_hobby",
+            "w_dep",
+            "w_dep_done"
+          ],
+          "standing_items": 8,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8136,
+              "block": "search"
+            },
+            {
+              "key": "w_dep_done",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.7377,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "l_mastered",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 3,
+            "decision": 1,
+            "due_intention": 5,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 5,
+          "field_correct": 5,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 28.01
+        },
+        "G3": {
+          "items": 20,
+          "unresolved_items": 0,
+          "ok_items": 0,
+          "required": 0,
+          "found_required": 0,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_budget",
+            "f_car_loan_closed",
+            "f_emi",
+            "f_fund_goal",
+            "f_fund_old",
+            "f_salary_new",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "l_aws_goal",
+            "l_aws_prereq",
+            "l_aws_progress",
+            "p_anniv",
+            "w_task_runbook"
+          ],
+          "standing_items": 9,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9536,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_progress",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9314,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "p_anniv",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "neighbour",
+              "score": 0.2,
+              "block": "expansion"
+            }
+          ],
+          "insufficient": true,
+          "missing": [
+            "credit"
+          ],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "neighbour": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 20,
+          "origin_checked": 20,
+          "origin_correct": 20,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 29.42
+        },
+        "G4": {
+          "items": 19,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_salary_new",
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "l_aws_goal",
+            "l_aws_prereq",
+            "w_manager",
+            "w_task_demo"
+          ],
+          "standing_items": 9,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "w_goal_link",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9788,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9736,
+              "block": "search"
+            },
+            {
+              "key": "w_manager",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8509,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "w_task_demo",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "role"
+          ],
+          "reasons": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 19,
+          "origin_checked": 19,
+          "origin_correct": 19,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 30.66
+        },
+        "O6": {
+          "items": 12,
+          "unresolved_items": 0,
+          "ok_items": 11,
+          "required": 4,
+          "found_required": 4,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "p_coffee"
+          ],
+          "standing_items": 2,
+          "ok_standing": 2,
+          "item_log": [
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_coffee",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_rp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_dep_done",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "w_manager",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 1,
+            "due_intention": 1,
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 12,
+          "origin_checked": 12,
+          "origin_correct": 12,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 33.62,
+          "change_detection": {
+            "insufficient": false,
+            "explanation": "8 changes since the earlier snapshot. Held back 4.",
+            "expected": 7,
+            "found": 7,
+            "recall": 1.0,
+            "precision": 0.875,
+            "missed": [],
+            "reported": [
+              "decision_superseded:d_kafka",
+              "superseded:w_job_old",
+              "intention_completed:i_selfreview",
+              "conflict_appeared:conflict:w_manager|w_manager_pending",
+              "intention_approaching:i_runbook",
+              "added:d_pgqueue",
+              "added:w_dep_done",
+              "added:w_blocker"
+            ],
+            "off_topic": 0,
+            "suppressed": {
+              "cosmetic": 1,
+              "duplicate": 3
+            },
+            "baseline_items": [
+              "d_kafka",
+              "i_runbook",
+              "i_selfreview",
+              "p_coffee",
+              "w_career_goal",
+              "w_dep",
+              "w_job_old",
+              "w_manager",
+              "w_proj_billing",
+              "w_proj_rp",
+              "w_task_runbook"
+            ],
+            "current_items": [
+              "d_pgqueue",
+              "i_runbook",
+              "p_coffee",
+              "w_blocker",
+              "w_career_goal",
+              "w_dep",
+              "w_dep_done",
+              "w_job_new",
+              "w_manager",
+              "w_proj_billing",
+              "w_proj_rp",
+              "w_task_runbook"
+            ],
+            "detect_ms": 26.43,
+            "leaks": []
+          }
+        }
+      },
+      "change_detection": {
+        "insufficient": false,
+        "explanation": "8 changes since the earlier snapshot. Held back 4.",
+        "expected": 7,
+        "found": 7,
+        "recall": 1.0,
+        "precision": 0.875,
+        "missed": [],
+        "reported": [
+          "decision_superseded:d_kafka",
+          "superseded:w_job_old",
+          "intention_completed:i_selfreview",
+          "conflict_appeared:conflict:w_manager|w_manager_pending",
+          "intention_approaching:i_runbook",
+          "added:d_pgqueue",
+          "added:w_dep_done",
+          "added:w_blocker"
+        ],
+        "off_topic": 0,
+        "suppressed": {
+          "cosmetic": 1,
+          "duplicate": 3
+        },
+        "baseline_items": [
+          "d_kafka",
+          "i_runbook",
+          "i_selfreview",
+          "p_coffee",
+          "w_career_goal",
+          "w_dep",
+          "w_job_old",
+          "w_manager",
+          "w_proj_billing",
+          "w_proj_rp",
+          "w_task_runbook"
+        ],
+        "current_items": [
+          "d_pgqueue",
+          "i_runbook",
+          "p_coffee",
+          "w_blocker",
+          "w_career_goal",
+          "w_dep",
+          "w_dep_done",
+          "w_job_new",
+          "w_manager",
+          "w_proj_billing",
+          "w_proj_rp",
+          "w_task_runbook"
+        ],
+        "detect_ms": 26.43,
+        "leaks": []
+      },
+      "zero_tolerance": {
+        "cross_tenant_leaks": 0,
+        "cloud_model_calls": 0,
+        "forbidden_as_current": 0,
+        "rows_left_after_cleanup": 0
+      },
+      "model_calls_by_route": {},
+      "latency_ms": {
+        "runs": 60,
+        "p50": 31.11,
+        "p95": 33.95,
+        "max": 77.3
+      }
+    }
+  },
+  "skipped": {},
+  "run": {
+    "split": "test",
+    "split_rule": "sha256(question id)[0] % 2: 0 tune, 1 test"
+  }
+}

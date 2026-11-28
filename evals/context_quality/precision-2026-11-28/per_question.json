@@ -1,0 +1,1287 @@
+{
+ "per_question": {
+  "base": {
+   "O1": {
+    "items": 19,
+    "relevant": 13,
+    "required": 8,
+    "found": 6,
+    "precision": 0.684,
+    "recall": 0.75,
+    "missed": [
+     "l_aws_goal",
+     "w_blocker"
+    ]
+   },
+   "O2": {
+    "items": 19,
+    "relevant": 7,
+    "required": 4,
+    "found": 3,
+    "precision": 0.368,
+    "recall": 0.75,
+    "missed": [
+     "l_aws_goal"
+    ]
+   },
+   "O3": {
+    "items": 20,
+    "relevant": 6,
+    "required": 6,
+    "found": 5,
+    "precision": 0.3,
+    "recall": 0.833,
+    "missed": [
+     "i_aws_book"
+    ]
+   },
+   "O4": {
+    "items": 19,
+    "relevant": 6,
+    "required": 2,
+    "found": 2,
+    "precision": 0.316,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O5": {
+    "items": 21,
+    "relevant": 6,
+    "required": 1,
+    "found": 1,
+    "precision": 0.286,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O6": {
+    "items": 12,
+    "relevant": 11,
+    "required": 4,
+    "found": 4,
+    "precision": 0.917,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O7": {
+    "items": 20,
+    "relevant": 8,
+    "required": 2,
+    "found": 2,
+    "precision": 0.4,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O8": {
+    "items": 22,
+    "relevant": 7,
+    "required": 4,
+    "found": 4,
+    "precision": 0.318,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O9": {
+    "items": 19,
+    "relevant": 9,
+    "required": 7,
+    "found": 7,
+    "precision": 0.474,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O10": {
+    "items": 20,
+    "relevant": 6,
+    "required": 4,
+    "found": 3,
+    "precision": 0.3,
+    "recall": 0.75,
+    "missed": [
+     "f_fund_old"
+    ]
+   },
+   "A1": {
+    "items": 20,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.05,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A2": {
+    "items": 19,
+    "relevant": 6,
+    "required": 3,
+    "found": 3,
+    "precision": 0.316,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A3": {
+    "items": 19,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 0.211,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A4": {
+    "items": 20,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.05,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A5": {
+    "items": 19,
+    "relevant": 4,
+    "required": 2,
+    "found": 2,
+    "precision": 0.211,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B1": {
+    "items": 19,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.158,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B2": {
+    "items": 19,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.158,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B3": {
+    "items": 19,
+    "relevant": 7,
+    "required": 2,
+    "found": 2,
+    "precision": 0.368,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B4": {
+    "items": 19,
+    "relevant": 6,
+    "required": 2,
+    "found": 2,
+    "precision": 0.316,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B5": {
+    "items": 20,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 0.2,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C1": {
+    "items": 20,
+    "relevant": 5,
+    "required": 1,
+    "found": 1,
+    "precision": 0.25,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C2": {
+    "items": 20,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.15,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C3": {
+    "items": 20,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.15,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C4": {
+    "items": 20,
+    "relevant": 4,
+    "required": 2,
+    "found": 2,
+    "precision": 0.2,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C5": {
+    "items": 20,
+    "relevant": 5,
+    "required": 1,
+    "found": 1,
+    "precision": 0.25,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D1": {
+    "items": 20,
+    "relevant": 6,
+    "required": 3,
+    "found": 3,
+    "precision": 0.3,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D2": {
+    "items": 20,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 0.2,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D3": {
+    "items": 20,
+    "relevant": 5,
+    "required": 3,
+    "found": 3,
+    "precision": 0.25,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D4": {
+    "items": 19,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.158,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E1": {
+    "items": 1,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E2": {
+    "items": 3,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.333,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E3": {
+    "items": 21,
+    "relevant": 2,
+    "required": 1,
+    "found": 1,
+    "precision": 0.095,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E4": {
+    "items": 19,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.053,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E5": {
+    "items": 19,
+    "relevant": 5,
+    "required": 2,
+    "found": 2,
+    "precision": 0.263,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F1": {
+    "items": 19,
+    "relevant": 6,
+    "required": 4,
+    "found": 4,
+    "precision": 0.316,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F2": {
+    "items": 20,
+    "relevant": 7,
+    "required": 5,
+    "found": 4,
+    "precision": 0.35,
+    "recall": 0.8,
+    "missed": [
+     "w_task_demo"
+    ]
+   },
+   "F3": {
+    "items": 19,
+    "relevant": 2,
+    "required": 2,
+    "found": 2,
+    "precision": 0.105,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F4": {
+    "items": 20,
+    "relevant": 7,
+    "required": 2,
+    "found": 2,
+    "precision": 0.35,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F5": {
+    "items": 19,
+    "relevant": 3,
+    "required": 2,
+    "found": 2,
+    "precision": 0.158,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G1": {
+    "items": 19,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.158,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G2": {
+    "items": 20,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.05,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G3": {
+    "items": 20,
+    "relevant": 0,
+    "required": 0,
+    "found": 0,
+    "precision": 0.0,
+    "recall": 1,
+    "missed": []
+   },
+   "G4": {
+    "items": 19,
+    "relevant": 5,
+    "required": 1,
+    "found": 1,
+    "precision": 0.263,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G5": {
+    "items": 19,
+    "relevant": 5,
+    "required": 1,
+    "found": 1,
+    "precision": 0.263,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G6": {
+    "items": 19,
+    "relevant": 5,
+    "required": 1,
+    "found": 1,
+    "precision": 0.263,
+    "recall": 1.0,
+    "missed": []
+   }
+  },
+  "recall-cfg": {
+   "O1": {
+    "items": 15,
+    "relevant": 10,
+    "required": 8,
+    "found": 6,
+    "precision": 0.667,
+    "recall": 0.75,
+    "missed": [
+     "l_aws_goal",
+     "w_blocker"
+    ]
+   },
+   "O2": {
+    "items": 3,
+    "relevant": 3,
+    "required": 4,
+    "found": 3,
+    "precision": 1.0,
+    "recall": 0.75,
+    "missed": [
+     "l_aws_goal"
+    ]
+   },
+   "O3": {
+    "items": 6,
+    "relevant": 6,
+    "required": 6,
+    "found": 5,
+    "precision": 1.0,
+    "recall": 0.833,
+    "missed": [
+     "i_aws_book"
+    ]
+   },
+   "O4": {
+    "items": 4,
+    "relevant": 4,
+    "required": 2,
+    "found": 2,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O5": {
+    "items": 4,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O6": {
+    "items": 12,
+    "relevant": 11,
+    "required": 4,
+    "found": 4,
+    "precision": 0.917,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O7": {
+    "items": 13,
+    "relevant": 4,
+    "required": 2,
+    "found": 2,
+    "precision": 0.308,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O8": {
+    "items": 8,
+    "relevant": 7,
+    "required": 4,
+    "found": 4,
+    "precision": 0.875,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O9": {
+    "items": 11,
+    "relevant": 7,
+    "required": 7,
+    "found": 6,
+    "precision": 0.636,
+    "recall": 0.857,
+    "missed": [
+     "f_emi"
+    ]
+   },
+   "O10": {
+    "items": 10,
+    "relevant": 4,
+    "required": 4,
+    "found": 2,
+    "precision": 0.4,
+    "recall": 0.5,
+    "missed": [
+     "f_fund_old",
+     "f_husband_income_new"
+    ]
+   },
+   "A1": {
+    "items": 7,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.143,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A2": {
+    "items": 13,
+    "relevant": 5,
+    "required": 3,
+    "found": 3,
+    "precision": 0.385,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A3": {
+    "items": 4,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.75,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A4": {
+    "items": 3,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.333,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A5": {
+    "items": 10,
+    "relevant": 4,
+    "required": 2,
+    "found": 2,
+    "precision": 0.4,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B1": {
+    "items": 12,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 0.333,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B2": {
+    "items": 12,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.25,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B3": {
+    "items": 7,
+    "relevant": 6,
+    "required": 2,
+    "found": 2,
+    "precision": 0.857,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B4": {
+    "items": 8,
+    "relevant": 5,
+    "required": 2,
+    "found": 2,
+    "precision": 0.625,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B5": {
+    "items": 11,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 0.364,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C1": {
+    "items": 6,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.5,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C2": {
+    "items": 8,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.375,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C3": {
+    "items": 3,
+    "relevant": 2,
+    "required": 1,
+    "found": 1,
+    "precision": 0.667,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C4": {
+    "items": 10,
+    "relevant": 3,
+    "required": 2,
+    "found": 2,
+    "precision": 0.3,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C5": {
+    "items": 7,
+    "relevant": 5,
+    "required": 1,
+    "found": 1,
+    "precision": 0.714,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D1": {
+    "items": 12,
+    "relevant": 6,
+    "required": 3,
+    "found": 3,
+    "precision": 0.5,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D2": {
+    "items": 3,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D3": {
+    "items": 10,
+    "relevant": 5,
+    "required": 3,
+    "found": 3,
+    "precision": 0.5,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D4": {
+    "items": 10,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.3,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E1": {
+    "items": 1,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E2": {
+    "items": 3,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.333,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E3": {
+    "items": 5,
+    "relevant": 2,
+    "required": 1,
+    "found": 1,
+    "precision": 0.4,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E4": {
+    "items": 12,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.083,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E5": {
+    "items": 6,
+    "relevant": 3,
+    "required": 2,
+    "found": 2,
+    "precision": 0.5,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F1": {
+    "items": 15,
+    "relevant": 5,
+    "required": 4,
+    "found": 4,
+    "precision": 0.333,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F2": {
+    "items": 14,
+    "relevant": 7,
+    "required": 5,
+    "found": 5,
+    "precision": 0.5,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F3": {
+    "items": 14,
+    "relevant": 2,
+    "required": 2,
+    "found": 2,
+    "precision": 0.143,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F4": {
+    "items": 8,
+    "relevant": 5,
+    "required": 2,
+    "found": 2,
+    "precision": 0.625,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F5": {
+    "items": 8,
+    "relevant": 3,
+    "required": 2,
+    "found": 2,
+    "precision": 0.375,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G1": {
+    "items": 9,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.333,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G2": {
+    "items": 4,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.25,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G3": {
+    "items": 10,
+    "relevant": 0,
+    "required": 0,
+    "found": 0,
+    "precision": 0.0,
+    "recall": 1,
+    "missed": []
+   },
+   "G4": {
+    "items": 9,
+    "relevant": 6,
+    "required": 1,
+    "found": 1,
+    "precision": 0.667,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G5": {
+    "items": 14,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 0.286,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G6": {
+    "items": 3,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   }
+  },
+  "prec-cfg": {
+   "O1": {
+    "items": 15,
+    "relevant": 10,
+    "required": 8,
+    "found": 6,
+    "precision": 0.667,
+    "recall": 0.75,
+    "missed": [
+     "l_aws_goal",
+     "w_blocker"
+    ]
+   },
+   "O2": {
+    "items": 3,
+    "relevant": 3,
+    "required": 4,
+    "found": 3,
+    "precision": 1.0,
+    "recall": 0.75,
+    "missed": [
+     "l_aws_goal"
+    ]
+   },
+   "O3": {
+    "items": 6,
+    "relevant": 6,
+    "required": 6,
+    "found": 5,
+    "precision": 1.0,
+    "recall": 0.833,
+    "missed": [
+     "i_aws_book"
+    ]
+   },
+   "O4": {
+    "items": 4,
+    "relevant": 4,
+    "required": 2,
+    "found": 2,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O5": {
+    "items": 4,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O6": {
+    "items": 12,
+    "relevant": 11,
+    "required": 4,
+    "found": 4,
+    "precision": 0.917,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O7": {
+    "items": 6,
+    "relevant": 2,
+    "required": 2,
+    "found": 1,
+    "precision": 0.333,
+    "recall": 0.5,
+    "missed": [
+     "w_proj_billing"
+    ]
+   },
+   "O8": {
+    "items": 8,
+    "relevant": 7,
+    "required": 4,
+    "found": 4,
+    "precision": 0.875,
+    "recall": 1.0,
+    "missed": []
+   },
+   "O9": {
+    "items": 8,
+    "relevant": 4,
+    "required": 7,
+    "found": 4,
+    "precision": 0.5,
+    "recall": 0.571,
+    "missed": [
+     "f_emi",
+     "f_fund_goal",
+     "f_husband_income_new"
+    ]
+   },
+   "O10": {
+    "items": 6,
+    "relevant": 3,
+    "required": 4,
+    "found": 1,
+    "precision": 0.5,
+    "recall": 0.25,
+    "missed": [
+     "f_fund_old",
+     "f_husband_income_new",
+     "f_salary_new"
+    ]
+   },
+   "A1": {
+    "items": 3,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.333,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A2": {
+    "items": 9,
+    "relevant": 5,
+    "required": 3,
+    "found": 3,
+    "precision": 0.556,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A3": {
+    "items": 4,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.75,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A4": {
+    "items": 3,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.333,
+    "recall": 1.0,
+    "missed": []
+   },
+   "A5": {
+    "items": 9,
+    "relevant": 4,
+    "required": 2,
+    "found": 2,
+    "precision": 0.444,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B1": {
+    "items": 11,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 0.364,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B2": {
+    "items": 10,
+    "relevant": 2,
+    "required": 1,
+    "found": 1,
+    "precision": 0.2,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B3": {
+    "items": 6,
+    "relevant": 5,
+    "required": 2,
+    "found": 2,
+    "precision": 0.833,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B4": {
+    "items": 8,
+    "relevant": 5,
+    "required": 2,
+    "found": 2,
+    "precision": 0.625,
+    "recall": 1.0,
+    "missed": []
+   },
+   "B5": {
+    "items": 4,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.75,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C1": {
+    "items": 3,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C2": {
+    "items": 3,
+    "relevant": 2,
+    "required": 1,
+    "found": 1,
+    "precision": 0.667,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C3": {
+    "items": 3,
+    "relevant": 2,
+    "required": 1,
+    "found": 1,
+    "precision": 0.667,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C4": {
+    "items": 8,
+    "relevant": 3,
+    "required": 2,
+    "found": 2,
+    "precision": 0.375,
+    "recall": 1.0,
+    "missed": []
+   },
+   "C5": {
+    "items": 3,
+    "relevant": 2,
+    "required": 1,
+    "found": 1,
+    "precision": 0.667,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D1": {
+    "items": 12,
+    "relevant": 6,
+    "required": 3,
+    "found": 3,
+    "precision": 0.5,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D2": {
+    "items": 3,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D3": {
+    "items": 10,
+    "relevant": 5,
+    "required": 3,
+    "found": 3,
+    "precision": 0.5,
+    "recall": 1.0,
+    "missed": []
+   },
+   "D4": {
+    "items": 10,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.3,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E1": {
+    "items": 1,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E2": {
+    "items": 3,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.333,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E3": {
+    "items": 3,
+    "relevant": 2,
+    "required": 1,
+    "found": 1,
+    "precision": 0.667,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E4": {
+    "items": 6,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.167,
+    "recall": 1.0,
+    "missed": []
+   },
+   "E5": {
+    "items": 6,
+    "relevant": 3,
+    "required": 2,
+    "found": 2,
+    "precision": 0.5,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F1": {
+    "items": 13,
+    "relevant": 5,
+    "required": 4,
+    "found": 4,
+    "precision": 0.385,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F2": {
+    "items": 9,
+    "relevant": 5,
+    "required": 5,
+    "found": 4,
+    "precision": 0.556,
+    "recall": 0.8,
+    "missed": [
+     "w_proj_rp"
+    ]
+   },
+   "F3": {
+    "items": 7,
+    "relevant": 2,
+    "required": 2,
+    "found": 2,
+    "precision": 0.286,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F4": {
+    "items": 8,
+    "relevant": 5,
+    "required": 2,
+    "found": 2,
+    "precision": 0.625,
+    "recall": 1.0,
+    "missed": []
+   },
+   "F5": {
+    "items": 8,
+    "relevant": 3,
+    "required": 2,
+    "found": 2,
+    "precision": 0.375,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G1": {
+    "items": 4,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 0.75,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G2": {
+    "items": 4,
+    "relevant": 1,
+    "required": 1,
+    "found": 1,
+    "precision": 0.25,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G3": {
+    "items": 8,
+    "relevant": 0,
+    "required": 0,
+    "found": 0,
+    "precision": 0.0,
+    "recall": 1,
+    "missed": []
+   },
+   "G4": {
+    "items": 4,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G5": {
+    "items": 11,
+    "relevant": 4,
+    "required": 1,
+    "found": 1,
+    "precision": 0.364,
+    "recall": 1.0,
+    "missed": []
+   },
+   "G6": {
+    "items": 3,
+    "relevant": 3,
+    "required": 1,
+    "found": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "missed": []
+   }
+  }
+ },
+ "latency_ms": {
+  "base": {
+   "runs": 132,
+   "p50": 33.53,
+   "p95": 40.7,
+   "max": 93.71
+  },
+  "recall-cfg": {
+   "runs": 132,
+   "p50": 36.51,
+   "p95": 41.64,
+   "max": 83.9
+  },
+  "prec-cfg": {
+   "runs": 132,
+   "p50": 50.56,
+   "p95": 57.25,
+   "max": 99.33
+  }
+ }
+}
