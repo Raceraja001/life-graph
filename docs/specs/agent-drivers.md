@@ -572,6 +572,46 @@ owner's auto-approval conditions can only **narrow** `change_policy.auto_gate`.
   chain): fails on `block` findings in added lines (tracked diff + untracked files). Not in the
   default chain or the always-on checks, so existing dispatches are unchanged.
 
+### Story 11: Review panel on risky diffs (2026-11-28, shadow first)
+
+> Added 2026-11-28, step 6 of the router/council decision (race-app
+> `docs/research/2026-11-28-router-council/04-decision.md`). Code: `services/dev/review_panel.py`,
+> hook `AutonomyRoundsMixin._review_panel` in `drivers/review_stages.py` (runs right after the
+> risk report, before the landing commit). The idea (independent proposers, no vote) is from
+> the Mixture-of-Agents study (togethercomputer/MoA, Apache-2.0); no code was ported.
+
+- Settings: `driver_review_panel_mode` = `off` (default) | `shadow` | `enforce`;
+  `driver_review_panel_models` (default `ollama_chat/qwen3:14b,ollama_chat/qwen3-coder:30b`);
+  `driver_review_panel_timeout_seconds` (300, per member); `driver_review_panel_min_lines` (150).
+- GIVEN mode is not `off` WHEN a change lands THEN the panel runs only if the diff is **risky**:
+  the risk report has a warn or block finding, or is missing/incomplete; the diff touches a
+  protected path (`change_policy.protected_hits`, defaults plus the project's globs); or it changes
+  more than `driver_review_panel_min_lines` lines (added + removed). Otherwise
+  `properties.review_panel` is `{"verdict": "skipped", "reason": "not risky"}`.
+- Each member reviews the real diff **in parallel and blind to the others**, prompted with the
+  task instruction and the diff only (no memories, preferences or procedures), focused on
+  correctness, security and scope, and answers `objection` | `approve` | `not_reviewed` with a
+  reason. Each call runs under `only_models([model])` (no failover). Only `ollama/` and
+  `ollama_chat/` ids run: any other id is **refused** (never called) and counts as
+  `not_reviewed`. A timeout, error or unreadable answer is `not_reviewed`, never a pass.
+- Combine (deterministic, no chairman, no majority): **any objection → `objection`; else any
+  not-reviewed → `not_reviewed`; only a unanimous approval → `approve`.** An empty panel is
+  `not_reviewed`.
+- GIVEN `shadow` THEN the panel starts in the background and the dispatch does not wait for it;
+  its verdict is stored on the task (`properties.review_panel`: mode, verdict, reason, risky
+  reasons, members with model/verdict/reason/duration, `gated: false`) and emitted as a
+  `review_panel` task event. It changes nothing on the run or the approval. At most
+  `MAX_SHADOW_IN_FLIGHT` (2) at once; more are stored `skipped` / `panel busy`.
+- GIVEN `enforce` THEN the dispatch waits (bounded by the member timeout) and anything but a
+  unanimous approval sets `hold_auto`: the PR approval is filed for a person with no auto-open and
+  no auto-merge, and `payload.autonomy.review_panel = {verdict, members}`. A panel approval never
+  approves anything nor lifts an existing hold (invariant 1). A panel crash in enforce holds.
+- Kill switch paused: `shadow` stores `skipped` / `kill switch` (no model call); `enforce` stores
+  `not_reviewed` and holds.
+- The outcome log reads the verdict with `review_panel.panel_for_outcome(task.properties)`.
+- Not covered: the resumed "land only" path whose branch already landed (it files the approval
+  without Step 6b, so neither the risk report nor the panel run there).
+
 ### Data model
 
 ```sql
@@ -1509,3 +1549,168 @@ continuations). The gate is what the run did and said, not who started it: an ow
 "fix X" whose agent answers "already fixed on master" did not fail either, it is shown to the
 owner with the agent's reason, and nothing lands or is approved on the strength of it. Manual
 tasks are never counted by the automation breaker in any case.
+
+## Amendment 2026-11-28 — the second opinion fails closed
+
+Router council decision (race-app `docs/research/2026-11-28-router-council/04-decision.md`,
+step 1; [CHARTER invariant 5](../../CHARTER.md)). Before this, both second-opinion reviewers
+approved when the review could not run: `SecondOpinionReviewer` on a call error, a non-JSON reply
+or a missing `approved` (which defaulted to `True`); `PRAgentReviewer` — the one the dispatcher
+actually builds — when PR-Agent was missing, failed, timed out or wrote nothing readable. The
+dispatcher only acts on `ran and not approved`, so a review that never happened let the task
+auto-land.
+
+**The verdict** (`services/dev/second_opinion.py`, shared by `pr_agent_review.py`):
+`ReviewVerdict.status` is one of
+
+| `status` | when | `may_auto_land` / `needs_human` | legacy `approved` / `ran` |
+|---|---|---|---|
+| `approved` | the reviewer ran and found nothing blocking | true / false | true / true |
+| `objected` | the reviewer ran and raised a concern (`concern`) | false / true | false / true |
+| `not_reviewed` | the review is on but gave no verdict: call error, timeout, no model configured, PR-Agent missing or failing, non-JSON reply, `approved` missing or unreadable, PR-Agent output with no `review` section; `concern` holds the reason | false / true | **false / false** |
+| `skipped` | the review is off, or there was nothing to review (empty output/diff) | true / false | true / false |
+
+- GIVEN the second opinion is disabled THEN behaviour is unchanged (`skipped`, lands as before).
+- GIVEN it is enabled AND the review did not produce a verdict THEN the verdict is
+  `not_reviewed` with the reason, and the task must go to a person, never auto-land.
+- Gate on `verdict.needs_human` (or `not verdict.may_auto_land`). `ran and not approved` alone
+  is **not** a safe gate: it is false for `not_reviewed`.
+- **Dispatcher (pending, owner of `drivers/dispatcher.py`):** `_second_opinion_review` returns
+  early only when `verdict.may_auto_land`. For `not_reviewed` it files the human approval entry
+  as for a dissent, but does not emit `driver:second_opinion:dissent`; the task's result is
+  `success=False, needs_human=True`, `error="Second opinion did not run: <concern>"`,
+  `metadata.second_opinion_status = "not_reviewed"`, `metadata.second_opinion_reason = <concern>`.
+  Until that lands, `not_reviewed` is still let through by the dispatcher's current check.
+- Review stages (Story 8) are unchanged: `services/dev/review_stages.py::ModelStageReviewer` still
+  returns `skipped`-shaped verdicts for "unavailable", and the stage runner records those as
+  `unavailable` and refuses auto-approval.
+- Tests: `tests/unit/test_second_opinion.py`, `tests/unit/test_pr_agent_review.py`.
+
+## Escalation ladder, starting floor, outcome log (2026-11-28)
+
+> **Status: Built, fixture-tested.** Branch `race/router-reliability`. Decided in race-app
+> `docs/research/2026-11-28-router-council/04-decision.md`, steps 3–5. Migration
+> `068_dev_outcome_log.py` (revises 067). Code: `drivers/escalation.py` (pure rules),
+> `drivers/ladder_steps.py` (`LadderMixin`, inherited by `TaskDispatcher`),
+> `services/dev/outcome_log.py`, `models/dev_outcomes.py`; hooks in `drivers/dispatcher.py`
+> (Step 3a floor, the bounce loop, the second-opinion call site, `_finish_dispatch`, every
+> terminal path), `drivers/continue_run.py` (budget denial), `services/dev/outcomes.py`
+> (`record_outcome`, trust recording unchanged), `api/drivers.py`. Tests
+> `tests/unit/test_escalation_ladder.py`, `tests/unit/test_outcome_log.py`. No model decides
+> anything here (CHARTER invariant 1).
+
+### Escalation ladder
+
+A list of rungs `driver[:model]`, weakest first (`driver_escalation_ladder`; empty = the
+default `local:ollama_chat/qwen3:14b, local:ollama_chat/qwen3-coder:30b, claude_code`). A rung
+whose driver is not registered is dropped; a `pin_required` driver (`cloud`) is **never** a
+rung, even if listed. A run's position: the rung with its driver and model (provider prefix
+ignored), else its driver's driver-only rung, else its driver's lowest rung; a driver not on
+the ladder is off it.
+
+- GIVEN a code task on `local` / qwen3:14b WHEN verification fails and the one bounce runs THEN
+  the bounce runs on `local` / qwen3-coder:30b (a model swap) instead of the same model; with
+  the owner's `verify_fix_rounds` ≥ 1 the next round runs on `claude_code`, later rounds stay
+  there. The ladder never steps down and adds no bounce or round: the one-bounce rule, the D2
+  round limits, `_round_allowed` and `needs_human` at the end are unchanged.
+- GIVEN a rung that is unavailable, metered (`billing = api`) while
+  `driver_escalation_allow_metered` is off (or the Governor / per-task cap refuses it),
+  over the subscription share (agent accounts on: preview `over_budget` / `cooling` /
+  `error`), or — for a non-local top rung — over the daily top-rung cap THEN that rung is
+  skipped and the next one is tried; WHEN none is left THEN the bounce runs on the same driver
+  as before (today's behaviour).
+- GIVEN the kill switch is on (or unreadable) THEN no climb; the bounce runs as before.
+- GIVEN a persona that names a driver (not `auto`) THEN it does not climb, unless its
+  `properties.allow_escalation` is true. An arena racer (`driver_pin`) never climbs. A
+  persona's model alone is not a pin. A driver-only rung restores the persona's own model.
+- **Top-rung cap.** Of the tenant's dispatches today (UTC; rows with a chosen driver), the
+  ladder and the floor together may send at most
+  `max(driver_escalation_top_daily_min, floor(driver_escalation_top_share × (today + 1)))` to
+  a non-local top rung. An unreadable count refuses the top rung (fail-closed).
+- Every climb or refused climb is a task event (`kind = escalation`, data `{kind: ladder,
+  attempt, from, to, reason, blocked?, skipped?}`), is on the result's metadata
+  (`ladder: {start_reason, escalations}`) and in the outcome row.
+
+**Default on, justified.** Local rungs cost nothing; a metered rung is skipped by default; the
+`claude_code` rung on the subscription is $0 marginal, gated on plan-window share by the
+account hook and capped per day. So the ladder adds no dollar spend over today, and a blocked
+climb is exactly today's bounce.
+
+### Starting floor
+
+- GIVEN a code task (`code`, `code_change`, `bugfix`, `refactor`, `feature`) WHEN its
+  instruction names a protected path (`change_policy.protected_hits`: the defaults plus the
+  project's `protected_paths`; paths are read from the instruction and any seed hand-off's
+  declared files — no diff exists yet) OR the same project + instruction (normalized SHA-256)
+  has an outcome row in the last `driver_start_floor_failure_days` with outcome `failed` /
+  `needs_human` / `error` or owner decision `pr_rejected` / `closed` THEN it starts on the top
+  rung instead of the cheapest-first selection; `start_reason = "floor: <why>"`, a task event.
+- GIVEN a persona or arena pin THEN the pin wins (`start_reason = "pinned"`; the trigger is
+  still logged for the shadow tier). GIVEN the top rung may not run now (same blockers as the
+  ladder, including the cap) THEN selection stands and the start reason says why.
+- `driver_start_floor_enabled` (default on, same justification: the cap bounds it).
+
+### Outcome log (`dev_outcome_log`, migration 068)
+
+One row per dispatch, written once, best-effort, on **every terminal path**: finished
+(`_finish_dispatch`: fresh runs, resumed landings, continuations), Governor denial, a refused
+or crashed dispatch (WIP limit, no driver, exception), a continuation's budget denial. Always
+on. Columns: `tenant_id, task_id (string, no FK), project_id, attempt (per task), task_type,
+persona, instruction_sha, start_{driver,model,tier,reason}, final_{driver,model,tier},
+escalations, reached_top, rounds_used, verification (passed|failed|unverifiable|not_run),
+reviews [{reviewer, verdict, concern?}], review_verdict, outcome, owner_decision,
+owner_decided_at, duration_ms, cost_usd, shadow_tier, shadow_reasons, error, properties,
+created_at`.
+
+- `outcome`: `landed | succeeded | no_changes | needs_human | parked | budget_denied | failed |
+  error`. Tiers: bottom rung `cheap`, top `best`, between `balanced`; off the ladder = null.
+- Reviewer verdicts: `approved | objected | not_reviewed` (due, no verdict) `| skipped` (off or
+  nothing to review); review stages map `no_objection/objection/unavailable/human`. Overall:
+  objected > not_reviewed > approved > skipped. `properties.second_opinion` = the default
+  reviewer's status.
+- WHEN `record_outcome` settles the PR (merged / pr_rejected / closed) THEN the task's latest
+  row gets `owner_decision` (in a savepoint: never undoes the trust record) and
+  `properties.review_panel` = `review_panel.panel_for_outcome(task.properties)`.
+- **Shadow.** `shadow_tier` is what a placeholder rules router would pick (`best` for a
+  protected path or failure record, `balanced` for a long or ≥ 3-path code task, else `cheap`).
+  Recorded only; nothing routes on it (decision step 7 calibrates the real one from these rows).
+
+### Second opinion at the call site (fail-closed, decision step 1)
+
+The dispatcher lands only on `approved` or `skipped`. `objected` → the dissent path as before
+(`SECOND_OPINION_DISSENT`, dissent approval, `second_opinion_concern`). `not_reviewed` → the
+same human approval entry, no dissent event, `success = false`, `error = "Second opinion did
+not run: <reason>"`, metadata `{needs_human, second_opinion_status: not_reviewed,
+second_opinion_reason}`.
+
+### Settings
+
+| Env (`LIFE_GRAPH_…`) | Setting | Default | Meaning |
+|---|---|---|---|
+| `DRIVER_ESCALATION_ENABLED` | `driver_escalation_enabled` | true | the ladder |
+| `DRIVER_ESCALATION_LADDER` | `driver_escalation_ladder` | "" | rungs `driver[:model]`, comma-separated; empty = default |
+| `DRIVER_ESCALATION_ALLOW_METERED` | `driver_escalation_allow_metered` | false | allow api-billed rungs (Governor + per-task cap apply) |
+| `DRIVER_ESCALATION_TOP_SHARE` | `driver_escalation_top_share` | 0.25 | share of today's dispatches the ladder/floor may send to the top rung |
+| `DRIVER_ESCALATION_TOP_DAILY_MIN` | `driver_escalation_top_daily_min` | 2 | always allowed per day |
+| `DRIVER_START_FLOOR_ENABLED` | `driver_start_floor_enabled` | true | the starting floor |
+| `DRIVER_START_FLOOR_FAILURE_DAYS` | `driver_start_floor_failure_days` | 14 | "failed before" window |
+
+### API (`/api/v1/kernel/drivers`)
+
+| Route | Who | → `data` |
+|---|---|---|
+| `GET /outcomes?days=30&project_id=&limit=500` | tenant | `{days, project_id, summary: {total, outcomes: {…}, final_tiers: {…}, escalated, reached_top, not_reviewed, review_skipped, shadow_agrees, shadow_compared}, outcomes: [Row], ladder: {enabled, rungs, top_share, top_daily_min, allow_metered, floor_enabled}}`; 400 bad `project_id` |
+
+`Row`: `{id, task_id, project_id, attempt, task_type, persona, start: {driver, model, tier,
+reason}, final: {driver, model, tier}, escalations, reached_top, rounds_used, verification,
+reviews, review_verdict, outcome, owner_decision, owner_decided_at, review_panel, duration_ms,
+cost_usd, shadow: {tier, reasons}, error, created_at}`.
+
+### Not in this step
+
+- A resumed task whose branch had already landed (`resume_landing`, `landed_branch` set) files
+  its approval without `_record_risk_report`, so the review panel never sees it: the kept
+  worktree is gone and the diff would have to be read from the branch. Its outcome row is
+  written (start reason `resumed`).
+- The floor knows only failures logged since migration 068; there is no backfill.
+- Model availability on Ollama is not probed: a local rung is "available" when the driver is.

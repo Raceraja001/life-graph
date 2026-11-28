@@ -18,6 +18,9 @@ from life_graph.api.approval_identity import owner_only
 from life_graph.api.responses import success_response
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.drivers.escalation import configured_ladder
+from life_graph.drivers.registry import driver_registry
+from life_graph.services.dev import outcome_log as _outcome_log
 from life_graph.services.dev import tasks as _dev_tasks
 from life_graph.services.dev.continuation import ContinueError, continue_task
 from life_graph.services.dev.dependencies import DependencyError
@@ -866,6 +869,39 @@ async def get_driver_failures(
 
     async with async_session() as session:
         data = await failures(session, get_current_tenant_id(), days=days, limit=limit)
+    return success_response(data=data)
+
+
+@router.get(
+    "/outcomes",
+    summary="Per dispatch: driver, model, ladder rung and why, verdicts, outcome, shadow tier",
+)
+async def get_driver_outcomes(
+    days: int = Query(30, ge=1, le=365),
+    project_id: str | None = Query(None, description="Only this project's dispatches"),
+    limit: int = Query(500, ge=1, le=2000),
+) -> dict[str, Any]:
+    """The outcome log (docs/specs/agent-drivers.md, "Escalation ladder, starting
+    floor, outcome log (2026-11-28)"), newest first, with a summary and the
+    ladder settings in effect. ``shadow`` is the tier a future rules router
+    would have picked: recorded only, it routes nothing."""
+    if project_id is not None:
+        try:
+            project_id = str(uuid.UUID(project_id))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="project_id must be a UUID") from None
+    async with async_session() as session:
+        data = await _outcome_log.list_outcomes(
+            session, get_current_tenant_id(), days=days, project_id=project_id, limit=limit
+        )
+    data["ladder"] = {
+        "enabled": settings.driver_escalation_enabled,
+        "rungs": [r.label for r in configured_ladder(driver_registry)],
+        "top_share": settings.driver_escalation_top_share,
+        "top_daily_min": settings.driver_escalation_top_daily_min,
+        "allow_metered": settings.driver_escalation_allow_metered,
+        "floor_enabled": settings.driver_start_floor_enabled,
+    }
     return success_response(data=data)
 
 

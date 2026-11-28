@@ -40,6 +40,7 @@ from sqlalchemy import select
 from life_graph.config import settings
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.models.db import AgentTask, Approval
+from life_graph.services.dev import outcome_log, review_panel
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -127,6 +128,18 @@ async def record_outcome(
         task = None
     if task is not None:
         task.properties = {**(task.properties or {}), "outcome": outcome}
+
+    # The outcome log (calibration, services/dev/outcome_log.py) beside the
+    # trust record above: the owner's decision on the task's latest dispatch,
+    # with the review panel's verdict as it stood then (its shadow runs finish
+    # after the dispatch, so this is where the panel's record is read).
+    await outcome_log.record_owner_decision(
+        session,
+        tenant_id,
+        task_id,
+        outcome,
+        panel=review_panel.panel_for_outcome(task.properties if task is not None else None),
+    )
 
     logger.info("Dev task %s outcome: %s (%s, driver=%s)", task_id, outcome, source, driver)
     return True

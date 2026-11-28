@@ -47,6 +47,7 @@ from life_graph.models.dev_automation import (
     DevScheduleRun,
 )
 from life_graph.models.dev_groups import DevTaskGroup, PrWatch
+from life_graph.models.dev_outcomes import DevOutcomeLog
 from life_graph.models.judgment import (
     CalibrationSnapshot,
     Challenge,
@@ -146,6 +147,7 @@ __all__ = [
     "DevSchedule",
     "DevScheduleRun",
     "DevAutomationBreaker",
+    "DevOutcomeLog",
     "DevTaskGroup",
     "PrWatch",
 ]

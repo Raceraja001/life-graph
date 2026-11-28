@@ -130,3 +130,17 @@ async def test_snapshot_shape(health):
     assert snap["m1"]["state"] == "up"
     assert snap["m2"]["state"] == "cooling"
     assert "last_error" in snap["m2"] and snap["m2"]["last_error"] == "429"
+
+
+@pytest.mark.asyncio
+async def test_record_request_error_does_not_count_or_cool(health):
+    """A rejected request (400, context window, auth) is visible, not a failure."""
+    h, fake = health
+    await h.record_failure("m", "error")
+    await h.record_request_error("m", "auth")
+    rec = fake.h["llm:health:m"]
+    assert rec["consecutive_failures"] == "1"  # unchanged by the request error
+    assert rec["last_error"] == "auth"
+    assert not await h.in_cooldown("m")
+    snap = await h.snapshot()
+    assert snap[0]["last_error"] == "auth" and snap[0]["state"] == "down"

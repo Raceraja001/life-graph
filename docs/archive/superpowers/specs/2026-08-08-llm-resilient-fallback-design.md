@@ -1,5 +1,21 @@
 # LLM resilient fallback — design
 
+> **Amendment 2026-11-28 — error-aware benching** (router council decision, race-app
+> `docs/research/2026-11-28-router-council/04-decision.md`, step 2; code:
+> `life_graph/services/llm/resilient.py::classify_error` / `reorder_after`). This archived design
+> said every non-429 error benches a model for `llm_cooldown_error_seconds`. Now only **real
+> failures** bench it (exponential cooldown, unchanged): `429` (rate limit), `timeout`, `error`
+> (5xx, connection errors, 404, anything unrecognised). **Request errors** never bench and do not
+> count as a consecutive failure — they are recorded as `last_error` only
+> (`LLMHealth.record_request_error`): `bad_request` (400/422), `context_window`,
+> `content_policy`, `auth` (401/403, its own class so a bad key is visible). The call still moves
+> down the chain: after `context_window` the models known (LiteLLM's model map; Ollama = the
+> configured `num_ctx`) to have a larger context go first, then unknown sizes, then those known
+> not to be larger; after `content_policy` models of another provider go first, then the same
+> provider's. Classification uses LiteLLM's exception types, then a bare `status_code`.
+> `ResilientLLMExhaustedError` names the last error class. Tests:
+> `tests/unit/test_resilient_llm_error_classes.py`.
+
 ## Purpose
 
 Fix the chain of issues that caused Jarvis chat to return "Internal error" / "All

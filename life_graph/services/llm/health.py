@@ -77,6 +77,13 @@ class LLMHealth:
         )
         return fails
 
+    async def record_request_error(self, model: str, kind: str) -> None:
+        """Note a rejected request (bad request, context window, content policy,
+        auth) without counting it against the model: no failure count, no
+        cooldown, and the up/down state is left alone. ``last_error`` still
+        shows it, so a misconfigured key is visible in the health view."""
+        await self._write(model, {"last_error": kind, "last_request_error_at": self._clock()})
+
     async def set_cooldown(self, model: str, seconds: float) -> None:
         await self._write(model, {"cooldown_until": self._clock() + seconds})
 

@@ -160,6 +160,7 @@ LEAVE_OPERATIONAL: dict[str, str] = {
     "dev_automation_breakers": "automation circuit-breaker state",
     "dev_task_groups": "teams / arena races (tied to agent tasks)",
     "pr_watches": "PR feedback watches (tied to agent tasks)",
+    "dev_outcome_log": "per-dispatch routing and review outcomes (tied to agent tasks)",
     "verification_runs": "dev-task verification",
     "driver_stats": "driver statistics",
     "approval_queue": "shell-command approval queue (tied to agent tasks)",

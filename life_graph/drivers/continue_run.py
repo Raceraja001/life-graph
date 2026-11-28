@@ -143,6 +143,7 @@ class ContinueRunMixin:
             denied = await self._budget_gate(run)
             if denied is not None:
                 run.result = denied
+                await self._log_outcome(run)
                 return denied
             await self._emit(
                 EventType.DRIVER_DISPATCHED,

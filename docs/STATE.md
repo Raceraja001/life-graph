@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 10:48 UTC` from `race/privacy-defaults` @ `3f54bf9c`
+Generated `2026-11-28 12:18 UTC` from `race/router-reliability` @ `bba217e9`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-28 10:48 UTC` from `race/privacy-defaults` @ `3f54bf9c`
 
 | | |
 |---|---|
-| HTTP operations | **444** across 382 paths, 49 tags |
-| Database tables | **100** |
-| Migrations | **67** (head: `067_dev_task_groups_pr_watches`) |
+| HTTP operations | **445** across 383 paths, 49 tags |
+| Database tables | **101** |
+| Migrations | **68** (head: `068_dev_outcome_log`) |
 | Event types | **96** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **38** |
-| Config settings | **368** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6971** in 719 files |
+| Config settings | **379** (prefix `LIFE_GRAPH_`) |
+| Test functions | **7071** in 723 files |
 | Dashboard pages | **23** |
-| Python | 591 files, 173,931 lines |
+| Python | 596 files, 175,875 lines |
 
 ---
 
 ## HTTP API
 
-444 operations, grouped by OpenAPI tag.
+445 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -80,7 +80,7 @@ Generated `2026-11-28 10:48 UTC` from `race/privacy-defaults` @ `3f54bf9c`
 | POST | `/api/v1/study/generate` | Generate Cards |
 | GET | `/api/v1/study/progress` | Study Progress |
 
-### `drivers` — 36
+### `drivers` — 37
 
 | Method | Path | Summary |
 |---|---|---|
@@ -93,6 +93,7 @@ Generated `2026-11-28 10:48 UTC` from `race/privacy-defaults` @ `3f54bf9c`
 | POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
 | GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
 | GET | `/api/v1/kernel/drivers/night-shift` | What the coding engines did: merged, waiting for you and why, failed and why |
+| GET | `/api/v1/kernel/drivers/outcomes` | Per dispatch: driver, model, ladder rung and why, verdicts, outcome, shadow tier |
 | GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
 | GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
 | GET | `/api/v1/kernel/drivers/pr-watch` | Watched pull requests of the PR feedback loop |
@@ -727,7 +728,7 @@ Generated `2026-11-28 10:48 UTC` from `race/privacy-defaults` @ `3f54bf9c`
 
 ## Database tables
 
-100 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+101 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -757,6 +758,7 @@ Generated `2026-11-28 10:48 UTC` from `race/privacy-defaults` @ `3f54bf9c`
 | `dev_automation_settings` | 6 | ✓ | `066_dev_automation` |
 | `dev_backlog` | 14 | ✓ | `066_dev_automation` |
 | `dev_intake_sources` | 15 | ✓ | `066_dev_automation` |
+| `dev_outcome_log` | 31 | ✓ | `068_dev_outcome_log` |
 | `dev_schedule_runs` | 11 | ✓ | `066_dev_automation` |
 | `dev_schedules` | 13 | ✓ | `066_dev_automation` |
 | `dev_task_events` | 9 | ✓ | `060_dev_task_events` |
@@ -1107,9 +1109,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-67 revisions, head `067_dev_task_groups_pr_watches`.
+68 revisions, head `068_dev_outcome_log`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_decision_superseded_at` · `064_autonomy_policies` · `065_agent_accounts` · `066_dev_automation` · `067_dev_task_groups_pr_watches`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_decision_superseded_at` · `064_autonomy_policies` · `065_agent_accounts` · `066_dev_automation` · `067_dev_task_groups_pr_watches` · `068_dev_outcome_log`
 
 ---
 
@@ -1119,16 +1121,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 553 | 5887 |
+| `tests/unit/` | 557 | 5987 |
 | `tests/integration/` | 165 | 1072 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **719** | **6971** |
+| **total** | **723** | **7071** |
 
 ---
 
 ## Configuration
 
-368 settings, all overridable by environment variable.
+379 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1333,6 +1335,13 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_ON_REVIEW_COMMENTS` | `True` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_ON_CONFLICTS` | `True` |
 | `LIFE_GRAPH_DRIVER_ARENA_ENABLED` | `False` |
+| `LIFE_GRAPH_DRIVER_ESCALATION_ENABLED` | `True` |
+| `LIFE_GRAPH_DRIVER_ESCALATION_LADDER` | `''` |
+| `LIFE_GRAPH_DRIVER_ESCALATION_ALLOW_METERED` | `False` |
+| `LIFE_GRAPH_DRIVER_ESCALATION_TOP_SHARE` | `0.25` |
+| `LIFE_GRAPH_DRIVER_ESCALATION_TOP_DAILY_MIN` | `2` |
+| `LIFE_GRAPH_DRIVER_START_FLOOR_ENABLED` | `True` |
+| `LIFE_GRAPH_DRIVER_START_FLOOR_FAILURE_DAYS` | `14` |
 | `LIFE_GRAPH_AUTO_PLAN_MAX_TASKS` | `3` |
 | `LIFE_GRAPH_POST_DEPLOY_SMOKE_TIMEOUT` | `300` |
 | `LIFE_GRAPH_BOOTSTRAP_ROOT` | `''` |
@@ -1353,6 +1362,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_MODEL` | `—` |
 | `LIFE_GRAPH_CHANGE_REVIEW_MODEL` | `''` |
 | `LIFE_GRAPH_DRIVER_PR_AGENT_BIN` | `'pr-agent'` |
+| `LIFE_GRAPH_DRIVER_REVIEW_PANEL_MODE` | `'off'` |
+| `LIFE_GRAPH_DRIVER_REVIEW_PANEL_MODELS` | `'ollama_chat/qwen3:14b,ollama_chat/qwen3-coder:30b'` |
+| `LIFE_GRAPH_DRIVER_REVIEW_PANEL_TIMEOUT_SECONDS` | `300.0` |
+| `LIFE_GRAPH_DRIVER_REVIEW_PANEL_MIN_LINES` | `150` |
 | `LIFE_GRAPH_DRIVER_PR_DESCRIPTION_ENABLED` | `True` |
 | `LIFE_GRAPH_DRIVER_CODE_CONTEXT_ENABLED` | `True` |
 | `LIFE_GRAPH_DRIVER_PR_DESCRIPTION_MODEL` | `—` |
