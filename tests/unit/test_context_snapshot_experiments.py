@@ -11,6 +11,7 @@ added here.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import uuid
@@ -104,17 +105,41 @@ async def test_an_unknown_experiment_is_refused_by_assemble_context(xwired):
         await assemble_context("q", now=NOW, experiments=frozenset({"faster"}))
 
 
+_IMPORTS_XP = re.compile(r"\bimport\s+snapshot_experiments\b|snapshot_experiments\s+import\b")
+
+
 def test_only_the_snapshot_module_reaches_the_experiments():
-    """No setting, API, kernel or other service can switch an experiment on."""
+    """No setting, API, kernel or other service can switch a free experiment set on.
+
+    Production reaches only the fixed precision modes, by name (``mode=``).
+    """
     users, passers = [], []
     for path in (ROOT / "life_graph").rglob("*.py"):
         text_ = path.read_text(encoding="utf-8")
         rel = path.relative_to(ROOT).as_posix()
-        if "snapshot_experiments" in text_ and rel != "life_graph/services/memory/snapshot.py":
+        if _IMPORTS_XP.search(text_) and rel != "life_graph/services/memory/snapshot.py":
             users.append(rel)
-        if re.search(r"\bexperiments\s*=", text_) and "services/memory/snapshot" not in rel:
+        if re.search(r"\b(experiments|tunables)\s*=", text_) and (
+            "services/memory/snapshot" not in rel
+        ):
             passers.append(rel)
     assert users == [] and passers == []
+
+
+def test_only_the_api_and_the_shadow_read_the_precision_settings():
+    """Code that reads them (attribute access, not a docstring that names them)."""
+    readers = set()
+    for path in (ROOT / "life_graph").rglob("*.py"):
+        text_ = path.read_text(encoding="utf-8")
+        if "context_precision_" not in text_:
+            continue
+        for node in ast.walk(ast.parse(text_)):
+            if isinstance(node, ast.Attribute) and node.attr in (
+                "context_precision_mode",
+                "context_precision_shadow",
+            ):
+                readers.add(path.relative_to(ROOT).as_posix())
+    assert readers == {"life_graph/api/context.py", "life_graph/kernel/process_manager.py"}
 
 
 # ── Safety holds with every option on ─────────────────────────

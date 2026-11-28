@@ -1411,12 +1411,19 @@ async def shadow_trace(
     *,
     task_id: uuid.UUID | None = None,
     compare: bool = False,
+    precision: str = "",
 ) -> dict[str, Any]:
     """The turn trace entries of shadow mode; never raises.
 
     Always ``context_snapshot`` (snapshot.shadow_compact's value). With
     *compare* (settings.context_change_shadow) also ``context_changes``,
     inside what is left of the same time box (snapshot.SHADOW_TIMEOUT_S).
+    With *precision*, a precision mode's name (settings.context_precision_shadow),
+    also ``context_precision``: the same question's snapshot under that mode
+    compared with the default one (snapshot.shadow_precision; refs, labels
+    and counts only), in its own time box (snapshot.SHADOW_PRECISION_TIMEOUT_S),
+    so the whole stays under the two boxes together. The ``context_snapshot``
+    the changes compare stays the default one.
     """
     started = time.monotonic()
     snap, compact = await snapshot_mod.shadow_snapshot(tenant_id, message, history)
@@ -1424,6 +1431,15 @@ async def shadow_trace(
     if compare:
         left = snapshot_mod.SHADOW_TIMEOUT_S - (time.monotonic() - started)
         out["context_changes"] = await shadow_changes(tenant_id, snap, task_id, timeout=left)
+    if precision:
+        out["context_precision"] = await snapshot_mod.shadow_precision(
+            tenant_id,
+            message,
+            history,
+            precision,
+            snap,
+            timeout=snapshot_mod.SHADOW_PRECISION_TIMEOUT_S,
+        )
     return out
 
 

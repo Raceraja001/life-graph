@@ -6,7 +6,13 @@ labels, no content) at ``agent_tasks.result->'trace'->'context_snapshot'``
 and, when comparing, the change list at ``...->'context_changes'``. This
 script counts their labels for one tenant, before and after each ingestion
 flag goes on, next to the ingestion side (world time, supersession ends,
-typed links, decisions, pending contradiction approvals).
+typed links, decisions, pending contradiction approvals). With
+``context_precision_shadow`` on, a turn also keeps a precision-mode
+comparison at ``...->'context_precision'`` (snapshot.shadow_precision): the
+script reports turns compared, items per turn in the default snapshot and
+under the mode (p50/p95), the share of the default's items the mode dropped,
+the items it added, the share of comparisons that timed out (a high one
+biases the sample towards fast turns), errors and ms.
 
     PYTHONPATH=. python scripts/shadow_context_structure.py --tenant raja
         [--since 7 | 14d | 2026-11-20] [--json]
@@ -42,6 +48,7 @@ from sqlalchemy import text
 from life_graph.extraction import world_time
 from life_graph.models.schemas import DECISION_STATUSES
 from life_graph.services.memory import changes, snapshot, supersession, typed_links
+from life_graph.services.memory import snapshot_experiments as xp
 from life_graph.services.memory.links import VALID_LINK_TYPES
 
 if TYPE_CHECKING:
@@ -65,7 +72,8 @@ VOCAB: dict[str, frozenset[str]] = {
     "change_kind": frozenset(changes.KINDS),
     "suppressed": frozenset(changes.NOISE),
     "timing_stage": frozenset(snapshot.TIMING_STAGES),
-    "error": frozenset({"TimeoutError"}),
+    "error": frozenset({"TimeoutError", snapshot.NO_BASELINE}),
+    "precision_mode": frozenset(xp.MODES),
     "wt_precision": frozenset({world_time.DAY, world_time.WEEK, world_time.MONTH, world_time.YEAR}),
     "wt_source": frozenset({world_time.CONTENT, world_time.SOURCE_TEXT, world_time.MODEL}),
     "confidence": frozenset({"high", "medium", "low"}),
@@ -118,6 +126,8 @@ def _round(v: float | None) -> float | None:
 #: The trace of one turn, as an array-safe JSON path.
 _SNAP = "t.result->'trace'->'context_snapshot'"
 _CHG = "t.result->'trace'->'context_changes'"
+_PREC = "t.result->'trace'->'context_precision'"
+_PREC_COUNTS = _PREC + "->'counts'"
 _TURNS = (
     "FROM agent_tasks t WHERE t.tenant_id = :tenant AND t.created_at >= :since"
     " AND jsonb_typeof(t.result->'trace') = 'object'"
@@ -183,8 +193,17 @@ QUERIES: dict[str, str] = {
                {_bool(_CHG, "read_failed")} AS read_failed,
                {_num(_CHG, "ms")} AS changes_ms,
                jsonb_array_length({_arr(_CHG + "->'changes'")}) AS changes,
-               {_obj(_CHG + "->'suppressed'")} AS suppressed
-        {_TURNS} AND (({_SNAP}) IS NOT NULL OR ({_CHG}) IS NOT NULL)
+               {_obj(_CHG + "->'suppressed'")} AS suppressed,
+               ({_PREC}) IS NOT NULL AS has_precision,
+               jsonb_typeof({_PREC_COUNTS}) = 'object' AS precision_ok,
+               {_PREC}->>'error' AS precision_error,
+               {_PREC}->>'mode' AS precision_mode,
+               {_num(_PREC, "ms")} AS precision_ms,
+               {_num(_PREC_COUNTS, "default")} AS precision_default_items,
+               {_num(_PREC_COUNTS, "mode")} AS precision_mode_items,
+               {_num(_PREC_COUNTS, "dropped")} AS precision_dropped,
+               {_num(_PREC_COUNTS, "added")} AS precision_added
+        {_TURNS} AND (({_SNAP}) IS NOT NULL OR ({_CHG}) IS NOT NULL OR ({_PREC}) IS NOT NULL)
         ORDER BY t.created_at""",
     "item_kinds": f"""
         SELECT split_part(i->>'ref', ':', 1) AS label, count(*) AS n,
@@ -366,6 +385,15 @@ def summarise(
     for name, values in _stages(chg_ok, "suppressed", "suppressed").items():
         suppressed[name] += int(sum(values))
 
+    prec = [t for t in turns if t.get("has_precision")]
+    prec_ok = [t for t in prec if t.get("precision_ok")]
+    prec_errors = Counter(
+        label(t.get("precision_error"), "error") for t in prec if not t.get("precision_ok")
+    )
+    prec_modes = Counter(label(t.get("precision_mode"), "precision_mode") for t in prec)
+    default_items = sum(int(t.get("precision_default_items") or 0) for t in prec_ok)
+    dropped = sum(int(t.get("precision_dropped") or 0) for t in prec_ok)
+
     mem = (raw.get("memories") or [{}])[0]
     sup = (raw.get("supersession") or [{}])[0]
     world: dict[str, Counter[str]] = {"precision": Counter(), "source": Counter()}
@@ -425,6 +453,19 @@ def summarise(
             "suppressed": dict(sorted(suppressed.items())),
             "ms": spread([t.get("changes_ms") for t in chg]),
         },
+        "precision": {
+            "turns_traced": len(prec),
+            "turns_compared": len(prec_ok),
+            "modes": dict(sorted(prec_modes.items())),
+            "errors": dict(sorted(prec_errors.items())),
+            "items_default": spread([t.get("precision_default_items") for t in prec_ok]),
+            "items_mode": spread([t.get("precision_mode_items") for t in prec_ok]),
+            "dropped": dropped,
+            "dropped_share": rate(dropped, default_items),
+            "timeout_rate": rate(prec_errors.get("TimeoutError", 0), len(prec)),
+            "added_per_turn": spread([t.get("precision_added") for t in prec_ok]),
+            "ms": spread([t.get("precision_ms") for t in prec]),
+        },
         "days": dict(sorted(days.items())),
         "ingestion": {
             "memories_created": int(mem.get("created") or 0),
@@ -467,6 +508,7 @@ def _kv(d: Mapping[str, Any]) -> str:
 
 def render(s: Mapping[str, Any]) -> str:
     sn, ch, ing = s["snapshot"], s["changes"], s["ingestion"]
+    pr = s["precision"]
     lines = [
         f"shadow context structure: tenant {s['tenant']}, since {s['since']}",
         "",
@@ -492,6 +534,16 @@ def render(s: Mapping[str, Any]) -> str:
         f"  kinds (n/acknowledged): {_kv(ch['kinds'])}",
         f"  suppressed: {_kv(ch['suppressed'])}",
         f"  ms: {_sp(ch['ms'])}",
+        "",
+        "== precision mode (shadow comparison with the default snapshot)",
+        f"  turns traced {pr['turns_traced']}, compared {pr['turns_compared']}, "
+        f"modes {_kv(pr['modes'])}, errors {_kv(pr['errors'])}",
+        f"  items per turn, default: {_sp(pr['items_default'])}",
+        f"  items per turn, mode:    {_sp(pr['items_mode'])}",
+        f"  dropped {pr['dropped']} of the default's items ({_pct(pr['dropped_share'])}), "
+        f"timed out {_pct(pr['timeout_rate'])} of traced turns; "
+        f"added per turn: {_sp(pr['added_per_turn'])}",
+        f"  ms: {_sp(pr['ms'])}",
         "",
         "== per day (snapshots, memory items, world_time_known, relations, conflicts, changes)",
     ]

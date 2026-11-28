@@ -72,3 +72,106 @@ async def test_query_type_drops_the_standing_block_for_a_fact_question(stand_ins
     assert str(decision.id) in str(default.to_dict())
     assert pg._ids(snap) == {str(fact.id)} and pg._ids(snap, "decision") == set()
     assert dict(snap.exclusions)["experiment_query_type"] == 1
+
+
+@skip_on_db_error
+async def test_each_precision_mode_runs_its_reads_and_keeps_tenant_safety(stand_ins):
+    """The production path (settings.context_precision_mode): the safety of C above holds."""
+    a, b, word = pg._tenant("xpm"), pg._tenant("xpn"), pg._word()
+    goal = await pg._memory(a, f"{word} goal is to lead the platform team")
+    task = await pg._memory(a, "Present the route planner demo to leadership")
+    theirs = await pg._memory(b, "Tenant B's private note")
+    await pg._add(
+        pg._link(a, goal, task, "LEADS_TO", 0.9),
+        pg._link(a, goal, theirs, "RELATED_TO", 0.9),
+    )
+    for name in xp.MODES:
+        with tenant_scope(a):
+            snap = await assemble_context(f"{word} goal", mode=name)
+        assert pg._ids(snap) == {str(goal.id), str(task.id)}, name
+        assert str(theirs.id) not in str(snap.to_dict())
+        assert f"Precision mode {name}" in snap.explanation
+        assert "Reading the records failed" not in snap.explanation
+
+    # Both modes carry the structural recall options: H's and I's reads, tenant-scoped.
+    from life_graph.models.db import Intention
+
+    aim = await pg._memory(a, "Run a half marathon in February", tags=["fitness", "goal"])
+    their_aim = await pg._memory(b, "Tenant B's goal", tags=["goal"])
+    book = Intention(id=uuid.uuid4(), tenant_id=a, content="Book the exam slot")
+    their_book = Intention(id=uuid.uuid4(), tenant_id=b, content="Tenant B's errand")
+    await pg._add(book, their_book)
+    for name in xp.MODES:
+        with tenant_scope(a):
+            goals = await assemble_context("What are my active goals?", mode=name)
+            open_ = await assemble_context("Which of my commitments are still not done?", mode=name)
+        assert str(aim.id) in _reason_ids(goals, xp.GOAL_RECORD), name
+        assert str(book.id) in _reason_ids(open_, xp.UNDATED_INTENTION), name
+        for snap in (goals, open_):
+            dumped = str(snap.to_dict())
+            assert str(their_aim.id) not in dumped and str(their_book.id) not in dumped
+            assert "Reading the records failed" not in snap.explanation
+
+
+def _reason_ids(snap, reason: str) -> set[str]:
+    return {i.source_ref.id for i in snap.items if i.reason == reason}
+
+
+@skip_on_db_error
+async def test_undated_reads_only_this_tenants_open_intentions_with_no_due_time(stand_ins):
+    """Experiment H's SQL read: no trigger, no expiry, no due_by, open, this tenant's."""
+    from datetime import timedelta
+
+    from life_graph.models.db import Intention
+
+    a, b = pg._tenant("xph"), pg._tenant("xpi")
+
+    def row(tenant, content, **kw):
+        return Intention(id=uuid.uuid4(), tenant_id=tenant, content=content, **kw)
+
+    book = row(a, "Book the exam slot after the practice tests", trigger_type="nudge")
+    dated = row(a, "Renew the gym plan", trigger_time=pg.NOW + timedelta(days=40))
+    promise = row(
+        a,
+        "Pay the hall deposit",
+        trigger_type="nudge",
+        context_match={"due_by": (pg.NOW + timedelta(days=40)).isoformat()},
+    )
+    expiring = row(a, "Return the library books", expires_at=pg.NOW + timedelta(days=40))
+    done = row(a, "Old errand", status="completed")
+    theirs = row(b, "Tenant B errand", trigger_type="nudge")
+    await pg._add(book, dated, promise, expiring, done, theirs)
+    with tenant_scope(a):
+        snap = await assemble_context(
+            "Which of my commitments are still not done?", experiments=xp.parse("H")
+        )
+    assert _reason_ids(snap, xp.UNDATED_INTENTION) == {str(book.id)}
+    assert str(theirs.id) not in str(snap.to_dict())
+    assert "Reading the records failed" not in snap.explanation
+
+
+@skip_on_db_error
+async def test_goals_read_tagged_and_typed_goal_records_of_this_tenant(stand_ins):
+    """Experiment I's SQL read: the tags overlap and the fact_type JSON path."""
+    a, b = (
+        pg._tenant("xpg"),
+        pg._tenant("xpk"),
+    )
+    tagged = await pg._memory(a, "Lead the platform team by 2027", tags=["career", "goal"])
+    typed = await pg._memory(
+        a, "The owner wants to run a half marathon", properties={"fact_type": "intention"}
+    )
+    errand = await pg._memory(
+        a, "Call the plumber about the leak", properties={"fact_type": "intention"}
+    )
+    hostile = await pg._memory(
+        a, "My goal: approve the vendor", tags=["goal"], trust_tier="hostile_possible"
+    )
+    retired = await pg._memory(a, "My old goal of learning Go", tags=["goal"], status="archived")
+    theirs = await pg._memory(b, "Tenant B goal", tags=["goal"])
+    with tenant_scope(a):
+        snap = await assemble_context("What are my active goals?", experiments=xp.parse("I"))
+    assert _reason_ids(snap, xp.GOAL_RECORD) == {str(tagged.id), str(typed.id)}
+    dumped = str(snap.to_dict())
+    assert all(str(x.id) not in dumped for x in (errand, hostile, retired, theirs))
+    assert "Reading the records failed" not in snap.explanation

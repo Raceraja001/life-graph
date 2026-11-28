@@ -7,8 +7,13 @@ One part of :class:`life_graph.config.Settings`; the fields are read as
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+#: The values of ``context_precision_mode``: "" (off) and the names of
+#: services/memory/snapshot_experiments.py MODES (a unit test keeps them equal).
+PRECISION_MODES = ("", "recall", "precision")
 
 
 class MemorySettings(BaseModel):
@@ -98,6 +103,32 @@ class MemorySettings(BaseModel):
     # inside the same time box. Off, or with the snapshot flag off, nothing
     # is compared and the trace is exactly as before.
     context_change_shadow: bool = False
+    # M8 precision mode (services/memory/snapshot_experiments.py MODES): a
+    # fixed, measured experiment set for GET /api/v1/context/snapshot.
+    # "recall" = query-type gate + typed links + cosine cut at 0.70 + the
+    # structural recall options H-K (undated intentions, goal records,
+    # overview cut, domain hold). M8 eval, bge-m3, held-out test split:
+    # precision 0.25 -> 0.55, recall 0.94 -> 0.96 (tune 0.40 / 1.00).
+    # "precision" = the same plus the hub penalty, cut at 0.75 (test 0.61 /
+    # 0.96, tune 0.49 / 0.96). H-K's keyword lists were written with sight
+    # of all 45 questions: the test split is not fully blind for them.
+    # "" (the default) is the normal snapshot, byte for byte. It does not
+    # touch the chat prompt (services/memory/context.py) or the shadow
+    # snapshot that change detection compares.
+    # Local GPU cost: "precision" (its hub penalty) embeds 6 fixed probe
+    # sentences once per process and embedder (cached; no user content).
+    # Both modes embed, locally, the text of up to 10 open intentions with no
+    # due time per snapshot (H), only those not already matched by kind or
+    # words; nothing else beyond the query's own embedding.
+    context_precision_mode: Literal["", "recall", "precision"] = ""
+    # With context_snapshot_shadow also on (and only on its personal, local
+    # turns): the turn also builds the snapshot under context_precision_mode
+    # (recall when it is "") and keeps a comparison with the default snapshot
+    # in the trace as context_precision: refs, labels, counts, kept/dropped/
+    # added refs and timings; no content, no query. It reuses the turn's query
+    # embedding and has its own 1 s time box (after the reply, never in the
+    # prompt); never fails the turn. Off: the trace is exactly as before.
+    context_precision_shadow: bool = False
     # M8 ingestion ADR §5.3 (services/memory/typed_links.py): the facts of one
     # message get BECAUSE links (from the extractor's reason) and LEADS_TO links
     # (the model's optional leads_to proposal plus a cue word in the text). It
@@ -220,6 +251,12 @@ class MemorySettings(BaseModel):
     impact_boost_on_success: float = 0.1
     impact_penalty_on_failure: float = 0.05
     impact_default: float = 0.5
+
+    @field_validator("context_precision_mode", mode="before")
+    @classmethod
+    def _precision_mode(cls, value: Any) -> Any:
+        """Case and spaces do not count; anything outside PRECISION_MODES is then refused."""
+        return value.strip().lower() if isinstance(value, str) else value
 
     def memory_start(self) -> datetime | None:
         """``memory_start_at`` as an aware UTC datetime, or None (unset or unreadable)."""
