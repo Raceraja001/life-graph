@@ -20,9 +20,11 @@ import hashlib
 import logging
 import re
 import uuid
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from life_graph.config import settings
 from life_graph.core.evidence import UNKNOWN_SOURCE
 from life_graph.core.said_at import said_at
 from life_graph.core.tenant import get_current_tenant_id
@@ -33,7 +35,7 @@ from life_graph.services.contradiction import (
     differs_in_detail,
     differs_in_scope,
 )
-from life_graph.services.memory import supersession
+from life_graph.services.memory import supersession, typed_links
 
 if TYPE_CHECKING:
     from life_graph.extraction.pipeline import ExtractionPipeline
@@ -54,6 +56,46 @@ async def _link_said_together(memories: list[Memory]) -> None:
         from life_graph.services.memory import associations
 
         await associations.said_together(tenant, [m.id for m in memories])
+
+
+#: Ids of the memories ``_process_fact`` stored new during one message, while
+#: ``_MessageLinks`` collects them (only with ingest_typed_links on). A context
+#: variable, so two messages saved at once never share it.
+_new_this_message: ContextVar[set[Any] | None] = ContextVar(
+    "memory_manager_new_this_message", default=None
+)
+
+
+class _MessageLinks:
+    """Typed links between the facts of one message (services/memory/typed_links.py).
+
+    Collects each fact with the memory it became, and which memories this
+    message stored new: a fact that matched an existing memory is never linked.
+    ``start()`` gives None with ingest_typed_links off, and nothing changes.
+    """
+
+    def __init__(self) -> None:
+        self.stored: list[tuple[ExtractedFact, Memory]] = []
+        self.new_ids: set[Any] = set()
+        self._token = _new_this_message.set(self.new_ids)
+
+    @classmethod
+    def start(cls) -> _MessageLinks | None:
+        return cls() if settings.ingest_typed_links else None
+
+    def saw(self, fact: ExtractedFact, memory: Memory) -> None:
+        self.stored.append((fact, memory))
+
+    def stop(self) -> None:
+        _new_this_message.reset(self._token)
+
+    async def write(self) -> None:
+        """Write the links, as the current tenant. Best-effort, like the said-together links."""
+        try:
+            tenant_id = get_current_tenant_id()
+        except RuntimeError:
+            return
+        await typed_links.link_message(tenant_id, self.stored, self.new_ids)
 
 
 class MemoryManager:
@@ -168,18 +210,27 @@ class MemoryManager:
                 embeddings[i] = emb
 
         stored_memories: list[Memory] = []
-        for fact, embedding, existing in zip(facts, embeddings, exact_matches, strict=False):
-            if existing is not None:
-                stored_memories.append(await self._reuse_exact_duplicate(existing))
-                continue
-            memory = await self._process_fact(
-                fact, context, source, skip_dedup, trust_tier, embedding=embedding
-            )
-            if memory:
-                stored_memories.append(memory)
+        typed = _MessageLinks.start()
+        try:
+            for fact, embedding, existing in zip(facts, embeddings, exact_matches, strict=False):
+                if existing is not None:
+                    stored_memories.append(await self._reuse_exact_duplicate(existing))
+                    continue
+                memory = await self._process_fact(
+                    fact, context, source, skip_dedup, trust_tier, embedding=embedding
+                )
+                if memory:
+                    stored_memories.append(memory)
+                    if typed:
+                        typed.saw(fact, memory)
+        finally:
+            if typed:
+                typed.stop()
 
         logger.info("Ingested %d memories from %d facts", len(stored_memories), len(facts))
         await _link_said_together(stored_memories)
+        if typed:
+            await typed.write()
         return stored_memories
 
     async def store_facts(
@@ -214,13 +265,27 @@ class MemoryManager:
         )
 
         stored: list[Memory] = []
-        for fact, embedding in zip(facts, embeddings, strict=False):
-            memory = await self._process_fact(
-                fact, context, source, skip_dedup=False, trust_tier=trust_tier, embedding=embedding
-            )
-            if memory:
-                stored.append(memory)
+        typed = _MessageLinks.start()
+        try:
+            for fact, embedding in zip(facts, embeddings, strict=False):
+                memory = await self._process_fact(
+                    fact,
+                    context,
+                    source,
+                    skip_dedup=False,
+                    trust_tier=trust_tier,
+                    embedding=embedding,
+                )
+                if memory:
+                    stored.append(memory)
+                    if typed:
+                        typed.saw(fact, memory)
+        finally:
+            if typed:
+                typed.stop()
         await _link_said_together(stored)
+        if typed:
+            await typed.write()
         return stored
 
     async def supersede(
@@ -584,6 +649,8 @@ class MemoryManager:
             importance_tier=tier,
             valid_until=_end_of_day(fact.valid_until),
         )
+        if (new_this_message := _new_this_message.get()) is not None:
+            new_this_message.add(stored.id)  # stored new: may take typed links
 
         if said:
             await self._as_said(stored, said, history_of=newer[0] if newer else None)
