@@ -217,7 +217,11 @@ async def test_a_second_opinion_dissent_blocks_landing(wired, monkeypatch):
 
     assert result.success is False
     assert result.error == "Second-opinion dissent: drops a check"
-    assert result.metadata == {"needs_human": True, "second_opinion_concern": "drops a check"}
+    assert result.metadata == {
+        "needs_human": True,
+        "second_opinion_status": "objected",
+        "second_opinion_concern": "drops a check",
+    }
     assert record["events"] == [
         EventType.DRIVER_DISPATCHED,
         EventType.VERIFICATION_PASSED,

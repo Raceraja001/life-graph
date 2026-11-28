@@ -686,3 +686,32 @@ def test_stage_reads_the_newest_approval_of_a_kind():
         kind="driver_pr", status="pending", payload={}, created_at=NOW + timedelta(hours=1)
     )
     assert dev_tasks._stage(task, [new, old]) == "awaiting_pr"
+
+
+def test_serialize_exposes_ladder_second_opinion_and_review_panel():
+    task = _task()
+    task.result = {
+        "output": "ok",
+        "metadata": {
+            "ladder": {"start_reason": "floor: protected path", "escalations": []},
+            "second_opinion_status": "objected",
+            "second_opinion_concern": "SQL injection",
+        },
+    }
+    task.properties = {
+        **(task.properties or {}),
+        "review_panel": {"mode": "shadow", "verdict": "approve"},
+    }
+    out = dev_tasks.serialize(task, [])
+    assert out["ladder"]["start_reason"] == "floor: protected path"
+    assert out["second_opinion_status"] == "objected"
+    assert out["second_opinion_reason"] == "SQL injection"
+    assert out["review_panel"]["verdict"] == "approve"
+    bare = _task()
+    bare.result = None
+    plain = dev_tasks.serialize(bare, [])
+    assert (
+        plain["ladder"] is None
+        and plain["second_opinion_status"] is None
+        and plain["review_panel"] is None
+    )

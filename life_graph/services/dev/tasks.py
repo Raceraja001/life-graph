@@ -931,6 +931,15 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
             else None
         ),  # fmt: skip
         "handoff": metadata.get("handoff"),
+        # Model routing and review (2026-11-28): which rung the run started on and
+        # why plus each climb; the second opinion's status (approved | objected |
+        # not_reviewed | skipped); the review panel's verdict (shadow or enforce).
+        "ladder": metadata.get("ladder"),
+        "second_opinion_status": metadata.get("second_opinion_status"),
+        "second_opinion_reason": (
+            metadata.get("second_opinion_reason") or metadata.get("second_opinion_concern")
+        ),
+        "review_panel": props.get("review_panel"),
     }
 
 
