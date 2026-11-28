@@ -911,3 +911,50 @@ Decided ahead of typed links. With the flag off, the save path stores the model'
 - Rollback: delete the line and run `./dev.sh restart`. Rows carry `valid_until_by = "rules"` and `properties.world_time.end`.
 
 **5. Measure around 2026-12-05** with `scripts/shadow_context_structure.py --tenant raja --since 7`: starts, ends, and zero-tolerance spot checks. Next flag after that: `ingest_typed_links`.
+
+## D37 — 2026-11-28: M8 precision work merged and released, both settings off
+
+**Decided under the owner's "you decide and proceed"** (2026-11-28, after the precision audit).
+
+**1. Merged:**
+- **#454:** eval-only experiment options.
+- **#455:** audit `docs/audits/2026-11-28-m8-context-precision-evaluation.md`, plus the reranker check §5.1.
+- **#459:** `context_precision_mode` and `context_precision_shadow`, both default off. After review, the shadow comparison was given its own 1 s time box, it skips degraded baselines, and it caches the probe embeddings.
+- **#461:** structural recall options H–K, folded into both modes. It replaces #460, which closed when its base branch was deleted.
+
+**2. The reranker is not adopted** ([ADR](../design/adr-m8-context-reranker.md)). The local `bge-reranker-v2-m3`:
+- is deterministic, adding 19 ms at p50 and 52 ms at p95;
+- orders better than cosine at equal size;
+- matches the rules at recall ≥ 0.90 (0.46 against 0.47) but does not beat them.
+
+It will be re-measured after the structural fixes.
+
+**3. Eval** (bge-m3, synthetic set, test DB):
+
+| | P | R | Owner's ten P / R | Items per question |
+|---|---|---|---|---|
+| Default (prod today) | 0.250 | 0.938 | 0.41 / 0.88 | 18.6 |
+| `recall` mode | 0.472 | 0.979 | 0.70 / 0.95 | 8.7 |
+| `precision` mode | 0.550 | 0.959 | 0.74 / 0.93 | 7.0 |
+
+- The held-out split gives 0.547 / 0.961 for recall mode and 0.605 / 0.961 for precision mode.
+- All zero-tolerance counts are 0.
+- H–K's keyword lists were written with sight of all 45 questions, so the held-out split is not fully blind for them.
+- Precision 0.70 is still not reached.
+
+**4. Release** `prod-20261128-1518` (rollback `14fed0d4`):
+- No migration (alembic 068, from the owner's side), no package change.
+- Health and UI 200; 0 log errors; snapshot 17 items in about 140 ms, unchanged.
+- `context_precision_mode=''`, `context_precision_shadow=False`.
+
+**5. Not done: switching on `LIFE_GRAPH_CONTEXT_PRECISION_SHADOW=true`.**
+- Adding the line to the prod `.env` was refused by the session's permission check.
+- It needs the owner: add the line and run `./dev.sh restart` in the prod checkout.
+- It records only refs, counts and timings in the turn trace. The prompt is unchanged.
+- Rollback: delete the line and restart.
+
+**6. Open:**
+- The CI ingest gate is flaky: `B.current_vs_historical` and `B.temporal` read 0.5 against 0.667. It failed 3 times on 2026-11-28 on the CI runner and never locally (#458). It blocks merges intermittently and is the next fix.
+- O1 `w_blocker` (a priorities question does not reach a blocker record) is not addressed.
+- H embeds up to 10 undated intention texts per snapshot. Whether production stores `Intention.embedding` is unchecked.
+- Measure the precision shadow about 7 days after it is switched on, with `scripts/shadow_context_structure.py --tenant raja --since 7`. Watch the timeout rate, dropped share and items.
