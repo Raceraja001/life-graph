@@ -134,6 +134,11 @@ they are left out of equality, and a determinism check must leave them out too
 The budget (:class:`Budget`, default 40 items / 6000 characters of content,
 300 per item) is hard: what does not fit is counted as ``over_budget``.
 
+Precision experiments (services/memory/snapshot_experiments.py) are for the
+M8 eval only. They run only when a caller passes ``experiments`` (the eval's
+``--experiments``); nothing else does, and with none the snapshot is exactly
+the one described here.
+
 What Stage 1 does not do: projects, tasks, connectors, feedback, prompts.
 The kernel only builds a snapshot in shadow mode
 (settings.context_snapshot_shadow) and keeps :meth:`ContextSnapshot.compact`
@@ -170,6 +175,7 @@ from life_graph.core.trust import is_excluded_from_agents
 from life_graph.models.db import Approval, Decision, Intention, Memory, MemoryLink
 from life_graph.services import decision_lifecycle
 from life_graph.services.memory import retrieval, sufficiency
+from life_graph.services.memory import snapshot_experiments as xp
 from life_graph.services.memory.context import search_text
 from life_graph.storage.database import async_session
 
@@ -212,6 +218,8 @@ REASON_SCORE = {
     CURRENT_DECISION: 0.21,
     retrieval.NEIGHBOUR: 0.20,
     retrieval.COLD_TIER: 0.10,
+    # Only the eval-only links experiment (C) gives this reason.
+    xp.LINKED_EVIDENCE: 0.35,
 }
 
 #: Freshness classes: (upper bound in days, name), checked in order.
@@ -248,6 +256,9 @@ TIMING_STAGES = (
     "relations",
     "total",
 )
+#: The order timings are reported in: TIMING_STAGES plus ``experiments``, the
+#: eval-only experiments' stage (absent unless one is on).
+REPORTED_STAGES = (*TIMING_STAGES[:-2], "experiments", *TIMING_STAGES[-2:])
 
 #: The learned link type: shown as the ``neighbour`` reason, never as a relation.
 LEARNED_LINK = "ASSOCIATED"
@@ -763,12 +774,18 @@ def order_key(item: ContextItem) -> tuple[float, float, str, str]:
     )
 
 
-def apply_budget(items: list[ContextItem], budget: Budget) -> tuple[list[ContextItem], int, int]:
-    """(kept items in order, content characters used, how many did not fit)."""
+def apply_budget(
+    items: list[ContextItem], budget: Budget, key: Any = order_key
+) -> tuple[list[ContextItem], int, int]:
+    """(kept items in order, content characters used, how many did not fit).
+
+    *key* orders the items first: :func:`order_key` unless an eval-only
+    experiment ranks them (snapshot_experiments.ranked).
+    """
     kept: list[ContextItem] = []
     used = 0
     over = 0
-    for item in sorted(items, key=order_key):
+    for item in sorted(items, key=key):
         if len(kept) >= budget.max_items or used + len(item.content) > budget.max_chars:
             over += 1
             continue
@@ -1138,10 +1155,17 @@ class _Parts:
     abstention_reason: str | None = None
     #: Item key -> the words the sufficiency check reads (full text and labels).
     support: dict[str, str] = field(default_factory=dict)
+    #: Item key -> its memory row; only the eval-only experiments read it.
+    rows: dict[str, Any] = field(default_factory=dict)
+    #: Keys of question-independent items the question asks for by kind; only
+    #: the query-type experiment (B) fills it, so they count as answering.
+    asked: set[str] = field(default_factory=set)
 
-    def add(self, item: ContextItem, support_text: str) -> None:
+    def add(self, item: ContextItem, support_text: str, row: Any = None) -> None:
         self.items.append(item)
         self.support[item.source_ref.key()] = support_text
+        if row is not None:
+            self.rows[item.source_ref.key()] = row
 
     def exclude(self, reason: str, n: int = 1) -> None:
         if n:
@@ -1157,7 +1181,7 @@ class _Parts:
             self.timings[stage] = _ms_since(started)
 
     def timings_tuple(self) -> tuple[tuple[str, float], ...]:
-        return tuple((k, self.timings[k]) for k in TIMING_STAGES if k in self.timings)
+        return tuple((k, self.timings[k]) for k in REPORTED_STAGES if k in self.timings)
 
 
 def _ms_since(started: float) -> float:
@@ -1194,7 +1218,7 @@ async def _memories(
         else:
             kept.append(m)
     for m in kept:
-        parts.add(memory_item(m, ref, budget), memory_support_text(m))
+        parts.add(memory_item(m, ref, budget), memory_support_text(m), m)
     parts.sources.append("memories")
     # Near matches that did not make it, by reason: a second search over
     # every status with the same embedding (no model call).
@@ -1298,8 +1322,14 @@ def check_sufficiency(
 def is_insufficient(
     kept: list[ContextItem], parts: _Parts, suff: sufficiency.Sufficiency | None = None
 ) -> bool:
-    """Whether *kept* is not enough to answer from (see the module docstring)."""
-    answering = [i for i in kept if i.reason not in STANDING_REASONS]
+    """Whether *kept* is not enough to answer from (see the module docstring).
+
+    A question-independent item answers only when the query-type experiment
+    found the question asks for its kind (``parts.asked``, empty by default).
+    """
+    answering = [
+        i for i in kept if i.reason not in STANDING_REASONS or i.source_ref.key() in parts.asked
+    ]
     if not answering:
         return True
     if suff is not None and (suff.asks_for_gaps or suff.unsupported):
@@ -1361,13 +1391,20 @@ async def assemble_context(
     as_of: datetime | None = None,
     budget: Budget = DEFAULT_BUDGET,
     now: datetime | None = None,
+    experiments: frozenset[str] = frozenset(),
 ) -> ContextSnapshot:
     """A bounded, read-only snapshot of what bears on *query* for the current tenant.
 
     *as_of* asks about an earlier instant (valid time); *now* is the wall clock
     (a test passes it for a byte-identical result). See the module docstring
     for the contract.
+
+    *experiments* is for the M8 eval only (scripts/eval_context_quality.py
+    ``--experiments``): option names or letters of
+    services/memory/snapshot_experiments.py. Empty, the default, is the normal
+    snapshot; no setting, API or kernel path passes it.
     """
+    chosen = xp.parse(experiments)
     started = _clock()
     parts = _Parts()
     ref = retrieval._ensure_utc(as_of or now or datetime.now(UTC))
@@ -1404,11 +1441,16 @@ async def assemble_context(
             await _decisions(parts, tenant_id, query, ref, as_of, budget)
         with parts.timed("intentions"):
             await _intentions(parts, tenant_id, query, ref, as_of, budget)
-        kept, used, over = apply_budget(parts.items, budget)
-        # Typed links only between what the budget kept: a relation never
-        # points at something the snapshot does not hold.
-        with parts.timed("relations"):
-            await _relations(parts, tenant_id, kept)
+        if chosen:
+            kept, used, over = await _experiment_cut(
+                parts, tenant_id, query, embedding, ref, as_of, budget, chosen
+            )
+        else:
+            kept, used, over = apply_budget(parts.items, budget)
+            # Typed links only between what the budget kept: a relation never
+            # points at something the snapshot does not hold.
+            with parts.timed("relations"):
+                await _relations(parts, tenant_id, kept)
     except Exception as exc:  # noqa: BLE001 — a partial view must not pass as context
         logger.warning("Context snapshot: a read failed (%s)", type(exc).__name__)
         return ContextSnapshot(
@@ -1433,6 +1475,233 @@ async def assemble_context(
         relations=tuple(parts.relations),
         timings_ms=timings(),
     )
+
+
+# ── Eval-only experiments (services/memory/snapshot_experiments.py) ──
+
+
+async def _links_touching(tenant_id: str, ids: list[uuid.UUID]) -> list[tuple[Any, ...]]:
+    """(source id, target id, link type, strength) of this tenant's typed links
+    with either end in *ids*; the learned ASSOCIATED links left out. One query."""
+    if not ids:
+        return []
+    stmt = (
+        select(
+            MemoryLink.source_memory_id,
+            MemoryLink.target_memory_id,
+            MemoryLink.link_type,
+            MemoryLink.strength,
+        )
+        .where(MemoryLink.tenant_id == tenant_id)
+        .where(or_(MemoryLink.source_memory_id.in_(ids), MemoryLink.target_memory_id.in_(ids)))
+        .where(MemoryLink.link_type != LEARNED_LINK)
+        .order_by(MemoryLink.source_memory_id, MemoryLink.target_memory_id, MemoryLink.link_type)
+    )
+    async with async_session() as s:
+        return [tuple(r) for r in (await s.execute(stmt)).all()]
+
+
+async def _memories_by_id(tenant_id: str, ids: list[uuid.UUID]) -> list[Any]:
+    """This tenant's active memories with these ids, by id."""
+    if not ids:
+        return []
+    stmt = (
+        select(Memory)
+        .options(defer(Memory.embedding))
+        .where(Memory.tenant_id == tenant_id, Memory.id.in_(ids), Memory.status == "active")
+        .order_by(Memory.id)
+    )
+    async with async_session() as s:
+        return list((await s.execute(stmt)).scalars().all())
+
+
+def linked_memory_ok(m: Any, tenant_id: str, ref: datetime, recorded_ref: datetime) -> bool:
+    """The checks a typed-link neighbour must pass to be pulled in (experiment C).
+
+    The same ones every other memory item passes: this tenant's, active, not
+    someone else's words (hostile), not replaced, valid at *ref* and known now.
+    """
+    own = str(getattr(m, "tenant_id", tenant_id)) == str(tenant_id)
+    return (
+        own
+        and not is_excluded_from_agents(getattr(m, "trust_tier", None))
+        and str(getattr(m, "status", "") or "") == "active"
+        and getattr(m, "superseded_by", None) is None
+        and retrieval.is_valid_at(m, ref)
+        and retrieval.is_known_at(m, recorded_ref)
+    )
+
+
+async def _pull_linked(
+    parts: _Parts,
+    tenant_id: str,
+    items: list[ContextItem],
+    touching: list[tuple[Any, ...]],
+    ref: datetime,
+    budget: Budget,
+) -> list[ContextItem]:
+    """Experiment C: the memories a typed link joins to a top hit, strongest link first."""
+    have = {i.source_ref.id for i in items if i.source_ref.kind == "memory"}
+    strength: dict[str, float] = {}
+    for source, target, _type, value in touching:
+        for end in (str(source), str(target)):
+            if end not in have and _is_uuid(end):
+                strength[end] = max(strength.get(end, 0.0), float(value or 0.0))
+    want = sorted(strength, key=lambda x: (-strength[x], x))[: xp.LINK_PULL]
+    recorded_ref = datetime.now(UTC)
+    out: list[ContextItem] = []
+    for m in await _memories_by_id(tenant_id, [uuid.UUID(x) for x in want]):
+        if not linked_memory_ok(m, tenant_id, ref, recorded_ref):
+            continue
+        retrieval._marked([m], xp.LINKED_EVIDENCE)
+        item = memory_item(m, ref, budget)
+        parts.add(item, memory_support_text(m), m)
+        out.append(item)
+    return out
+
+
+def _memory_ids(items: list[ContextItem]) -> list[uuid.UUID]:
+    return [uuid.UUID(i.source_ref.id) for i in items if i.source_ref.kind == "memory"]
+
+
+def _confidences(parts: _Parts) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for key, row in parts.rows.items():
+        value = getattr(row, "confidence", None)
+        if isinstance(value, int | float):
+            out[key] = float(value)
+    return out
+
+
+async def _cosines(tenant_id: str, ids: list[uuid.UUID], vector: list[float]) -> dict[str, float]:
+    """memory id -> cosine similarity of its stored vector to *vector* (this tenant's only).
+
+    Empty when the read fails (no pgvector type, as under pytest): F then
+    falls back to the fused search score and says so in the explanation.
+    """
+    if not ids:
+        return {}
+    try:
+        similarity = 1 - Memory.embedding.cosine_distance(vector)
+        stmt = (
+            select(Memory.id, similarity)
+            .where(Memory.tenant_id == tenant_id, Memory.id.in_(ids))
+            .where(Memory.embedding.is_not(None))
+            .order_by(Memory.id)
+        )
+        async with async_session() as s:
+            return {str(r[0]): float(r[1]) for r in (await s.execute(stmt)).all()}
+    except Exception as exc:  # noqa: BLE001 — eval-only; the fallback is reported
+        logger.warning("Context snapshot experiment: cosine read failed (%s)", type(exc).__name__)
+        return {}
+
+
+async def _relevance(
+    tenant_id: str, items: list[ContextItem], embedding: list[float], hub: bool
+) -> dict[str, float]:
+    """Experiment F (and G): item key -> cosine to the question, hub-adjusted under G.
+
+    Embeds the fixed hub probes through the normal local path (no other model).
+    """
+    ids = _memory_ids(items)
+    by_id = await _cosines(tenant_id, ids, embedding)
+    if hub and by_id:
+        probes: dict[str, list[float]] = {}
+        for probe in xp.HUB_PROBES:
+            vector = await runtime.get_memory_manager().generate_embedding(probe)
+            if not vector:
+                continue
+            for mid, value in (await _cosines(tenant_id, ids, vector)).items():
+                probes.setdefault(mid, []).append(value)
+        by_id = xp.hub_adjusted(by_id, probes)
+    return {f"memory:{mid}": value for mid, value in by_id.items()}
+
+
+def _experiment_filters(
+    parts: _Parts,
+    query: str,
+    items: list[ContextItem],
+    chosen: frozenset[str],
+    as_of: datetime | None,
+    protected: set[str],
+    links: dict[str, set[str]],
+    relevance: dict[str, float] | None = None,
+) -> list[ContextItem]:
+    """B, C (the drop half), D and F in that order; each left-out item is counted."""
+    if xp.QUERY_TYPE in chosen:
+        types = xp.classify(query, as_of=as_of is not None)
+        items, out, parts.asked = xp.query_type_filter(
+            query, items, parts.support, types, protected
+        )
+        parts.exclude("experiment_query_type", len(out))
+    if xp.LINKS in chosen:
+        items, out = xp.drop_unlinked_neighbours(items, links, protected)
+        parts.exclude("experiment_links", len(out))
+    if xp.DEDUPE in chosen:
+        ordered = xp.ranked(
+            items, order_key, rank=xp.RANK in chosen, evidence=xp.EVIDENCE in chosen
+        )
+        items, out = xp.dedupe(ordered, protected)
+        parts.exclude("experiment_dedupe", len(out))
+    if xp.BUDGET in chosen:
+        items, out = xp.adaptive_cut(items, protected, relevance)
+        parts.exclude("experiment_budget", len(out))
+    return items
+
+
+async def _experiment_cut(
+    parts: _Parts,
+    tenant_id: str,
+    query: str,
+    embedding: list[float],
+    ref: datetime,
+    as_of: datetime | None,
+    budget: Budget,
+    chosen: frozenset[str],
+) -> tuple[list[ContextItem], int, int]:
+    """The candidates cut and ordered by the eval-only experiments *chosen*.
+
+    Then the same hard budget. Typed links are read once over all candidates:
+    a CONTRADICTS link among them is a conflict whether or not both sides
+    survive the cut, and relations are only those between kept items.
+    """
+    with parts.timed("experiments"):
+        items = list(parts.items)
+        seeds = xp.link_seeds(items, order_key)
+        touching: list[tuple[Any, ...]] = []
+        if xp.LINKS in chosen:
+            touching = await _links_touching(tenant_id, _memory_ids(seeds))
+            # Not for an as_of question: a link says nothing about when its
+            # end was true, so the pull would need the history reads retrieve does.
+            if as_of is None:
+                items += await _pull_linked(parts, tenant_id, items, touching, ref, budget)
+        rows = await _typed_links(tenant_id, _memory_ids(items))
+        _, linked_conflicts = links_to_context(rows, items)
+        protected: set[str] = set()
+        if xp.EVIDENCE in chosen:
+            protected = xp.conflict_sides(parts.conflicts + linked_conflicts)
+        links = xp.linked_to(touching, {i.source_ref.id for i in seeds})
+        relevance = None
+        if xp.BUDGET in chosen:
+            relevance = await _relevance(tenant_id, items, embedding, xp.HUB in chosen)
+            if not relevance:
+                parts.notes.append("Experiment F had no cosine; it cut on the fused search score.")
+        items = _experiment_filters(parts, query, items, chosen, as_of, protected, links, relevance)
+        order = xp.ranked(
+            items,
+            order_key,
+            rank=xp.RANK in chosen,
+            evidence=xp.EVIDENCE in chosen,
+            confidence=_confidences(parts),
+        )
+    position = {i.source_ref.key(): n for n, i in enumerate(order)}
+    kept, used, over = apply_budget(order, budget, key=lambda i: position[i.source_ref.key()])
+    with parts.timed("relations"):
+        relations, _ = links_to_context(rows, kept)
+        parts.relations += relations
+        parts.conflicts += linked_conflicts
+    parts.notes.append(f"Eval-only experiments on: {', '.join(xp.letters(chosen))}.")
+    return kept, used, over
 
 
 async def shadow_snapshot(
