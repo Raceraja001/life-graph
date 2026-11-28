@@ -78,7 +78,8 @@ BASELINE = {
     # 628 -> 629 (Bun toolchain, sandbox side): sandbox.prepare_bun_env imports
     # sandbox_bun and setup_guard lazily, as prepare_env/_check_manifests already
     # do for setup_guard: both import sandbox at module level (SandboxUnavailableError).
-    "services": 629,
+    # 629 -> 628: services/contradiction.py imports settings at module level.
+    "services": 628,
     "storage": 7,
     "tools": 101,
     "watchers": 28,

@@ -1,8 +1,8 @@
 {
   "benchmark": "life_graph_ingestion_structure_v1",
-  "cases_sha256": "81e6d1cab9379600a0c294d4b9f66414ecbd065a6412382a78605710abf9fd85",
-  "cases": 232,
-  "tamil_or_tanglish_share": 0.362,
+  "cases_sha256": "4dc652306a7a840c237950448c42255300479883d9d2b4bd64c2f668134f8a1c",
+  "cases": 256,
+  "tamil_or_tanglish_share": 0.371,
   "zero_tolerance": {
     "world_time_set_where_unknown": 0,
     "world_time_future_given_start": 0,
@@ -25,17 +25,17 @@
     "misses": []
   },
   "supersession": {
-    "cases": 47,
+    "cases": 71,
     "precision": 1.0,
-    "recall": 0.7917,
-    "tier_accuracy": 0.8723,
+    "recall": 1.0,
+    "tier_accuracy": 1.0,
     "world_end_precision": 1.0,
     "world_end_recall": 0.6667,
-    "low_items_per_100_facts": 4.3,
+    "low_items_per_100_facts": 2.8,
     "denominators": {
-      "precision": 23,
-      "recall": 24,
-      "tier_accuracy": 47,
+      "precision": 41,
+      "recall": 34,
+      "tier_accuracy": 71,
       "world_end_precision": 4,
       "world_end_recall": 6
     },
@@ -44,13 +44,7 @@
     "correction_given_valid_until": [],
     "misses": [
       "s1-manager-tanglish: high (gold high +end)",
-      "s1-salary-tamil: high (gold high +end)",
-      "s2-negation: none (gold medium)",
-      "s2-negation-tamil: none (gold medium)",
-      "s2-value-sip: none (gold medium)",
-      "s2-negated-slot: none (gold medium)",
-      "s2-outside-negation: none (gold medium)",
-      "s2-value-tanglish: none (gold medium)"
+      "s1-salary-tamil: high (gold high +end)"
     ]
   },
   "links": {
