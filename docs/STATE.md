@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 17:19 UTC` from `race/team-labels` @ `93522872`
+Generated `2026-11-28 18:51 UTC` from `race/team-labels` @ `90ac2bf1`
 
 ---
 

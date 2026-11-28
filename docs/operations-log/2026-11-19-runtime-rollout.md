@@ -958,3 +958,42 @@ It will be re-measured after the structural fixes.
 - O1 `w_blocker` (a priorities question does not reach a blocker record) is not addressed.
 - H embeds up to 10 undated intention texts per snapshot. Whether production stores `Intention.embedding` is unchecked.
 - Measure the precision shadow about 7 days after it is switched on, with `scripts/shadow_context_structure.py --tenant raja --since 7`. Watch the timeout rate, dropped share and items.
+
+## D38 — 2026-11-28: stable search tie order, blocker option L, released
+
+**Decided under the owner's "proceed on them"** (2026-11-28, about D37's open items).
+
+**1. #464 fixes the flaky CI gate #458.**
+- **Cause.** `hybrid_search` broke ties in none of its three orderings: the vector `row_number()`, the keyword `row_number()`, and the final `ORDER BY hybrid_score`. Exact ties in the rank-fused score came back in plan or heap order.
+- **Effect.** The snapshot expands links from the top 5 hits, so a tie at rank 5/6 decided whether ingest B3's `w_dep_done` came in. That gave 0.5 against 0.667, 3 failures on CI on 2026-11-28.
+- **Evidence.**
+  - Identical rows across runs, with only the scores moving.
+  - Not HNSW: an exact scan still varied.
+  - With md5(content) tie-breaks, both arms are identical across 3 runs on 45/45 questions.
+- **Fix.** Ties are broken by `md5(content)` and then id. The vector CTE's `ORDER BY ... LIMIT` stays distance-only, so the index scan is unchanged.
+- **Production effect.** The same question now gives the same candidates; before, the order of tied scores was arbitrary. The bge-m3 eval numbers are unchanged.
+- **Test.** A new PG test seeds the same tie in two insertion orders and expects one order. It fails on master.
+
+**2. #465 adds option L ("blockers") and folds it into both precision modes.** It closes the O1 `w_blocker` miss.
+- **Pulls:** current unresolved blocker or dependency records, on priority, "what is stopping me" and work-overview questions. It pulls at most 4 and only adds records.
+- **Never pulls a resolved dependency:** one resolved by a newer trusted record, either through a typed link or through the same tag and shared subject words.
+- **Fires on:** 4 of 45 questions (O1, O7, B3, F4).
+- **The word lists were written with sight of all 45 questions.**
+
+| bge-m3 | P (all 45) | R (all 45) | Owner's ten P / R | Test split R |
+|---|---|---|---|---|
+| `recall` mode without L | 0.472 | 0.979 | 0.70 / 0.95 | 0.961 |
+| `recall` mode with L | 0.473 | **0.990** | 0.71 / **0.98** | 0.980 |
+| `precision` mode with L | 0.551 | 0.969 | 0.75 / 0.95 | 0.980 |
+
+Zero-tolerance counts are all 0.
+
+**3. Release** `prod-20261128-1710`:
+- **Rollback:** `bf93d2ca`. Prod had moved from the owner's side since `prod-20261128-1518`.
+- **Waited for a running dev task to finish first.**
+- **No change to migrations or packages:** alembic stays at 068.
+- **Checks:** health and UI 200, and 0 log errors.
+- **Snapshot:** 17 items in about 160 ms warm, about 860 ms on the first call after restart.
+- **Settings:** `context_precision_mode=''`, `context_precision_shadow=False`.
+
+**4. Still owner-only:** `LIFE_GRAPH_CONTEXT_PRECISION_SHADOW=true` in the prod `.env`. The session's permission check refused it twice (D37).
