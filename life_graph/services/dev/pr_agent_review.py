@@ -10,10 +10,12 @@ what it did. Uses PR-Agent's "plain-diff" local mode (``--stdin``,
 ``--json-output``): no hosted PR, no git-provider credentials, no
 requirement that the worktree be in any particular branch state.
 
-Fail-open by design, same as the reviewer it replaces: if PR-Agent isn't
-installed, the call errors, times out, or its output can't be parsed, the
-task is approved (``ran=False``) rather than stranded on infrastructure
-it doesn't have.
+Fail-closed (router council decision, 2026-11-28): when the review is on
+but PR-Agent isn't installed, errors, times out, or writes output that can't
+be read, the verdict is ``NOT_REVIEWED`` — the task goes to a person, never
+auto-lands. Off, or an empty diff, is ``SKIPPED`` (lands as before). The
+verdict type and its contract live in
+:mod:`life_graph.services.dev.second_opinion`.
 """
 
 from __future__ import annotations
@@ -22,29 +24,15 @@ import asyncio
 import json
 import logging
 import tempfile
-from dataclasses import dataclass, field
 from pathlib import Path
+
+from life_graph.services.dev.second_opinion import ReviewStatus, ReviewVerdict
+
+__all__ = ["PRAgentReviewer", "ReviewStatus", "ReviewVerdict"]
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT_SECONDS = 180
-
-
-@dataclass
-class ReviewVerdict:
-    """Outcome of a second-opinion review.
-
-    Same shape :class:`SecondOpinionReviewer` already returns — a drop-in
-    replacement for the dispatcher's ``verdict.ran`` / ``.approved`` /
-    ``.concern`` usage. ``issues`` is new: the raw per-issue structure from
-    PR-Agent, kept for anything downstream that wants more than the
-    flattened ``concern`` string (e.g. a future dashboard view).
-    """
-
-    approved: bool
-    concern: str | None = None
-    ran: bool = True
-    issues: list[dict] = field(default_factory=list)
 
 
 class PRAgentReviewer:
@@ -64,13 +52,13 @@ class PRAgentReviewer:
     async def review(
         self, task_type: str, instruction: str, diff_text: str | None, focus: str | None = None
     ) -> ReviewVerdict:
-        """Review a real unified diff. Approves unless a concrete concern is found.
+        """Review a real unified diff. Fail-closed: no verdict means NOT_REVIEWED.
 
         *focus* (a review stage's focus text, services/dev/review_stages.py)
         goes to PR-Agent as its reviewer's extra instructions.
         """
         if not self._enabled or not diff_text or not diff_text.strip():
-            return ReviewVerdict(approved=True, ran=False)
+            return ReviewVerdict.skipped()
 
         try:
             with tempfile.TemporaryDirectory() as tmp:
@@ -80,7 +68,7 @@ class PRAgentReviewer:
                     # fallback_models=[] -- a cheap reviewer silently escalating
                     # to PR-Agent's own (possibly expensive) default fallback
                     # chain on failure would defeat the point of picking a
-                    # specific model here; fail-open below handles failure.
+                    # specific model here; a failure is NOT_REVIEWED below.
                     argv += [f"--config.model={self._model}", "--config.fallback_models=[]"]
                 if focus and focus.strip():
                     argv.append(f"--pr_reviewer.extra_instructions={focus.strip()[:2000]}")
@@ -100,7 +88,9 @@ class PRAgentReviewer:
                     proc.kill()
                     await proc.communicate()
                     logger.warning("pr-agent review timed out after %ss", _TIMEOUT_SECONDS)
-                    return ReviewVerdict(approved=True, ran=False)
+                    return ReviewVerdict.not_reviewed(
+                        f"pr-agent timed out after {_TIMEOUT_SECONDS}s"
+                    )
 
                 if proc.returncode != 0 or not json_path.is_file():
                     logger.warning(
@@ -108,15 +98,21 @@ class PRAgentReviewer:
                         proc.returncode,
                         err.decode(errors="replace")[-500:],
                     )
-                    return ReviewVerdict(approved=True, ran=False)
+                    return ReviewVerdict.not_reviewed(
+                        f"pr-agent failed (exit {proc.returncode}, no review written)"
+                    )
                 data = json.loads(json_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            logger.warning("pr-agent binary not found (%r) — approving", self._bin)
-            return ReviewVerdict(approved=True, ran=False)
-        except Exception:
-            logger.warning("pr-agent review errored — approving", exc_info=True)
-            return ReviewVerdict(approved=True, ran=False)
+            logger.warning("pr-agent binary not found (%r) — not reviewed", self._bin)
+            return ReviewVerdict.not_reviewed(f"pr-agent binary not found ({self._bin})")
+        except Exception as exc:  # noqa: BLE001 - any failure = not reviewed
+            logger.warning("pr-agent review errored — not reviewed", exc_info=True)
+            return ReviewVerdict.not_reviewed(
+                f"pr-agent errored ({type(exc).__name__}: {exc})"[:300]
+            )
 
+        if not isinstance(data, dict) or not isinstance(data.get("review"), dict):
+            return ReviewVerdict.not_reviewed("pr-agent output had no review section")
         return self._parse(data)
 
     @staticmethod
@@ -134,7 +130,7 @@ class PRAgentReviewer:
         has_security_concern = security not in ("", "no", "none")
 
         if not issues and not has_security_concern:
-            return ReviewVerdict(approved=True, ran=True)
+            return ReviewVerdict.approve()
 
         parts: list[str] = []
         if has_security_concern:
@@ -145,4 +141,4 @@ class PRAgentReviewer:
             content = str(issue.get("issue_content") or "").strip()
             parts.append(f"{file_}: {header} — {content}")
         concern = "; ".join(parts)[:2000]
-        return ReviewVerdict(approved=False, concern=concern or None, ran=True, issues=issues)
+        return ReviewVerdict.objected(concern or None, issues=issues)

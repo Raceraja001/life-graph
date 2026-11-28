@@ -1549,3 +1549,39 @@ continuations). The gate is what the run did and said, not who started it: an ow
 "fix X" whose agent answers "already fixed on master" did not fail either, it is shown to the
 owner with the agent's reason, and nothing lands or is approved on the strength of it. Manual
 tasks are never counted by the automation breaker in any case.
+
+## Amendment 2026-11-28 — the second opinion fails closed
+
+Router council decision (race-app `docs/research/2026-11-28-router-council/04-decision.md`,
+step 1; [CHARTER invariant 5](../../CHARTER.md)). Before this, both second-opinion reviewers
+approved when the review could not run: `SecondOpinionReviewer` on a call error, a non-JSON reply
+or a missing `approved` (which defaulted to `True`); `PRAgentReviewer` — the one the dispatcher
+actually builds — when PR-Agent was missing, failed, timed out or wrote nothing readable. The
+dispatcher only acts on `ran and not approved`, so a review that never happened let the task
+auto-land.
+
+**The verdict** (`services/dev/second_opinion.py`, shared by `pr_agent_review.py`):
+`ReviewVerdict.status` is one of
+
+| `status` | when | `may_auto_land` / `needs_human` | legacy `approved` / `ran` |
+|---|---|---|---|
+| `approved` | the reviewer ran and found nothing blocking | true / false | true / true |
+| `objected` | the reviewer ran and raised a concern (`concern`) | false / true | false / true |
+| `not_reviewed` | the review is on but gave no verdict: call error, timeout, no model configured, PR-Agent missing or failing, non-JSON reply, `approved` missing or unreadable, PR-Agent output with no `review` section; `concern` holds the reason | false / true | **false / false** |
+| `skipped` | the review is off, or there was nothing to review (empty output/diff) | true / false | true / false |
+
+- GIVEN the second opinion is disabled THEN behaviour is unchanged (`skipped`, lands as before).
+- GIVEN it is enabled AND the review did not produce a verdict THEN the verdict is
+  `not_reviewed` with the reason, and the task must go to a person, never auto-land.
+- Gate on `verdict.needs_human` (or `not verdict.may_auto_land`). `ran and not approved` alone
+  is **not** a safe gate: it is false for `not_reviewed`.
+- **Dispatcher (pending, owner of `drivers/dispatcher.py`):** `_second_opinion_review` returns
+  early only when `verdict.may_auto_land`. For `not_reviewed` it files the human approval entry
+  as for a dissent, but does not emit `driver:second_opinion:dissent`; the task's result is
+  `success=False, needs_human=True`, `error="Second opinion did not run: <concern>"`,
+  `metadata.second_opinion_status = "not_reviewed"`, `metadata.second_opinion_reason = <concern>`.
+  Until that lands, `not_reviewed` is still let through by the dispatcher's current check.
+- Review stages (Story 8) are unchanged: `services/dev/review_stages.py::ModelStageReviewer` still
+  returns `skipped`-shaped verdicts for "unavailable", and the stage runner records those as
+  `unavailable` and refuses auto-approval.
+- Tests: `tests/unit/test_second_opinion.py`, `tests/unit/test_pr_agent_review.py`.

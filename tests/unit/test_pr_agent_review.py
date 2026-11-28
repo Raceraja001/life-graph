@@ -1,4 +1,4 @@
-"""PRAgentReviewer: a diff-reading second opinion, fail-open on any trouble.
+"""PRAgentReviewer: a diff-reading second opinion, fail-closed on any trouble.
 
 Parsing/fail-open behavior is tested against mocked subprocesses (fast,
 deterministic); one real end-to-end test proves the actual wiring against
@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from life_graph.services.dev.pr_agent_review import PRAgentReviewer, ReviewVerdict
+from life_graph.services.dev.pr_agent_review import PRAgentReviewer, ReviewStatus, ReviewVerdict
 
 
 def test_parse_approves_when_no_issues_and_no_security_concern():
@@ -79,14 +79,16 @@ async def test_empty_diff_never_runs_a_process():
 
 
 @pytest.mark.asyncio
-async def test_missing_binary_fails_open():
+async def test_missing_binary_is_not_reviewed():
     reviewer = PRAgentReviewer(enabled=True, bin_path="/no/such/pr-agent-binary")
     verdict = await reviewer.review("code_change", "do a thing", "diff --git a/x b/x\n+x\n")
-    assert verdict == ReviewVerdict(approved=True, ran=False)
+    assert verdict.status is ReviewStatus.NOT_REVIEWED
+    assert verdict.needs_human and not verdict.may_auto_land and not verdict.approved
+    assert "not found" in verdict.concern
 
 
 @pytest.mark.asyncio
-async def test_nonzero_exit_fails_open(monkeypatch):
+async def test_nonzero_exit_is_not_reviewed(monkeypatch):
     import life_graph.services.dev.pr_agent_review as mod
 
     class _FakeProc:
@@ -101,7 +103,34 @@ async def test_nonzero_exit_fails_open(monkeypatch):
     monkeypatch.setattr(mod.asyncio, "create_subprocess_exec", _fake_exec)
     reviewer = PRAgentReviewer(enabled=True)
     verdict = await reviewer.review("code_change", "do a thing", "diff --git a/x b/x\n+x\n")
-    assert verdict == ReviewVerdict(approved=True, ran=False)
+    assert verdict == ReviewVerdict.not_reviewed("pr-agent failed (exit 1, no review written)")
+    assert verdict.needs_human
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("written", ["{}", '{"review": null}', "[]", "not json"])
+async def test_output_without_a_review_is_not_reviewed(monkeypatch, written):
+    """A run that writes no readable review section reviewed nothing."""
+    import life_graph.services.dev.pr_agent_review as mod
+
+    async def _fake_exec(*argv, **_k):
+        out = argv[argv.index("--json-output") + 1]
+
+        class _FakeProc:
+            returncode = 0
+
+            async def communicate(self, _input=None):
+                from pathlib import Path
+
+                Path(out).write_text(written, encoding="utf-8")
+                return b"", b""
+
+        return _FakeProc()
+
+    monkeypatch.setattr(mod.asyncio, "create_subprocess_exec", _fake_exec)
+    verdict = await PRAgentReviewer(enabled=True).review("code_change", "x", "diff --git a b\n+x\n")
+    assert verdict.status is ReviewStatus.NOT_REVIEWED
+    assert verdict.needs_human
 
 
 # ── Real end-to-end: the actual installed binary + a local model ──
