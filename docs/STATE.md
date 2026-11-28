@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 08:46 UTC` from `master` @ `5f1f2ef`
+Generated `2026-11-28 08:56 UTC` from `master` @ `c4361fc`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-28 08:46 UTC` from `master` @ `5f1f2ef`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **38** |
-| Config settings | **367** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6918** in 714 files |
+| Config settings | **368** (prefix `LIFE_GRAPH_`) |
+| Test functions | **6944** in 717 files |
 | Dashboard pages | **23** |
-| Python | 591 files, 173,200 lines |
+| Python | 591 files, 173,717 lines |
 
 ---
 
@@ -1119,16 +1119,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 549 | 5836 |
-| `tests/integration/` | 164 | 1070 |
+| `tests/unit/` | 551 | 5860 |
+| `tests/integration/` | 165 | 1072 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **714** | **6918** |
+| **total** | **717** | **6944** |
 
 ---
 
 ## Configuration
 
-367 settings, all overridable by environment variable.
+368 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1198,6 +1198,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_INGEST_SUPERSESSION_TIERS` | `False` |
 | `LIFE_GRAPH_INGEST_SLOT_PAIRING` | `False` |
 | `LIFE_GRAPH_INGEST_WORLD_TIME` | `False` |
+| `LIFE_GRAPH_INGEST_WORLD_END` | `False` |
 | `LIFE_GRAPH_PROFILE_CARD_MAX_ITEMS` | `40` |
 | `LIFE_GRAPH_DECAY_DEFAULT_LAMBDA` | `0.1` |
 | `LIFE_GRAPH_DEDUP_ENABLED` | `True` |
