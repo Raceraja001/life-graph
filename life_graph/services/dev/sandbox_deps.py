@@ -20,7 +20,10 @@ replace host directories later without touching either consumer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -28,7 +31,9 @@ class DepsMount:
     """One read-only bind: a directory inside a finished env → a path under the container's ``/work``."""
 
     source: Path  # absolute host path inside a published (ready) env directory
-    target: str  # container path, always ``/work/<workspace>/node_modules`` (or ``/work/node_modules``)
+    target: (
+        str  # container path, always ``/work/<workspace>/node_modules`` (or ``/work/node_modules``)
+    )
 
 
 @dataclass(frozen=True)
@@ -39,7 +44,9 @@ class DepsPlan:
     env_key: str  # content hash of the manifests + setup + base image
     mounts: tuple[DepsMount, ...]
     path_prepend: tuple[str, ...] = ()  # e.g. ("/work/node_modules/.bin",)
-    env: dict[str, str] = field(default_factory=dict)  # extra container env (cache dirs, never secrets)
+    env: dict[str, str] = field(
+        default_factory=dict
+    )  # extra container env (cache dirs, never secrets)
     # Host directories (relative to the worktree) that were created as empty mountpoints. They are
     # git-ignored by construction; listed so callers can explain/clean them.
     mountpoints: tuple[str, ...] = ()
