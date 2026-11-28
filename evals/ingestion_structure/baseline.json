@@ -19,7 +19,7 @@
   },
   "decisions": {
     "detection_precision": 1.0,
-    "detection_recall": 0.5714,
+    "detection_recall": 1.0,
     "lifecycle_accuracy": 1.0
   }
 }

@@ -17,7 +17,7 @@ from life_graph.config import settings
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.core.said_at import late, said_at
 from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
-from life_graph.services import claude_code_sessions, saved_by_tool
+from life_graph.services import claude_code_sessions, saved_by_tool, tamil_decisions
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -59,7 +59,9 @@ def promote_standing(facts: list[Any], content: str | None) -> list[Any]:
 
 
 # ── Decision detection patterns ────────────────────────────────────────
-# These fire DECISION_CANDIDATE for the Judgment Engine to consume.
+# These fire DECISION_CANDIDATE for the Judgment Engine to consume. English
+# only; Tamil and Tanglish ("முடிவு செய்தோம்", "decide panniten") are found by
+# services/tamil_decisions.py, which ``_detect_decisions`` also asks.
 _DECISION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\b(?:I|we)\s+decided\s+(?:to\s+)?(.+)", re.IGNORECASE),
     re.compile(r"\b(?:I|we)(?:'re|'ve)?\s+go(?:ing)?\s+with\s+(.+)", re.IGNORECASE),
@@ -554,16 +556,23 @@ class CaptureProcessors:
 
     @staticmethod
     def _detect_decisions(text: str) -> list[str]:
-        """Extract decision statements from text using regex patterns."""
+        """Decision statements in *text*: the English patterns, then Tamil and Tanglish.
+
+        Candidates only; the owner confirms each one (services/decision_lifecycle.py).
+        The Tamil and Tanglish rules are in services/tamil_decisions.py."""
+        found = [
+            match.group(1).strip().rstrip(".,;!?")
+            for pattern in _DECISION_PATTERNS
+            for match in pattern.finditer(text)
+        ]
+        found += tamil_decisions.detect(text)
         decisions: list[str] = []
         seen: set[str] = set()
-        for pattern in _DECISION_PATTERNS:
-            for match in pattern.finditer(text):
-                decision = match.group(1).strip().rstrip(".,;!?")
-                normalised = decision.lower()
-                if normalised and normalised not in seen and len(decision) > 5:
-                    decisions.append(decision)
-                    seen.add(normalised)
+        for decision in found:
+            normalised = decision.lower()
+            if normalised and normalised not in seen and len(decision) > 5:
+                decisions.append(decision)
+                seen.add(normalised)
         return decisions
 
     @staticmethod
