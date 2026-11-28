@@ -685,14 +685,9 @@ class DockerTaskRuntime:
         env = {"HOME": "/tmp", "LANG": "C.UTF-8", "TZ": "UTC", **req.env}
         if req.egress_allowlist:
             proxy = f"http://{names['proxy']}:{EGRESS_PORT}"
-            env.update(
-                {
-                    "HTTPS_PROXY": proxy,
-                    "HTTP_PROXY": proxy,
-                    "https_proxy": proxy,
-                    "http_proxy": proxy,
-                }
-            )
+            # Loopback (and only loopback) skips the proxy: the project's own
+            # tests talk to servers they start on 127.0.0.1.
+            env.update(sandbox.proxy_env(proxy, env))
         kill_after = max(5, int(settings.driver_runtime_kill_grace_seconds) // 2)
         spec = SandboxSpec(
             name=names["container"],

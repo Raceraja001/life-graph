@@ -42,6 +42,8 @@ One dispatch gets:
 | Cleanup | Teardown (rm container, rm proxy, rm network) always runs and treats "already gone" as done. `sweep_orphans` runs at startup on the runner-lock holder, after interrupted-task recovery. It finds leftovers **by label** and removes those whose task is not `running`. It also deletes staged token copies older than twice the longest dispatch. |
 | Fail closed | A missing docker/image, a network that isn't internal, a proxy that isn't ready, a validator refusal, or the container failing to start all raise `SandboxUnavailableError`. The driver turns that into `exit_status=sandbox_unavailable`. No code path falls back to the host. |
 
+**2026-11-28: loopback skips the proxy.** Wherever a sandbox container gets `HTTP(S)_PROXY` (the agent container, `task_runtime._driver_spec`; verifier setup, `sandbox._setup_net_args`), it now also gets `NO_PROXY` and `no_proxy` set to `localhost,127.0.0.1,::1` (`sandbox.proxy_env`). Before this, a project's tests that start a server on 127.0.0.1 and call it were sent to the proxy and failed (30 of race-app's tests, on prod). Only loopback is added. A `NO_PROXY` already in the request env is merged, but only its loopback entries survive (`sandbox.loopback_no_proxy`); anything else is dropped and logged. The network is unchanged: the container still has no route but the proxy. The same day `curl` (with `ca-certificates`) went into `docker/claude-driver` and `docker/verifier-node`, since project test suites call it (2 of race-app's).
+
 Alongside the runtime, and for every driver on the host:
 
 - **Host-run CLIs** (claude_code in `none` mode, OpenCode) get an **allowlisted environment** (`host_exec.host_driver_env`) and **start their own process group**. A timeout kills the group.

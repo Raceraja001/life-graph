@@ -16,8 +16,9 @@ FROM oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f1456
 FROM node:22-slim
 # bash: app_e2e_pass waits on the app's port with bash's /dev/tcp.
 # git: test suites commonly create throwaway repositories.
+# curl: project test suites call it (race-app's do; 2026-11-28).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git bash ca-certificates \
+    && apt-get install -y --no-install-recommends git bash ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx && bun --version

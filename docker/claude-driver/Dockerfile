@@ -20,8 +20,9 @@ FROM oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f1456
 FROM python:3.12-slim
 # git: the CLI's own Bash tool uses it for context (git diff/log), not for
 # committing — landing commits happen on the host afterward, via hardened git.
+# curl: project test suites call it (race-app's do; 2026-11-28).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates \
+    && apt-get install -y --no-install-recommends git ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 # The verifier image's toolchain, same pins (docker/verifier/Dockerfile; a unit
 # test keeps them equal). The project's cached verifier venv is mounted

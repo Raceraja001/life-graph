@@ -594,3 +594,80 @@ async def test_sweep_orphans_periodic_mode_uses_the_age_floor_and_skips_event_ex
 
     await task_runtime.sweep_orphans(lambda: _Session(), expire_events=False)
     assert seen["kw"] == {"min_age_seconds": task_runtime.PERIODIC_MIN_AGE_SECONDS}
+
+
+# ── NO_PROXY: loopback, and only loopback, skips the egress proxy (2026-11-28) ──
+
+_LOOPBACK = "localhost,127.0.0.1,::1"
+_NAMES = {"container": "lg-rt-0123456789abcdef", "network": "lg-rt-net-0123456789abcdef",
+          "proxy": "lg-rt-egress-0123456789abcdef"}  # fmt: skip
+
+
+def _spec_env(roots, **kw) -> dict[str, str]:
+    rt = task_runtime.DockerTaskRuntime(FakeDocker())
+    return rt._driver_spec(_req(roots, **kw), _NAMES, {}).env
+
+
+def test_a_proxied_driver_gets_exactly_the_loopback_no_proxy(roots):
+    env = _spec_env(roots)
+    assert env["HTTPS_PROXY"].startswith("http://lg-rt-egress-")
+    assert env["NO_PROXY"] == _LOOPBACK
+    assert env["no_proxy"] == _LOOPBACK
+
+
+def test_no_proxy_means_no_no_proxy(roots):
+    env = _spec_env(roots, egress_allowlist=())
+    assert not {"HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "no_proxy"} & set(env)
+
+
+def test_an_existing_no_proxy_is_merged_but_keeps_loopback_only(roots):
+    env = _spec_env(
+        roots,
+        env={"NO_PROXY": "127.0.0.2, internal.corp,localhost", "no_proxy": "[::1],10.0.0.0/8"},
+    )
+    expected = "localhost,127.0.0.1,::1,127.0.0.2"
+    assert env["NO_PROXY"] == env["no_proxy"] == expected
+
+
+@pytest.mark.parametrize(
+    ("existing", "expected"),
+    [
+        (None, _LOOPBACK),
+        ("", _LOOPBACK),
+        ("127.0.0.0/8", _LOOPBACK + ",127.0.0.0/8"),
+        ("LOCALHOST,[::1],127.0.0.2", _LOOPBACK + ",127.0.0.2"),
+        ("example.com,.corp,*,0.0.0.0,10.1.2.3,169.254.169.254", _LOOPBACK),
+        ("127.0.0.0/7", _LOOPBACK),  # wider than loopback
+    ],
+)
+def test_loopback_no_proxy_never_adds_a_non_loopback_host(existing, expected):
+    assert sandbox.loopback_no_proxy(existing) == expected
+
+
+def test_the_validator_accepts_the_proxy_env():
+    env = sandbox.proxy_env("http://lg-rt-egress-0123456789abcdef:8080")
+    assert env["NO_PROXY"] == env["no_proxy"] == _LOOPBACK
+    assert sandbox._env_violations(env) == []
+
+
+def test_setup_containers_get_the_loopback_no_proxy():
+    egress = task_runtime.SetupEgress(
+        container="lg-verify-setup-x", network="lg-rt-net-x",
+        proxy_host="lg-rt-egress-x", proxy_port=8080, labels={},
+    )  # fmt: skip
+    args = sandbox._setup_net_args(egress, "node")
+    env = [args[i + 1] for i, a in enumerate(args) if a == "-e"]
+    assert f"NO_PROXY={_LOOPBACK}" in env and f"no_proxy={_LOOPBACK}" in env
+    assert "HTTPS_PROXY=http://lg-rt-egress-x:8080" in env
+
+
+@pytest.mark.parametrize(
+    "path", ["docker/claude-driver/Dockerfile", "docker/verifier-node/Dockerfile"]
+)
+def test_the_agent_and_node_images_install_curl(path):
+    text = (Path(__file__).resolve().parents[2] / path).read_text()
+    install = next(line for line in text.splitlines() if "apt-get install" in line)
+    words = install.split()
+    assert "--no-install-recommends" in words
+    assert "curl" in words and "ca-certificates" in words
+    assert "rm -rf /var/lib/apt/lists/*" in text

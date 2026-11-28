@@ -51,6 +51,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import ipaddress
 import logging
 import os
 import re
@@ -404,6 +405,62 @@ async def _setup_egress(toolchain: str, allow):
         yield egress
 
 
+# Loopback is the only destination that bypasses the egress proxy. Without a
+# NO_PROXY, a project's tests that start a server on 127.0.0.1 and call it
+# were sent to the proxy and failed (race-app, 2026-11-28). Both spellings are
+# set because tools differ on which one they read.
+LOOPBACK_NO_PROXY: tuple[str, ...] = ("localhost", "127.0.0.1", "::1")
+NO_PROXY_KEYS: tuple[str, ...] = ("NO_PROXY", "no_proxy")
+
+
+def _is_loopback_entry(entry: str) -> bool:
+    """True when a NO_PROXY entry names only loopback (``localhost``, ``127.0.0.0/8``, ``::1``)."""
+    if entry.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_network(entry.strip("[]"), strict=False).is_loopback
+    except ValueError:
+        return False
+
+
+def loopback_no_proxy(existing: str | None = None) -> str:
+    """The NO_PROXY value for a proxied sandbox container: loopback, nothing else.
+
+    *existing* (a NO_PROXY already configured) is merged in, but only its
+    loopback entries survive: anything else would be a destination that skips
+    the proxy, and dropping it is logged.
+    """
+    entries = list(LOOPBACK_NO_PROXY)
+    seen = {e.lower() for e in entries}
+    dropped: list[str] = []
+    for raw in (existing or "").split(","):
+        entry = raw.strip()
+        if not entry or entry.lower().strip("[]") in seen:
+            continue
+        if _is_loopback_entry(entry):
+            entries.append(entry)
+            seen.add(entry.lower().strip("[]"))
+        else:
+            dropped.append(entry)
+    if dropped:
+        logger.warning("NO_PROXY: non-loopback entries not passed to the sandbox: %s", dropped)
+    return ",".join(entries)
+
+
+def proxy_env(proxy_url: str, existing: dict[str, str] | None = None) -> dict[str, str]:
+    """The proxy variables for a sandbox container behind *proxy_url*.
+
+    ``HTTP(S)_PROXY`` in both spellings, plus ``NO_PROXY``/``no_proxy`` set to
+    the loopback set (merged with any loopback entries already in *existing*).
+    """
+    current = existing or {}
+    merged = ",".join(current[k] for k in NO_PROXY_KEYS if current.get(k))
+    no_proxy = loopback_no_proxy(merged)
+    env = {name: proxy_url for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy")}
+    env.update(dict.fromkeys(NO_PROXY_KEYS, no_proxy))
+    return env
+
+
 def _setup_net_args(egress, toolchain: str) -> list[str]:
     """``docker run`` arguments that put a setup container behind *egress*.
 
@@ -415,8 +472,8 @@ def _setup_net_args(egress, toolchain: str) -> list[str]:
     for key in sorted(egress.labels):
         args += ["--label", f"{key}={egress.labels[key]}"]
     args += ["--label", f"{RUNTIME_LABEL}.role=setup"]
-    for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
-        args += ["-e", f"{name}={url}"]
+    for name, value in proxy_env(url).items():
+        args += ["-e", f"{name}={value}"]
     if toolchain in ("node", "bun"):
         args += ["-e", f"npm_config_proxy={url}", "-e", f"npm_config_https_proxy={url}"]
     return args
