@@ -1,0 +1,8 @@
+{
+  "name": "bun-workspace-fixture",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "postinstall": "touch SCRIPT_RAN"
+  }
+}

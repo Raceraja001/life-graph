@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from life_graph.config import settings
 from life_graph.core.redaction import SECRET_SHAPES
-from life_graph.services.dev import risk_report, sandbox
+from life_graph.services.dev import risk_report, sandbox, sandbox_deps
 from life_graph.services.dev.acceptance import is_js_test_ref, is_safe_test_ref
 
 if TYPE_CHECKING:
@@ -436,6 +436,18 @@ _DEFAULT_TEST_ARGV = [
 _DEFAULT_TEST_TIMEOUT = 300
 # A Node project's own `test` script (package.json) is "the tests".
 _DEFAULT_NODE_TEST_ARGV = ["npm", "test", "--silent"]
+# A Bun project: Bun's own test runner over the workspace.
+_DEFAULT_BUN_TEST_ARGV = ["bun", "test"]
+
+
+async def _bun_plan(workdir: Path, ctx: dict):
+    """The Bun toolchain's mount plan (sandbox_deps.deps_mounts). Raises
+    DepsUnavailableError -- a SandboxUnavailableError, so callers report it as
+    inconclusive, never a pass."""
+    plan = await sandbox_deps.deps_mounts(ctx, workdir)
+    if plan is None:  # not on the bun toolchain: the caller checked, so never reached
+        raise sandbox_deps.DepsUnavailableError("project is not on sandbox_toolchain=bun")
+    return plan
 
 
 async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
@@ -465,7 +477,10 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
             "command": ["gradle", *tasks],
         }
     node = sandbox.node_toolchain(ctx)
-    default = _DEFAULT_NODE_TEST_ARGV if node else _DEFAULT_TEST_ARGV
+    bun = sandbox.bun_toolchain(ctx)
+    default = (
+        _DEFAULT_BUN_TEST_ARGV if bun else _DEFAULT_NODE_TEST_ARGV if node else _DEFAULT_TEST_ARGV
+    )
     try:
         argv = shlex.split(command) if command else default
     except ValueError as exc:
@@ -473,7 +488,10 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
     if not argv:
         argv = default
     try:
-        if node:
+        if bun:
+            plan = await _bun_plan(workdir, ctx)
+            result = await sandbox.run(argv, workdir, deps=plan, timeout=timeout)
+        elif node:
             deps = await sandbox.prepare_node_env(
                 workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
             )
@@ -485,10 +503,12 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
             result = await sandbox.run(argv, workdir, venv=venv, timeout=timeout)
     except sandbox.SandboxUnavailableError as exc:
         return None, {"note": str(exc), "sandbox": "docker", "command": argv}
-    if not node and _missing_module(result, "pytest"):
+    if not (node or bun) and _missing_module(result, "pytest"):
         return None, {"note": "pytest is not installed in the project environment"}
+    # `bun test` reports on stderr; its last lines are the failures and the counts.
+    output = f"{result.stdout}\n{result.stderr}" if bun else result.stdout
     return result.returncode == 0, {
-        "stdout": _test_evidence(result.stdout),
+        "stdout": _test_evidence(output) if not bun else output[-1500:],
         "returncode": result.returncode,
         "sandbox": "docker",
         "command": argv,
@@ -675,6 +695,13 @@ _JS_RUNNERS = {
         *(["-t", re.escape(name)] if name else []),
     ],
     "jest": lambda file, name: ["jest", "--ci", file, *(["-t", re.escape(name)] if name else [])],
+    # "./" makes Bun treat it as a path, not a substring filter over every file.
+    "bun": lambda file, name: [
+        "bun",
+        "test",
+        f"./{file}",
+        *(["-t", re.escape(name)] if name else []),
+    ],
 }
 
 
@@ -688,16 +715,23 @@ async def _js_acceptance_tests(
     """
     if not sandbox.enabled():
         return None, {"note": "JS acceptance tests run only in the docker sandbox"}
-    if not sandbox.node_toolchain(ctx):
-        return None, {"note": "JS test refs, but the project is not on sandbox_toolchain=node"}
-    runner = (ctx.get("sandbox_js_test_runner") or "vitest").strip().lower()
+    bun = sandbox.bun_toolchain(ctx)
+    if not (sandbox.node_toolchain(ctx) or bun):
+        return None, {
+            "note": "JS test refs, but the project is not on sandbox_toolchain=node or bun"
+        }
+    runner = (ctx.get("sandbox_js_test_runner") or ("bun" if bun else "vitest")).strip().lower()
     if runner not in _JS_RUNNERS:
         return None, {"note": f"unknown sandbox_js_test_runner {runner!r}"}
     timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
+    plan, node_deps = None, None
     try:
-        deps = await sandbox.prepare_node_env(
-            workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
-        )
+        if bun:
+            plan = await _bun_plan(workdir, ctx)
+        else:
+            node_deps = await sandbox.prepare_node_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
     except sandbox.SandboxUnavailableError as exc:
         return None, {"note": str(exc), "sandbox": "docker"}
     runs = []
@@ -705,7 +739,11 @@ async def _js_acceptance_tests(
         file, _, name = ref.partition("::")
         try:
             result = await sandbox.run(
-                _JS_RUNNERS[runner](file, name or None), workdir, node_deps=deps, timeout=timeout
+                _JS_RUNNERS[runner](file, name or None),
+                workdir,
+                node_deps=node_deps,
+                deps=plan,
+                timeout=timeout,
             )
         except sandbox.SandboxUnavailableError as exc:
             return None, {"note": str(exc), "sandbox": "docker"}
@@ -713,8 +751,11 @@ async def _js_acceptance_tests(
         # vitest/jest exit 0 when -t matched nothing (every test "skipped"); a
         # bound test that does not exist must fail, as pytest's exit 5 does.
         # So require at least one test to have actually passed: vitest prints
-        # "Tests  1 passed | 2 skipped (3)", jest "Tests: 1 passed, 2 skipped".
-        ran = re.search(r"Tests:?\s+(\d+) passed", out)
+        # "Tests  1 passed | 2 skipped (3)", jest "Tests: 1 passed, 2 skipped",
+        # bun " 1 pass" on a line of its own.
+        ran = re.search(r"Tests:?\s+(\d+) passed", out) or re.search(
+            r"^\s*(\d+) pass\s*$", out, re.M
+        )
         matched = not name or bool(ran and int(ran.group(1)) > 0)
         runs.append(
             {
@@ -768,7 +809,10 @@ async def _verify_app_e2e_pass(workdir: Path, ctx: dict) -> tuple[bool | None, d
         'kill $app 2>/dev/null; [ "$rc" = 0 ] || tail -n 40 /tmp/app.log\nexit $rc\n'
     )
     try:
-        if sandbox.node_toolchain(ctx):
+        if sandbox.bun_toolchain(ctx):
+            plan = await _bun_plan(workdir, ctx)
+            result = await sandbox.run(["bash", "-c", script], workdir, deps=plan, timeout=timeout)
+        elif sandbox.node_toolchain(ctx):
             deps = await sandbox.prepare_node_env(
                 workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
             )

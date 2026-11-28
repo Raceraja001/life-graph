@@ -42,7 +42,11 @@ from life_graph.services.dev.sandbox import SandboxUnavailableError
 
 # The registry token that admits local-path dependencies outside the worktree.
 PATH_TOKEN = "path"
-TOOLCHAINS = ("python", "node", "jvm")
+# The registry token that lets a Bun setup run install scripts (lifecycle
+# scripts of the project and its dependencies). Off by default: setup sets
+# npm_config_ignore_scripts=true whatever the setup command says.
+SCRIPTS_TOKEN = "scripts"
+TOOLCHAINS = ("python", "node", "bun", "jvm")
 _MAX_BYTES = 20 * 1024 * 1024
 _MAX_INCLUDES = 50
 _HOSTNAME = re.compile(
@@ -114,6 +118,8 @@ def parse_allow(raw: str | list | tuple | None) -> tuple[frozenset[str], bool]:
         if item == PATH_TOKEN:
             allow_paths = True
             continue
+        if item == SCRIPTS_TOKEN:
+            continue  # read by allows_scripts(), not a host
         host = item.removeprefix("https://").rstrip("/")
         if not _HOSTNAME.match(host):
             raise SetupRefusedError(
@@ -121,6 +127,14 @@ def parse_allow(raw: str | list | tuple | None) -> tuple[frozenset[str], bool]:
             )
         hosts.add(host)
     return frozenset(hosts), allow_paths
+
+
+def allows_scripts(raw: str | list | tuple | None) -> bool:
+    """Whether the registry's ``sandbox_setup_allow`` lists ``scripts``."""
+    if raw is None or raw == "":
+        return False
+    items = _csv(raw) if isinstance(raw, str) else [str(x).strip().lower() for x in raw]
+    return SCRIPTS_TOKEN in items
 
 
 def policy(toolchain: str, workdir: Path, allow: str | list | tuple | None) -> Policy:
@@ -568,6 +582,66 @@ def _scan_node(scan: _Scan) -> None:
             _npm_lock_entries(scan, lock, data.get("dependencies"))
 
 
+# ── Bun ────────────────────────────────────────────────────────
+
+
+_STRING_OR_TRAILING_COMMA = re.compile(r'("(?:\\.|[^"\\])*")|,(\s*[}\]])')
+
+
+def _jsonc(text: str) -> object:
+    """bun.lock is JSON with trailing commas; drop them (never inside a string)."""
+    return json.loads(_STRING_OR_TRAILING_COMMA.sub(lambda m: m.group(1) or m.group(2), text))
+
+
+def _bun_lock(scan: _Scan) -> None:
+    text = scan.read("bun.lock")
+    if text is None:
+        if (scan.pol.workdir / "bun.lockb").exists():
+            scan.bad(
+                "bun.lockb",
+                "a binary lockfile cannot be checked; convert it with"
+                " `bun install --save-text-lockfile` and commit bun.lock",
+            )
+        return
+    try:
+        data = _jsonc(text)
+    except ValueError as exc:
+        scan.bad("bun.lock", f"does not parse ({exc})")
+        return
+    if not isinstance(data, dict):
+        scan.bad("bun.lock", "is not a JSON object")
+        return
+    for ws, entry in (data.get("workspaces") or {}).items():
+        if isinstance(entry, dict):
+            for field in _NPM_DEP_MAPS:
+                _npm_map(scan, f"bun.lock [workspace {ws or '(root)'}]", entry.get(field))
+    for field in ("overrides", "resolutions", "catalog"):
+        _npm_map(scan, "bun.lock", data.get(field))
+    for name, entry in (data.get("packages") or {}).items():
+        if not isinstance(entry, list) or not entry or not isinstance(entry[0], str):
+            continue
+        where = f"bun.lock [{name}]"
+        ident = entry[0]
+        # "name@spec", the name possibly scoped ("@scope/x@1.2.3").
+        at = ident.find("@", 1)
+        spec = ident[at + 1 :] if at > 0 else ""
+        if spec and not re.match(r"^[0-9][\w.+-]*$", spec):
+            _npm_spec(scan, where, name, spec)
+        # npm packages: [ident, registry, info, integrity]; "" = the default registry.
+        if len(entry) > 1 and isinstance(entry[1], str) and entry[1]:
+            scan.index_url(where, entry[1], "package registry")
+
+
+def _scan_bun(scan: _Scan, manifests: tuple[str, ...]) -> None:
+    for rel in manifests or ("package.json",):
+        if rel.endswith("package.json"):
+            pkg = scan.json(rel)
+            if pkg:
+                for field in _NPM_DEP_MAPS:
+                    _npm_map(scan, rel, pkg.get(field))
+    _bun_lock(scan)
+
+
 # ── JVM (Gradle) ───────────────────────────────────────────────
 
 _GRADLE_URL = re.compile(r"""["'](https?://[^"'\s]+)["']""")
@@ -596,13 +670,19 @@ def scan(
     allow: str | list | tuple | None = None,
     *,
     gradle_manifests: tuple[str, ...] = (),
+    manifests: tuple[str, ...] = (),
 ) -> list[str]:
-    """Every reason the manifests in *workdir* may not go to setup. Empty = clean."""
+    """Every reason the manifests in *workdir* may not go to setup. Empty = clean.
+
+    *manifests* (Bun): every manifest the setup will copy, workspaces included.
+    """
     s = _Scan(policy(toolchain, workdir, allow))
     if toolchain == "python":
         _scan_python(s)
     elif toolchain == "node":
         _scan_node(s)
+    elif toolchain == "bun":
+        _scan_bun(s, manifests)
     else:
         _scan_jvm(s, gradle_manifests)
     return s.violations
@@ -614,9 +694,10 @@ def check(
     allow: str | list | tuple | None = None,
     *,
     gradle_manifests: tuple[str, ...] = (),
+    manifests: tuple[str, ...] = (),
 ) -> None:
     """Raise :class:`SetupRefusedError` unless the manifests are clean."""
-    found = scan(workdir, toolchain, allow, gradle_manifests=gradle_manifests)
+    found = scan(workdir, toolchain, allow, gradle_manifests=gradle_manifests, manifests=manifests)
     if found:
         more = f" (+{len(found) - 5} more)" if len(found) > 5 else ""
         raise SetupRefusedError(

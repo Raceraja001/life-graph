@@ -58,9 +58,12 @@ import shutil
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from life_graph.config import settings
+
+if TYPE_CHECKING:
+    from life_graph.services.dev.sandbox_deps import DepsPlan
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +125,28 @@ NODE_DEFAULT_SETUP = (
 def node_toolchain(ctx: dict) -> bool:
     """Whether the project registry put this project on the Node toolchain."""
     return (ctx.get("sandbox_toolchain") or "").strip().lower() == "node"
+
+
+# ── Bun toolchain (workspaces) ───────────────────────────────
+#
+# ``sandbox_toolchain: bun`` (decision record: race-app
+# docs/research/2026-11-28-bun-sandbox/04-decision.md). Checks run in the Node
+# image, which carries a pinned Bun binary. Bun's isolated linker gives every
+# workspace its own node_modules, so setup installs from the manifests only
+# (root package.json, the lockfile, each workspace package.json: see
+# sandbox_bun.py) and checks mount each node_modules read-only at the same
+# path under /work (sandbox_deps.deps_mounts), in place: no /tmp copy.
+BUN_DEFAULT_SETUP = "bun install --frozen-lockfile --ignore-scripts"
+# Printed after the setup command; the ready check reads it back.
+_BUN_READY_MARK = "LG_BUN_READY"
+# Env for every Bun container: a writable install cache and no telemetry
+# (checks have no network, so a crash reporter would only wait).
+BUN_ENV: dict[str, str] = {"BUN_INSTALL_CACHE_DIR": "/tmp/.bun", "DO_NOT_TRACK": "1"}
+
+
+def bun_toolchain(ctx: dict) -> bool:
+    """Whether the project registry put this project on the Bun toolchain."""
+    return (ctx.get("sandbox_toolchain") or "").strip().lower() == "bun"
 
 
 # ── JVM toolchain (Gradle: Kotlin, Java, Android) ────────────
@@ -346,7 +371,11 @@ _setup_locks: dict[str, asyncio.Lock] = {}
 
 
 def _check_manifests(
-    workdir: Path, toolchain: str, allow, gradle_manifests: tuple[str, ...] = ()
+    workdir: Path,
+    toolchain: str,
+    allow,
+    gradle_manifests: tuple[str, ...] = (),
+    manifests: tuple[str, ...] = (),
 ) -> None:
     """Refuse setup for manifests that fetch from outside the allowed registries.
 
@@ -355,7 +384,9 @@ def _check_manifests(
     """
     from life_graph.services.dev import setup_guard
 
-    setup_guard.check(workdir, toolchain, allow, gradle_manifests=gradle_manifests)
+    setup_guard.check(
+        workdir, toolchain, allow, gradle_manifests=gradle_manifests, manifests=manifests
+    )
 
 
 @contextlib.asynccontextmanager
@@ -386,7 +417,7 @@ def _setup_net_args(egress, toolchain: str) -> list[str]:
     args += ["--label", f"{RUNTIME_LABEL}.role=setup"]
     for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
         args += ["-e", f"{name}={url}"]
-    if toolchain == "node":
+    if toolchain in ("node", "bun"):
         args += ["-e", f"npm_config_proxy={url}", "-e", f"npm_config_https_proxy={url}"]
     return args
 
@@ -515,6 +546,7 @@ async def prepare_node_env(workdir: Path, setup: str | None = None, *, allow=Non
     lock = _setup_locks.setdefault(key, asyncio.Lock())
     async with lock:
         if (ready / "node_modules").is_dir():
+            _mark_used(root, key, workdir, "node")
             return ready
         root.mkdir(parents=True, exist_ok=True)
         partial = root / f"{key}.partial-{uuid.uuid4().hex[:8]}"
@@ -568,7 +600,256 @@ async def prepare_node_env(workdir: Path, setup: str | None = None, *, allow=Non
         except BaseException:
             shutil.rmtree(partial, ignore_errors=True)
             raise
+        _mark_used(root, key, workdir, "node")
+    gc_envs_quietly()
     return ready
+
+
+async def prepare_bun_env(workdir: Path, setup: str | None = None, *, allow=None) -> Path:
+    """Return a host directory holding a Bun project's installed workspaces, installing if needed.
+
+    The manifests -- root ``package.json``, ``bun.lock``/``bun.lockb`` and every
+    workspace ``package.json`` the root's ``workspaces`` globs expand to
+    (:mod:`sandbox_bun`) -- are copied on the host into a ``.partial-``
+    directory at their relative paths; the setup container sees only that
+    directory, never the worktree. ``bun install --frozen-lockfile
+    --ignore-scripts`` (or the registry's ``sandbox_setup``) runs there behind
+    the egress proxy (``verifier_setup_egress_bun``). Install scripts never
+    run: ``npm_config_ignore_scripts=true`` is set whatever the setup command
+    says, unless the registry's ``sandbox_setup_allow`` lists ``scripts``.
+
+    Before the atomic rename the env must pass the ready check
+    (:func:`sandbox_bun.ready_problems`): ``bun --version`` works and every
+    workspace's dependencies are installed. Otherwise nothing is published.
+
+    Keyed ``"bun-" + _env_key(...)`` over image, setup and the expanded
+    manifests; same per-key lock and atomic rename as the other toolchains.
+
+    Raises:
+        SandboxUnavailableError: no package.json or lockfile, unsafe
+            workspace globs, refused manifests, docker or the image missing,
+            the install failed, or the result is not ready.
+    """
+    from life_graph.services.dev import sandbox_bun, setup_guard
+
+    workspaces = sandbox_bun.expand_workspaces(workdir)
+    names = sandbox_bun.manifests(workdir, workspaces)
+    command = setup or BUN_DEFAULT_SETUP
+    if setup is None and not any(
+        sandbox_bun.regular_file(workdir, n) for n in sandbox_bun.LOCKFILES
+    ):
+        raise SandboxUnavailableError(
+            "bun toolchain, but the project has no bun.lock: --frozen-lockfile needs one"
+        )
+    _check_manifests(workdir, "bun", allow, manifests=names)
+    scripts = setup_guard.allows_scripts(allow)
+    image_id = await _node_image_id()
+    recipe = f"{command}\0scripts={int(scripts)}"
+    key = "bun-" + _env_key(workdir, image_id, recipe, names)
+    root = _cache_root()
+    ready = root / key
+
+    lock = _setup_locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        if (ready / "node_modules").is_dir():
+            _mark_used(root, key, workdir, "bun")
+            return ready
+        root.mkdir(parents=True, exist_ok=True)
+        partial = root / f"{key}.partial-{uuid.uuid4().hex[:8]}"
+        partial.mkdir()
+        try:
+            sandbox_bun.copy_manifests(workdir, names, partial)
+            # What is installed must be what was keyed (and scanned).
+            if _env_key(partial, image_id, recipe, names) != key.removeprefix("bun-"):
+                raise SandboxUnavailableError("bun setup: the manifests changed while copying")
+            env = [f"{k}={v}" for k, v in sorted({**BUN_ENV, "HOME": "/tmp"}.items())]
+            if not scripts:
+                env.append("npm_config_ignore_scripts=true")
+            async with _setup_egress("bun", allow) as egress:
+                container = egress.container
+                argv = [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--name",
+                    container,
+                    *_setup_net_args(egress, "bun"),
+                    *_limits(
+                        memory=settings.verifier_sandbox_memory,
+                        cpus=settings.verifier_sandbox_cpus,
+                    ),
+                    *(arg for e in env for arg in ("-e", e)),
+                    "-v",
+                    f"{partial}:/deps",
+                    "-w",
+                    "/deps",
+                    "--entrypoint",
+                    "sh",
+                    settings.verifier_sandbox_node_image,
+                    "-c",
+                    f'set -e; {command}; echo "{_BUN_READY_MARK} $(bun --version)"',
+                ]
+                res = await _exec(argv, timeout=SETUP_TIMEOUT, container=container)
+            if res.returncode != 0:
+                raise SandboxUnavailableError(
+                    f"bun sandbox setup failed (exit {res.returncode}): "
+                    f"{(res.stderr or res.stdout)[-800:]}"
+                )
+            mark = re.findall(rf"^{_BUN_READY_MARK} (\S+)\s*$", res.stdout, re.M)
+            problems = sandbox_bun.ready_problems(partial, workspaces, mark[-1] if mark else None)
+            if problems:
+                raise SandboxUnavailableError(
+                    "bun sandbox setup is not ready, nothing was published: " + "; ".join(problems)
+                )
+            try:
+                partial.rename(ready)
+            except OSError:
+                shutil.rmtree(partial, ignore_errors=True)
+        except BaseException:
+            shutil.rmtree(partial, ignore_errors=True)
+            raise
+        _mark_used(root, key, workdir, "bun")
+    gc_envs_quietly()
+    return ready
+
+
+# ── Cache GC (bun-* and node-* envs) ─────────────────────────
+#
+# One full dependency tree per lockfile fills the disk. Each published env has
+# a sidecar ``<key>.lg-meta.json`` naming the projects that used it; its mtime
+# is the last use (touched on every prepare). Per project and toolchain the
+# newest ``verifier_sandbox_env_keep`` envs stay; older ones go once unused for
+# ``verifier_sandbox_env_gc_grace_hours`` and only while no setup holds their
+# lock. The grace period is what protects an env a running check still mounts:
+# every check calls prepare first, which marks it used.
+_GC_ENV = re.compile(r"^(bun|node)-[0-9a-f]{24}$")
+_META_SUFFIX = ".lg-meta.json"
+
+
+def _project_id(workdir: Path) -> str:
+    """Which repository *workdir* belongs to: its git common dir (shared by
+    every worktree of one repo), hashed. ``"?"`` when it is not a git checkout."""
+    dotgit = workdir / ".git"
+    try:
+        if dotgit.is_file():
+            raw = dotgit.read_text(errors="replace").strip()
+            common = raw.removeprefix("gitdir:").strip()
+            common = re.sub(r"/worktrees/[^/]+/?$", "", common)
+        elif dotgit.is_dir():
+            common = str(dotgit.resolve())
+        else:
+            return "?"
+    except OSError:
+        return "?"
+    return hashlib.sha256(common.encode()).hexdigest()[:12]
+
+
+def _mark_used(root: Path, key: str, workdir: Path, toolchain: str) -> None:
+    """Record that *workdir*'s project used env *key* now (best effort)."""
+    import json
+    import time
+
+    meta = root / f"{key}{_META_SUFFIX}"
+    try:
+        data = json.loads(meta.read_text()) if meta.is_file() else {}
+    except (OSError, ValueError):
+        data = {}
+    projects = set(data.get("projects") or []) | {_project_id(workdir)}
+    try:
+        meta.write_text(json.dumps({"toolchain": toolchain, "projects": sorted(projects)}))
+        now = time.time()
+        os.utime(meta, (now, now))
+    except OSError as exc:
+        logger.warning("could not record use of sandbox env %s: %s", key, exc)
+
+
+def gc_envs(
+    root: Path | None = None,
+    *,
+    keep: int | None = None,
+    grace_seconds: float | None = None,
+    now: float | None = None,
+) -> list[str]:
+    """Remove old ``bun-*``/``node-*`` envs; return the names removed.
+
+    Keeps the newest *keep* per (project, toolchain); removes the rest once
+    unused for *grace_seconds*, never while their setup lock is held. Also
+    removes ``.partial-``/``.gc-`` leftovers older than the grace period. An
+    env without a sidecar counts as project ``"?"``, last used at its mtime.
+    """
+    import json
+    import time
+
+    root = root or _cache_root()
+    keep = settings.verifier_sandbox_env_keep if keep is None else keep
+    if grace_seconds is None:
+        grace_seconds = settings.verifier_sandbox_env_gc_grace_hours * 3600
+    now = time.time() if now is None else now
+    if not root.is_dir():
+        return []
+    envs: dict[str, tuple[str, float, list[str]]] = {}
+    leftovers: list[Path] = []
+    for entry in root.iterdir():
+        if entry.is_symlink() or not entry.is_dir():
+            continue
+        if ".partial-" in entry.name or ".gc-" in entry.name:
+            if _GC_ENV.match(entry.name.split(".", 1)[0]):
+                leftovers.append(entry)
+            continue
+        m = _GC_ENV.match(entry.name)
+        if not m:
+            continue
+        meta = root / f"{entry.name}{_META_SUFFIX}"
+        try:
+            projects = list(json.loads(meta.read_text()).get("projects") or ["?"])
+            used = meta.stat().st_mtime
+        except (OSError, ValueError, AttributeError):
+            projects, used = ["?"], entry.stat().st_mtime
+        envs[entry.name] = (m.group(1), used, projects)
+    kept: set[str] = set()
+    groups: dict[tuple[str, str], list[tuple[float, str]]] = {}
+    for name, (toolchain, used, projects) in envs.items():
+        for project in projects:
+            groups.setdefault((str(project), toolchain), []).append((used, name))
+    for members in groups.values():
+        kept.update(name for _, name in sorted(members, reverse=True)[: max(keep, 0)])
+    removed: list[str] = []
+    for name, (_, used, _) in sorted(envs.items()):
+        lock = _setup_locks.get(name)
+        if name in kept or now - used < grace_seconds or (lock is not None and lock.locked()):
+            continue
+        # Renamed first (atomic): from here no prepare can hand it out, and the
+        # bind validator refuses ".gc-" paths.
+        doomed = root / f"{name}.gc-{uuid.uuid4().hex[:8]}"
+        try:
+            (root / name).rename(doomed)
+        except OSError:
+            continue
+        shutil.rmtree(doomed, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            (root / f"{name}{_META_SUFFIX}").unlink()
+        removed.append(name)
+    for entry in leftovers:
+        lock = _setup_locks.get(entry.name.split(".", 1)[0])
+        try:
+            old = now - entry.stat().st_mtime >= max(grace_seconds, SETUP_TIMEOUT)
+        except OSError:
+            continue
+        if old and not (lock is not None and lock.locked()):
+            shutil.rmtree(entry, ignore_errors=True)
+            removed.append(entry.name)
+    return removed
+
+
+def gc_envs_quietly() -> None:
+    """:func:`gc_envs`, never raising: GC must not fail the check that triggered it."""
+    try:
+        removed = gc_envs()
+    except Exception as exc:  # noqa: BLE001 -- best effort by design
+        logger.warning("sandbox env GC failed: %s", exc)
+        return
+    if removed:
+        logger.info("sandbox env GC removed %s", ", ".join(removed))
 
 
 async def _jvm_image_id() -> str:
@@ -756,6 +1037,7 @@ async def run(
     venv: Path | None = None,
     node_deps: Path | None = None,
     gradle_home: Path | None = None,
+    deps: DepsPlan | None = None,
     timeout: int = 120,
     extra_ro: dict[Path, str] | None = None,
     tmp_size: str | None = None,
@@ -777,7 +1059,12 @@ async def run(
     dependencies at /node_modules and their binaries on PATH. With
     *gradle_home* (from :func:`prepare_gradle_env`) the JVM image runs and
     *argv* is Gradle's arguments (e.g. ``["test"]``): Gradle runs offline from
-    the cached distribution, reading dependencies read-only.
+    the cached distribution, reading dependencies read-only. With *deps* (a
+    :class:`~sandbox_deps.DepsPlan` from :func:`sandbox_deps.deps_mounts`,
+    the Bun toolchain) the Node image runs *in place* on the read-only
+    worktree, each planned ``node_modules`` mounted read-only at its path
+    under ``/work`` (the plan pre-created those mountpoints) and the plan's
+    PATH entries and env applied.
 
     Raises:
         SandboxUnavailableError: the container could not run or timed out.
@@ -806,6 +1093,17 @@ async def run(
             "2g",
         )
     env: list[str] = []
+    if deps is not None:
+        # Parents before children: docker mounts in argv order.
+        for m in sorted(deps.mounts, key=lambda m: (m.target.count("/"), m.target)):
+            if not m.target.startswith(f"{WORK}/") or ".." in m.target.split("/"):
+                raise SandboxUnavailableError(f"deps mount target {m.target!r} is not under /work")
+            mounts += ["-v", f"{m.source}:{m.target}:ro"]
+        path = ":".join([*deps.path_prepend, path])
+        image = settings.verifier_sandbox_node_image
+        tmp_size = "1g"
+        for k, val in sorted(deps.env.items()):
+            env += ["-e", f"{k}={val}"]
     memory = settings.verifier_sandbox_memory
     if gradle_home is not None:
         mounts += ["-v", f"{gradle_home}:{GRADLE_RO}:ro"]
@@ -1046,6 +1344,21 @@ def readonly_bind_roots() -> tuple[Path, ...]:
     return (_cache_root().resolve(),)
 
 
+def _finished_env_path(resolved: Path, ro_roots: tuple[Path, ...]) -> bool:
+    """*resolved* is a finished env (a direct child of a cache root), or a
+    ``node_modules`` directory inside a finished ``bun-``/``node-`` env."""
+    for root in ro_roots:
+        if root not in resolved.parents:
+            continue
+        parts = resolved.relative_to(root).parts
+        if any(".partial-" in p or ".gc-" in p for p in parts):
+            return False
+        if len(parts) == 1:
+            return True
+        return bool(_GC_ENV.match(parts[0])) and parts[-1] == "node_modules"
+    return False
+
+
 def _bind_violations(bind: Bind) -> list[str]:
     bad: list[str] = []
     src, dst = str(bind.source), str(bind.target)
@@ -1078,10 +1391,14 @@ def _bind_violations(bind: Bind) -> list[str]:
     if under(ro_roots):
         # Checked first, so a cache configured inside a writable root is
         # still read-only. Only one finished env: a direct child of the
-        # cache root, never a half-built ".partial-" directory.
+        # cache root, never a half-built ".partial-" directory (nor one GC is
+        # removing, ".gc-") -- or, for a Bun/Node env, one of its
+        # node_modules directories (sandbox_deps.DepsMount): a descendant of
+        # a finished env, reached through no symlink (the canonical-path
+        # check above) and named node_modules.
         if not bind.read_only:
             bad.append(f"bind source {src!r} may only be mounted read-only")
-        if resolved.parent not in ro_roots or ".partial-" in resolved.name:
+        if not _finished_env_path(resolved, ro_roots):
             bad.append(f"bind source {src!r} is not a finished cached environment")
     elif not under(roots):
         bad.append(
