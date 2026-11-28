@@ -23,6 +23,17 @@ late is the day before it was said. The time zone is the owner's setting
 Everything is behind ``settings.ingest_world_time`` (default off). Off, both
 functions return ``None`` and nothing about a save changes.
 
+The END of a fact (:func:`end_for_fact`, ``_process_fact`` only) is behind its
+own flag, ``settings.ingest_world_end`` (default off). On, a fact's own words
+("until 20 November", "March varaikum") give ``valid_until``, recorded in
+``properties.world_time.end`` by :func:`record_end` with
+``properties.valid_until_by = "rules"`` (:data:`VALID_UNTIL_BY`), so a
+rollback can find exactly those rows and the supersession undo, which clears
+only ``"supersession"``, never touches them. The extractor's own
+``valid_until`` is then kept only when a rule agrees
+(``extraction.world_time.end_from_model``). Off, the save path stores the
+extractor's ``valid_until`` as it always did.
+
 Pure code: no model call and nothing leaves the machine. The model's own
 ``valid_from`` (one optional field of the extraction call that already runs
 locally) is used only when the rules found nothing and a rule agrees with it
@@ -40,10 +51,12 @@ from life_graph.core.said_at import said_at
 from life_graph.extraction import world_time as rules
 
 if TYPE_CHECKING:
-    from life_graph.extraction.world_time import WorldTime
+    from life_graph.extraction.world_time import WorldEnd, WorldTime
 
 #: Fact types that never get a start: a plan has a due time, not a world time.
 NO_START_TYPES = frozenset({"intention"})
+#: Who set a ``valid_until`` from the fact's own words (``properties.valid_until_by``).
+VALID_UNTIL_BY = "rules"
 
 
 def enabled() -> bool:
@@ -132,3 +145,95 @@ def record(properties: dict[str, Any], found: WorldTime) -> dict[str, Any]:
 def store_kwargs(found: WorldTime | None) -> dict[str, Any]:
     """``{"valid_from": start}`` for ``store()``, or nothing when unknown."""
     return {"valid_from": found.start} if found is not None else {}
+
+
+# ── World end ─────────────────────────────────────────────────
+
+
+def end_enabled() -> bool:
+    """True when ``ingest_world_end`` is on."""
+    return bool(settings.ingest_world_end)
+
+
+def _model_end(
+    value: object, content: str, source_text: str | None, at: datetime, tz: tzinfo
+) -> WorldEnd | None:
+    """The model's ``valid_until``, checked against the fact's own "until".
+
+    Read in the content first; in the owner's words only when they hold
+    exactly one "until", as :func:`extraction.world_time.world_end_of` does.
+    """
+    if not value or (content and rules.not_firm(content)):
+        return None
+    if rules.end_count(content, at, tz):
+        return rules.end_from_model(value, content, at, tz)
+    if source_text and rules.end_count(source_text, at, tz) == 1:
+        return rules.end_from_model(value, source_text, at, tz)
+    return None
+
+
+def end_for_fact(
+    fact: Any, properties: dict[str, Any] | None = None, started: WorldTime | None = None
+) -> WorldEnd | None:
+    """When one extracted fact stops being true, from its own words; None for unknown.
+
+    An intention, a hedged fact or a negated one gets no end, like no start.
+    An end in the future is kept: the fact is current until then. An end at
+    or before the fact's known start (*started*) is dropped: unknown, never
+    a window that holds nothing.
+    """
+    if not end_enabled():
+        return None
+    if (
+        getattr(fact, "fact_type", None) in NO_START_TYPES
+        or getattr(fact, "certainty", "firm") == "hedged"
+        or getattr(fact, "polarity", "affirm") == "negate"
+    ):
+        return None
+    content = getattr(fact, "content", "") or ""
+    if not content or _skipped(properties):
+        return None
+    found = end_of(
+        content,
+        getattr(fact, "source_text", None) or None,
+        anchor(),
+        user_tz(),
+        model_value=getattr(fact, "valid_until", None),
+    )
+    if found is not None and started is not None and found.end <= started.start:
+        return None
+    return found
+
+
+def end_of(
+    content: str,
+    source_text: str | None,
+    at: datetime,
+    tz: tzinfo,
+    *,
+    model_value: object = None,
+) -> WorldEnd | None:
+    """The end the rules give *content* (said in *source_text*), else the model's, checked.
+
+    Pure: no flag, no fact type. :func:`end_for_fact` adds those; the eval
+    (scripts/eval_ingestion_structure.py) scores this directly.
+    """
+    found = rules.world_end_of(content, source_text, at, tz)
+    if found is None and model_value:
+        found = _model_end(model_value, content, source_text, at, tz)
+    return found
+
+
+def record_end(properties: dict[str, Any], found: WorldEnd) -> dict[str, Any]:
+    """Put *found* in ``properties.world_time.end`` and mark ``valid_until_by = "rules"``."""
+    current = properties.get("world_time")
+    world = dict(current) if isinstance(current, dict) else {}
+    world["end"] = {
+        "end": found.end.isoformat(),
+        "precision": found.precision,
+        "rule": found.rule,
+        "source": found.source,
+    }
+    properties["world_time"] = world
+    properties["valid_until_by"] = VALID_UNTIL_BY
+    return properties

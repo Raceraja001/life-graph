@@ -41,6 +41,42 @@ def test_the_cases_cover_each_structure_and_tamil(report):
         assert {"ta", "tanglish"} & langs, name
 
 
+def test_the_world_end_cases_cover_tamil_negatives_and_the_model(report):
+    cases = eis.load()["world_end"]
+    assert len(cases) >= 40
+    assert sum(c["lang"] in ("ta", "tanglish") for c in cases) / len(cases) >= 0.25
+    for lang in ("en", "ta", "tanglish"):
+        mine = [c for c in cases if c["lang"] == lang]
+        assert any(c["expect"] for c in mine), lang
+        assert any(c["expect"] is None for c in mine), lang
+    assert any(c["category"] == "model" for c in cases)
+    assert report["world_end"]["precision"] >= 0.95, report["world_end"]["misses"]
+    assert report["world_end"]["recall"] >= 0.85, report["world_end"]["misses"]
+
+
+def test_an_end_where_unknown_and_an_end_before_its_start_are_counted(monkeypatch):
+    from life_graph.extraction import world_time as w
+
+    data = {
+        "tz": "Asia/Kolkata",
+        "anchor": "2026-11-28T15:00:00+05:30",
+        "world_end": [
+            {
+                "id": "x",
+                "lang": "en",
+                "category": "none",
+                "content": "The owner is on leave until 5 December.",
+                "expect": None,
+            }
+        ],
+    }
+    out = eis.score_world_end(data)
+    assert out["set_where_unknown"] == ["x"] and out["before_start"] == []
+    later = w.WorldTime(datetime(2027, 1, 1, tzinfo=UTC), "day", "date")
+    monkeypatch.setattr(w, "world_time_of", lambda *_a, **_k: later)
+    assert eis.score_world_end(data)["before_start"] == ["x"]
+
+
 def test_the_committed_baseline_holds(report):
     import json
 

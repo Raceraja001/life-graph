@@ -24,7 +24,8 @@ actually writes (ADR docs/design/adr-m8-ingestion-structure.md §6.1):
   owner ``by``, what POST /judgment/decisions/{id}/confirm|discard|supersede
   call), and the owner archiving one memory;
 - the M8 flags are on: ``ingest_world_time``, ``ingest_supersession_tiers``,
-  ``ingest_slot_pairing``, ``ingest_typed_links``, ``decision_lifecycle``.
+  ``ingest_slot_pairing``, ``ingest_typed_links``, ``decision_lifecycle``,
+  ``ingest_world_end``.
 
 No model is called. The extractor is the real ``LLMExtractor`` with its local
 chat replaced by the *recorded* raw output of the local extraction model for
@@ -65,13 +66,15 @@ FIXTURES_PATH = ROOT / "evals" / "context_quality" / "ingest_fixtures.json"
 PATHS = ("capture", "memory_save", "distillation")
 LANGS = ("en", "ta", "tanglish")
 OWNER_OPS = ("confirm", "discard", "supersede", "archive")
-#: The M8 ingestion flags, all on for this arm (ingest_slot_pairing since 2026-11-28).
+#: The M8 ingestion flags, all on for this arm (ingest_slot_pairing and
+#: ingest_world_end since 2026-11-28).
 FLAGS = (
     "ingest_world_time",
     "ingest_supersession_tiers",
     "ingest_slot_pairing",
     "ingest_typed_links",
     "decision_lifecycle",
+    "ingest_world_end",
 )
 #: The surface a capture message comes in on when the fixture names none: the
 #: owner's own chat (SELF). Not jarvis_app, whose facts the capture leaves to
@@ -776,7 +779,8 @@ async def structure_report(world: Any, data: dict[str, Any], state: IngestState)
         "memories": len(mems),
         "memories_by_status": dict(sorted(by_status.items())),
         "extra_memories": state.extra_memories,
-        "world_time_set": sum(1 for m in mems if (m.properties or {}).get("world_time")),
+        "world_time_set": sum(1 for m in mems if _world(m).get("start")),
+        "world_end_set": sum(1 for m in mems if _world(m).get("end")),
         "world_time_known": world_time,
         "valid_until_set": sum(1 for m in mems if m.valid_until is not None),
         "superseded": sum(1 for m in mems if m.superseded_by is not None),
@@ -791,6 +795,12 @@ async def structure_report(world: Any, data: dict[str, Any], state: IngestState)
         "owner_actions_failed": state.actions_failed,
         "gold": gold,
     }
+
+
+def _world(m: Any) -> dict[str, Any]:
+    """A row's ``properties.world_time`` ({} when none)."""
+    world = (m.properties or {}).get("world_time")
+    return world if isinstance(world, dict) else {}
 
 
 def _count(values: Any) -> dict[str, int]:

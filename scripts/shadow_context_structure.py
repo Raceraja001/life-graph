@@ -216,13 +216,15 @@ QUERIES: dict[str, str] = {
     # ── Ingestion side ─────────────────────────────────────────
     "memories": """
         SELECT count(*) AS created,
-               count(*) FILTER (WHERE m.properties ? 'world_time') AS with_world_time
+               count(*) FILTER (WHERE m.properties->'world_time' ? 'start') AS with_world_time,
+               count(*) FILTER (WHERE m.properties->'world_time' ? 'end') AS with_world_end
         FROM memories m WHERE m.tenant_id = :tenant AND m.created_at >= :since""",
     "world_time": """
         SELECT m.properties->'world_time'->>'precision' AS precision,
                m.properties->'world_time'->>'source' AS source, count(*) AS n
         FROM memories m WHERE m.tenant_id = :tenant AND m.created_at >= :since
           AND jsonb_typeof(m.properties->'world_time') = 'object'
+          AND m.properties->'world_time' ? 'start'
         GROUP BY 1, 2""",
     "supersession": """
         SELECT count(*) FILTER (WHERE m.properties->>'valid_until_by' = :by) AS ended_all,
