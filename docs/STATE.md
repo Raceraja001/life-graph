@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 04:22 UTC` from `master` @ `90a06a3`
+Generated `2026-11-28 04:31 UTC` from `master` @ `6ba7674`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-28 04:22 UTC` from `master` @ `90a06a3`
 
 | | |
 |---|---|
-| HTTP operations | **398** across 345 paths, 47 tags |
+| HTTP operations | **402** across 349 paths, 47 tags |
 | Database tables | **89** |
 | Migrations | **63** (head: `063_decision_superseded_at`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **36** |
-| Config settings | **337** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6257** in 671 files |
+| Config settings | **338** (prefix `LIFE_GRAPH_`) |
+| Test functions | **6322** in 673 files |
 | Dashboard pages | **23** |
-| Python | 534 files, 155,171 lines |
+| Python | 535 files, 155,908 lines |
 
 ---
 
 ## HTTP API
 
-398 operations, grouped by OpenAPI tag.
+402 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -270,6 +270,29 @@ Generated `2026-11-28 04:22 UTC` from `master` @ `90a06a3`
 | DELETE | `/api/v1/admin/webhooks/{webhook_id}` | Delete a webhook |
 | POST | `/api/v1/admin/webhooks/{webhook_id}/test` | Test a webhook |
 
+### `judgment-engine` — 18
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/judgment/calibration` | Get calibration data |
+| GET | `/api/v1/judgment/calibration/curve` | Get calibration curve data |
+| POST | `/api/v1/judgment/calibration/recompute` | Recompute calibration snapshots now |
+| POST | `/api/v1/judgment/challenge` | Create adversarial challenge |
+| POST | `/api/v1/judgment/challenge/{challenge_id}/resolve` | Resolve a challenge |
+| GET | `/api/v1/judgment/decisions` | List decisions |
+| POST | `/api/v1/judgment/decisions` | Create a decision |
+| GET | `/api/v1/judgment/decisions/{decision_id}` | Get decision with predictions |
+| POST | `/api/v1/judgment/decisions/{decision_id}/confirm` | Confirm a candidate decision (owner) |
+| POST | `/api/v1/judgment/decisions/{decision_id}/discard` | Discard a candidate decision (owner) |
+| POST | `/api/v1/judgment/decisions/{decision_id}/review` | Mark a decision reviewed (owner) |
+| POST | `/api/v1/judgment/decisions/{decision_id}/supersede` | Supersede a decision (owner) |
+| GET | `/api/v1/judgment/predictions` | List predictions |
+| POST | `/api/v1/judgment/predictions` | Create a prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/accept` | Accept a suggested prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/dismiss` | Dismiss a suggested prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/resolve` | Resolve a prediction |
+| GET | `/api/v1/judgment/stats` | Judgment dashboard stats |
+
 ### `connectors` — 15
 
 | Method | Path | Summary |
@@ -289,25 +312,6 @@ Generated `2026-11-28 04:22 UTC` from `master` @ `90a06a3`
 | POST | `/api/v1/connectors/items/{item_id}/remind` | Turn a promise from sent mail into a reminder |
 | GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
 | GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
-
-### `judgment-engine` — 14
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/judgment/calibration` | Get calibration data |
-| GET | `/api/v1/judgment/calibration/curve` | Get calibration curve data |
-| POST | `/api/v1/judgment/calibration/recompute` | Recompute calibration snapshots now |
-| POST | `/api/v1/judgment/challenge` | Create adversarial challenge |
-| POST | `/api/v1/judgment/challenge/{challenge_id}/resolve` | Resolve a challenge |
-| GET | `/api/v1/judgment/decisions` | List decisions |
-| POST | `/api/v1/judgment/decisions` | Create a decision |
-| GET | `/api/v1/judgment/decisions/{decision_id}` | Get decision with predictions |
-| GET | `/api/v1/judgment/predictions` | List predictions |
-| POST | `/api/v1/judgment/predictions` | Create a prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/accept` | Accept a suggested prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/dismiss` | Dismiss a suggested prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/resolve` | Resolve a prediction |
-| GET | `/api/v1/judgment/stats` | Judgment dashboard stats |
 
 ### `watchers` — 14
 
@@ -1041,16 +1045,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 511 | 5196 |
-| `tests/integration/` | 159 | 1049 |
+| `tests/unit/` | 512 | 5253 |
+| `tests/integration/` | 160 | 1057 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **671** | **6257** |
+| **total** | **673** | **6322** |
 
 ---
 
 ## Configuration
 
-337 settings, all overridable by environment variable.
+338 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1116,6 +1120,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_CONTEXT_SNAPSHOT_SHADOW` | `False` |
 | `LIFE_GRAPH_CONTEXT_CHANGE_SHADOW` | `False` |
 | `LIFE_GRAPH_INGEST_TYPED_LINKS` | `False` |
+| `LIFE_GRAPH_DECISION_LIFECYCLE` | `False` |
 | `LIFE_GRAPH_PROFILE_CARD_MAX_ITEMS` | `40` |
 | `LIFE_GRAPH_DECAY_DEFAULT_LAMBDA` | `0.1` |
 | `LIFE_GRAPH_DEDUP_ENABLED` | `True` |
