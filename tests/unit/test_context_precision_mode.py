@@ -40,17 +40,30 @@ from tests.unit.test_context_snapshot_experiments import xwired  # noqa: F401 �
 NOW = base.NOW
 wired = base.wired
 
+
+@pytest.fixture(autouse=True)
+def _no_structural_reads(monkeypatch):
+    """The modes include H and I: their reads are stand-ins here (no database)."""
+
+    async def none(*a, **kw):
+        return []
+
+    monkeypatch.setattr(snapshot, "_undated_intentions", none)
+    monkeypatch.setattr(snapshot, "_goal_memories", none)
+
+
 # ── The table ─────────────────────────────────────────────────
 
 
 def test_the_modes_are_the_measured_configurations():
     recall, precision = xp.MODES["recall"], xp.MODES["precision"]
-    assert recall.experiments == {xp.QUERY_TYPE, xp.LINKS, xp.BUDGET}
-    assert precision.experiments == {xp.QUERY_TYPE, xp.LINKS, xp.BUDGET, xp.HUB}
+    structural = {xp.UNDATED, xp.GOALS, xp.OVERVIEW, xp.DOMAIN}
+    assert recall.experiments == {xp.QUERY_TYPE, xp.LINKS, xp.BUDGET} | structural
+    assert precision.experiments == {xp.QUERY_TYPE, xp.LINKS, xp.BUDGET, xp.HUB} | structural
     # Only the cosine floor differs from the module's defaults (the eval's --xp-set).
     assert recall.tunables == dataclasses.replace(xp.DEFAULT_TUNABLES, cosine_floor=0.70)
     assert precision.tunables == dataclasses.replace(xp.DEFAULT_TUNABLES, cosine_floor=0.75)
-    assert "0.467" in recall.measured and "0.545" in precision.measured
+    assert "0.547" in recall.measured and "0.605" in precision.measured
 
 
 def test_the_table_is_frozen():
@@ -250,7 +263,11 @@ def test_the_comparison_keeps_refs_labels_and_counts_only():
     moded = _snap([_item("c"), _item("a"), _item("d", "linked_evidence")])
     out = snapshot.precision_comparison(default, moded, "recall")
     assert set(out) == ALLOWED_KEYS
-    assert out["v"] == 1 and out["mode"] == "recall" and out["experiments"] == ["B", "C", "F"]
+    assert (
+        out["v"] == 1
+        and out["mode"] == "recall"
+        and out["experiments"] == ["B", "C", "F", "H", "I", "J", "K"]
+    )
     assert out["kept"] == ["memory:a", "memory:c"]
     assert out["dropped"] == ["memory:b"]
     assert out["added"] == ["memory:d"]

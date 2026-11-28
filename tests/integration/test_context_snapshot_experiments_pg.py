@@ -93,6 +93,25 @@ async def test_each_precision_mode_runs_its_reads_and_keeps_tenant_safety(stand_
         assert f"Precision mode {name}" in snap.explanation
         assert "Reading the records failed" not in snap.explanation
 
+    # Both modes carry the structural recall options: H's and I's reads, tenant-scoped.
+    from life_graph.models.db import Intention
+
+    aim = await pg._memory(a, "Run a half marathon in February", tags=["fitness", "goal"])
+    their_aim = await pg._memory(b, "Tenant B's goal", tags=["goal"])
+    book = Intention(id=uuid.uuid4(), tenant_id=a, content="Book the exam slot")
+    their_book = Intention(id=uuid.uuid4(), tenant_id=b, content="Tenant B's errand")
+    await pg._add(book, their_book)
+    for name in xp.MODES:
+        with tenant_scope(a):
+            goals = await assemble_context("What are my active goals?", mode=name)
+            open_ = await assemble_context("Which of my commitments are still not done?", mode=name)
+        assert str(aim.id) in _reason_ids(goals, xp.GOAL_RECORD), name
+        assert str(book.id) in _reason_ids(open_, xp.UNDATED_INTENTION), name
+        for snap in (goals, open_):
+            dumped = str(snap.to_dict())
+            assert str(their_aim.id) not in dumped and str(their_book.id) not in dumped
+            assert "Reading the records failed" not in snap.explanation
+
 
 def _reason_ids(snap, reason: str) -> set[str]:
     return {i.source_ref.id for i in snap.items if i.reason == reason}
