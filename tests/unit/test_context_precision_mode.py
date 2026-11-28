@@ -64,7 +64,7 @@ def test_the_modes_are_the_measured_configurations():
     # Only the cosine floor differs from the module's defaults (the eval's --xp-set).
     assert recall.tunables == dataclasses.replace(xp.DEFAULT_TUNABLES, cosine_floor=0.70)
     assert precision.tunables == dataclasses.replace(xp.DEFAULT_TUNABLES, cosine_floor=0.75)
-    assert "0.547" in recall.measured and "0.605" in precision.measured
+    assert "0.549" in recall.measured and "0.607" in precision.measured
 
 
 def test_the_table_is_frozen():
