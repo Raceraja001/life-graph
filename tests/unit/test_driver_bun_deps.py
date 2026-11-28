@@ -299,6 +299,7 @@ def test_the_runtime_refuses_a_read_only_bind_outside_work(work, env_dirs):
 # ── Python: byte for byte what it was before Bun ──
 
 # Captured from the pre-Bun driver (commit ab4d48a9) with the settings in task_mode.
+# Plus NO_PROXY/no_proxy = loopback (2026-11-28: local test servers must not go via the proxy).
 _PYTHON_ARGV = [
     "docker", "run", "--name", "lg-rt-0123456789abcdef", "--init",
     "--label", "life-graph.sandbox=1", "--label", "life-graph.sandbox.role=driver", "--rm",
@@ -313,7 +314,7 @@ _PYTHON_ARGV = [
     "-e", "DISABLE_AUTOUPDATER=1", "-e", "HOME=/tmp",
     "-e", "HTTPS_PROXY=http://lg-rt-egress-0123456789abcdef:8080",
     "-e", "HTTP_PROXY=http://lg-rt-egress-0123456789abcdef:8080", "-e", "LANG=C.UTF-8",
-    "-e", "MYPY_CACHE_DIR=/tmp/.mypy_cache",
+    "-e", "MYPY_CACHE_DIR=/tmp/.mypy_cache", "-e", "NO_PROXY=localhost,127.0.0.1,::1",
     "-e", "PATH=/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "-e", "PYTEST_ADDOPTS=-p no:cacheprovider", "-e", "PYTHONDONTWRITEBYTECODE=1",
     "-e", "PYTHONPATH=/work:/work/src", "-e", "RUFF_NO_CACHE=true", "-e", "TZ=UTC",
@@ -322,6 +323,7 @@ _PYTHON_ARGV = [
     "-e", "VIRTUAL_ENV=/venv",
     "-e", "http_proxy=http://lg-rt-egress-0123456789abcdef:8080",
     "-e", "https_proxy=http://lg-rt-egress-0123456789abcdef:8080",
+    "-e", "no_proxy=localhost,127.0.0.1,::1",
     "-e", "CLAUDE_CODE_OAUTH_TOKEN", "-w", "/work", "--entrypoint", "/usr/bin/timeout",
     "life-graph-claude-driver:latest", "-k", "7", "300", "/usr/local/bin/claude",
     "-p", 'fix it\n\n## Project context\n{"sandbox_setup": "uv sync --frozen"}',

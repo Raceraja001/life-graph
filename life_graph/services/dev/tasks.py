@@ -55,6 +55,10 @@ QUEUE_MODE = "queue"
 # (waiting for a plan limit to reset, Phase 3b part 2) is still to run.
 OPEN_STATUSES = ("queued", "running", "parked")
 PARKED = "parked"
+# The stage of a code task that finished normally and changed nothing because,
+# in its own words, nothing needed changing (drivers/dispatcher.NO_CHANGES_OUTCOME):
+# status "completed", error null, the agent's message as the output.
+NO_CHANGES = "no_changes"
 # A task parks at most this many times; the next rate limit fails it as before.
 MAX_PARKS_PER_TASK = 5
 
@@ -237,6 +241,23 @@ async def create_dev_task(
     return data
 
 
+def final_status(result: Any) -> str:
+    """The row status a finished dispatch's ``DriverResult`` maps to.
+
+    ``completed`` for a success and for "no changes needed" (Step 4c,
+    2026-11-28: the run finished normally and said nothing needed changing --
+    no error, shown as stage ``no_changes``); ``parked`` for the owner's
+    wait_for_reset; ``failed`` for everything else.
+    """
+    metadata = result.metadata or {}
+    # The same test as drivers/dispatcher.is_no_changes (an error always wins).
+    if result.success or (not result.error and metadata.get("outcome") == NO_CHANGES):
+        return "completed"
+    if metadata.get("park"):
+        return PARKED  # the owner's wait_for_reset: back once the limit resets
+    return "failed"
+
+
 async def _run(
     session_factory: async_sessionmaker[AsyncSession],
     tenant_id: str,
@@ -353,9 +374,7 @@ async def _run(
                     **phase4b,
                 )
                 await session.commit()
-        status = "completed" if result.success else "failed"
-        if not result.success and (result.metadata or {}).get("park"):
-            status = PARKED  # the owner's wait_for_reset: back once the limit resets
+        status = final_status(result)
         error = result.error
         result_data = {
             "success": result.success,
@@ -793,6 +812,11 @@ def _stage(task: AgentTask, approvals: list[Approval]) -> str:
         return {"approved": "pr_open", "rejected": "pr_rejected"}.get(pr.status, "awaiting_pr")
     if task.status in ("queued", "running", PARKED):
         return task.status
+    if (
+        task.status == "completed"
+        and (task.result or {}).get("metadata", {}).get("outcome") == NO_CHANGES
+    ):
+        return NO_CHANGES  # finished normally; the run said nothing needed changing
     if (task.result or {}).get("metadata", {}).get("landed_branch"):
         return "landed"  # verified branch, but no PR approval was filed
     if (task.result or {}).get("metadata", {}).get("needs_human") or any(
@@ -1192,7 +1216,7 @@ _QUEUE_SCAN_LIMIT = 50
 # Each task's worktree is cut from the project checkout, so starting task 2
 # while task 1 still sits on an unmerged lg/task-* branch would build it on
 # code that doesn't have task 1's change -- "sequential" in name only.
-_PLAN_PREDECESSOR_DONE = frozenset({"merged", "completed"})
+_PLAN_PREDECESSOR_DONE = frozenset({"merged", "completed", "no_changes"})
 # Stages a predecessor can't get out of without a person re-dispatching it:
 # the rest of the plan is stopped rather than left waiting forever.
 _PLAN_PREDECESSOR_DEAD = frozenset(

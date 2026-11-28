@@ -1057,7 +1057,9 @@ life-graph only ever points the next run at it.
   described the plan but changed no files. Carry it out now; don't ask for confirmation."* —
   a resume of its session (a re-dispatch with the text prepended when there is none) — then
   the tamper and file checks run again; out of nudges → today's "changed no files" failure.
-  An `empty` answer is not nudged.
+  An `empty` answer is not nudged. *(2026-11-28: a run that explicitly says nothing needed
+  changing is not nudged and ends as "no changes needed" — see
+  [the amendment](#amendment-2026-11-28--no-changes-needed-outcome-step-4c).)*
 - `max_stall_retries` (0–3): a driver call that timed out (`exit_status == "timeout"`) is
   retried after 10 s × 2ⁿ (cap 5 min) as *"Your previous run stopped responding. Continue
   from the current state of the worktree."* (resume, else re-dispatch). Gated before the wait
@@ -1458,3 +1460,51 @@ plan tasks. Integration tests against Postgres, a real GitHub PR and signed-in C
 - [x] Arena: create (pinned drivers/accounts, `hold_auto`), side-by-side view with scorecards, pick
 - [x] Automation gate (kill switch, D4 share, Governor); unit tests (`tests/unit/test_phase4b_*.py`, real temp git repo for seeding)
 - [ ] Integration tests against Postgres; a real PR round on GitHub; a real team run
+
+## Amendment 2026-11-28 — "No changes needed" outcome (Step 4c)
+
+> **Status: Built.** `life_graph/drivers/dispatcher.py` (`states_no_change_needed`,
+> `is_no_changes`, `_check_files_changed`), `services/dev/tasks.py` (`final_status`, `_stage`),
+> tests `tests/unit/test_no_changes_outcome.py`.
+
+**Why.** A nightly "health check" schedule ran lint, typecheck and tests on prod, correctly
+found nothing to fix and changed nothing; Step 4c failed it ("The run changed no files, so
+there is nothing to verify or land"). For recurring maintenance that is a normal outcome, and
+recording it as a failure fed the circuit breaker (3 identical failures → automation paused)
+and the morning digest's "failed" line.
+
+**Requirement.** GIVEN an edit task (`code`, `code_change`) in a worktree WHEN its run
+**finished normally** (`DriverResult.success`: the CLI exited 0 and reported no error — not a
+crash, timeout, auth/rate-limit failure or refusal, which are all `success = false`), its diff
+is empty, and its final message **explicitly states that nothing needed changing** THEN the
+dispatch ends as **"no changes needed"** instead of failing:
+
+- `DriverResult(success=False, error=None, output=<the agent's message>,
+  metadata={…, "outcome": "no_changes", "stop_reason": "no_change_needed"})`. `success` stays
+  false so nothing downstream treats it as verified work: the verifier chain, Step 6c and
+  Step 6b (landing) are skipped, no approval is filed, the `finished` checkpoint is `ok=False`
+  (a crash before the row write recovers as failed — fail-closed).
+- The dev task row: **`status: "completed"`, `stage: "no_changes"`, `error: null`**, `output`
+  = the agent's message (the summary). `result.metadata.outcome = "no_changes"`.
+- `driver_stats` is not touched (it counts landed vs failed; this is neither, so it does not
+  lower the driver's trust). `driver:result` carries `"outcome": "no_changes"`.
+- A fanned-out plan's next task treats a `no_changes` predecessor as done; `depends_on` already
+  treated any `completed` task as done.
+
+**The statement** (plain rules, no model call): one of "no (code/source/file/further)
+change(s)/fix(es)/edit(s) (are/were) needed/required/necessary/warranted", "nothing (in …) to
+fix/change/do/update", "nothing needs fixing/changing", "already (been) fixed/resolved/
+implemented/in place/up to date". Disqualified by a question (`?`), a claim of having edited
+something ("I fixed …", a line starting "Added/Updated/…"), or refusal words (can't, cannot,
+unable to, won't, permission, denied, blocked). "all done", "tests pass" and silence are **not**
+statements: such a run still fails as "changed no files" (task ade60cc6's case).
+
+**Run health.** The nudge (`max_nudges`) is unchanged for plan-only/question output: it is
+nudged first and becomes "no changes needed" only if a later turn says so; out of nudges it
+fails as before. A run whose output already states that nothing needed changing is not nudged.
+
+**Origins.** The same for every origin (schedule, intake, nightly, dashboard/manual,
+continuations). The gate is what the run did and said, not who started it: an owner-started
+"fix X" whose agent answers "already fixed on master" did not fail either, it is shown to the
+owner with the agent's reason, and nothing lands or is approved on the strength of it. Manual
+tasks are never counted by the automation breaker in any case.

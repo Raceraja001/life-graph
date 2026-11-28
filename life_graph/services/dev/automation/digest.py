@@ -41,6 +41,8 @@ def build(report: dict[str, Any], lines: list[str], *, since: datetime, to: date
         "merged": len(merged),
         "needsYou": len(waiting),
         "failed": len(failed),
+        # Runs that finished normally with nothing to change (never "failed").
+        "noChanges": len(report.get("no_changes") or []),
         "queued": report["queued"],
         "lines": lines[1 : MAX_LINES + 1],
         "summary": head[:300],

@@ -1,8 +1,8 @@
 """Job 2 — the night shift report (docs/specs/night-shift-report.md).
 
 What the coding engines did since the last report: merged (with the PR),
-waiting for the owner and **why**, failed and **why**, and how much is still
-queued. Plain code over dev tasks and approvals — the same stages the
+waiting for the owner and **why**, failed and **why**, checked with no changes
+needed (and the agent's own one-line why), and how much is still queued. Plain code over dev tasks and approvals — the same stages the
 dashboard shows, the reasons the quality gate actually gave
 (``change_policy.auto_gate``) and the failure cause the insights page uses
 (``agent_insights.cause_of``). No model call.
@@ -19,7 +19,12 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 WAITING = ("awaiting_pr", "awaiting_merge", "needs_review", "landed")
+#: A run that finished normally and changed nothing because nothing needed
+#: changing (services/dev/tasks.NO_CHANGES): listed as "no changes needed", never
+#: as failed.
+NO_CHANGES = "no_changes"
 _MAX_LINES = 8
+_SUMMARY_MAX = 160
 _TEST_TITLE = re.compile(r"for `([\w.]+)` in ([\w/.]+)")
 
 
@@ -31,6 +36,12 @@ def short_title(title: str | None) -> str:
     if text.lower().startswith("write unit tests") and m:
         return f"tests for {m.group(1)} ({m.group(2).removeprefix('life_graph/')})"
     return text if len(text) <= 80 else text[:77] + "…"
+
+
+def summary_of(output: str | None) -> str:
+    """The agent's final message, one line, short: why nothing needed changing."""
+    text = " ".join(str(output or "").split())
+    return text if len(text) <= _SUMMARY_MAX else text[: _SUMMARY_MAX - 1] + "…"
 
 
 def _settled_at(task: dict) -> datetime | None:
@@ -71,7 +82,7 @@ async def report(
 
     since = since or datetime.now(UTC) - timedelta(hours=24)
     tasks = await list_dev_tasks(session, tenant_id, limit=300)
-    merged, waiting, failed = [], [], []
+    merged, waiting, failed, no_changes = [], [], [], []
     queued = 0
     for t in tasks:
         settled = _settled_at(t)
@@ -85,6 +96,9 @@ async def report(
             queued += 1
         elif t["stage"] == "merged" and settled and settled >= since:
             merged.append(item)
+        elif t["stage"] == NO_CHANGES and t["status"] == "completed":
+            if settled and settled >= since:
+                no_changes.append({**item, "reason": summary_of(t.get("output"))})
         elif t["stage"] in WAITING:
             waiting.append({**item, "reason": await _waiting_reason(session, tenant_id, t)})
         elif t["status"] == "failed" and settled and settled >= since:
@@ -99,6 +113,7 @@ async def report(
         "merged": merged,
         "waiting": waiting,
         "failed": failed,
+        "no_changes": no_changes,
         "queued": queued,
     }
 
@@ -106,12 +121,15 @@ async def report(
 def lines(rep: dict[str, Any]) -> list[str]:
     """The brief section's lines; [] when nothing settled and nothing waits."""
     merged, waiting, failed, queued = rep["merged"], rep["waiting"], rep["failed"], rep["queued"]
-    if not (merged or waiting or failed or queued):
+    unchanged = rep.get("no_changes") or []
+    if not (merged or waiting or failed or queued or unchanged):
         return []
     head = (
         f"{len(merged)} merged, {len(waiting)} waiting for you, {len(failed)} failed, "
         f"{queued} queued"
     )
+    if unchanged:
+        head += f", {len(unchanged)} checked with no changes needed"
     out = [head]
     for t in merged[:_MAX_LINES]:
         out.append(f"merged: {t['title']}" + (f" — {t['pr_url']}" if t["pr_url"] else ""))
@@ -121,7 +139,11 @@ def lines(rep: dict[str, Any]) -> list[str]:
         )
     for t in failed[:_MAX_LINES]:
         out.append(f"failed: {t['title']} — {t['reason']}")
-    hidden = sum(max(len(x) - _MAX_LINES, 0) for x in (merged, waiting, failed))
+    for t in unchanged[:_MAX_LINES]:
+        out.append(
+            f"no changes needed: {t['title']}" + (f" — {t['reason']}" if t.get("reason") else "")
+        )
+    hidden = sum(max(len(x) - _MAX_LINES, 0) for x in (merged, waiting, failed, unchanged))
     if hidden:
         out.append(f"(and {hidden} more on the Dev tasks page)")
     return out
