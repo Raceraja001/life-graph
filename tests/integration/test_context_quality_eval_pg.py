@@ -80,3 +80,27 @@ async def test_the_model_guard_refuses_cloud_routes():
     assert calls == {"resilient_chain": 1, "chat_client": 1}
     # Restored afterwards.
     assert LMStudioClient() is not None
+
+
+INGEST_SUBSET = {"B1", "C3", "O5", "D2", "O6"}
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_ingest_arm_builds_the_world_through_the_save_path_and_cleans_up():
+    """The ingest arm (scripts/context_quality_ingest.py): no leaks, no model call,
+    nothing left behind, usable fixtures, and its ingestion report filled in.
+    What it gets right is not pinned here: that is the arm's baseline."""
+    data, gq = ecq.load()
+    report = await ecq.run_arm("ingest", data, gq, repeat=2, only=INGEST_SUBSET)
+
+    zero = report["zero_tolerance"]
+    assert zero["cross_tenant_leaks"] == 0
+    assert zero["cloud_model_calls"] == 0
+    assert zero["rows_left_after_cleanup"] == 0
+    assert report["fixtures"]["problems"] == []
+    assert set(report["per_question"]) == INGEST_SUBSET
+    ing = report["ingestion"]
+    assert ing["memories"] > 0 and ing["replay_misses"] == []
+    assert ing["owner_actions_failed"] == []
+    assert report["change_detection"] is not None
