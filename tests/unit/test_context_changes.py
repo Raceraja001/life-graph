@@ -729,3 +729,38 @@ def test_the_baseline_skips_failed_comparisons_and_temporary_turns():
     fine = _turn_row(5, T0 + timedelta(hours=5), chg={"insufficient": True, "read_failed": False})
     assert changes._pick([fine, *rows], cur, same_conversation=True).task_id == "turn-5"
     assert changes._pick([temporary], cur, same_conversation=True) is None
+
+
+# ── Decision lifecycle (ADR M8 §5.4) ─────────────────────────
+
+
+def test_a_discard_takes_its_time_and_owner_from_the_trail():
+    d = _item("decision", 40, status="candidate", origin="model_proposed", confirmed=False)
+    row = _row(d, status="discarded", status_at=IN, status_by_owner=True)
+    (change,) = _run(_base([d]), _snap([]), _rows(row)).changes
+    assert change.kind == "discarded" and change.at == IN.isoformat()
+    assert change.acknowledged is True
+
+
+def test_a_decision_supersede_takes_superseded_at():
+    d = _item("decision", 41)
+    row = _row(d, status="superseded", superseded_by=_id(42), superseded_at=IN)
+    (change,) = _run(_base([d]), _snap([]), _rows(row)).changes
+    assert change.kind == "decision_superseded" and change.at == IN.isoformat()
+    assert change.acknowledged is False  # the system's mirror is no owner act
+
+
+def test_an_owner_supersede_is_acknowledged():
+    d = _item("decision", 43)
+    row = _row(
+        d, status="superseded", superseded_by=_id(44), superseded_at=IN, status_by_owner=True
+    )
+    (change,) = _run(_base([d]), _snap([]), _rows(row)).changes
+    assert change.acknowledged is True
+
+
+def test_an_owner_confirm_is_acknowledged():
+    d = _item("decision", 45, status="candidate", origin="model_proposed", confirmed=False)
+    row = _row(d, status="decided", decided_at=IN, status_at=IN, status_by_owner=True)
+    (change,) = _run(_base([d]), _snap([]), _rows(row)).changes
+    assert change.kind == "decision_status" and change.acknowledged is True

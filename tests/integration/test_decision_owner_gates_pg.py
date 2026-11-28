@@ -94,7 +94,7 @@ async def test_supersede_within_the_tenant_still_works():
         new = await _make(a, "Use Postgres 17")
 
         async with async_session() as s:
-            await JudgmentService(s).supersede_decision(a, old, new)
+            await JudgmentService(s).supersede_decision(a, old, new, by="owner", owner=True)
             await s.commit()
 
         row = await _get(old)

@@ -88,6 +88,7 @@ from life_graph.core import evidence as ev
 from life_graph.core.tenant import get_current_tenant_id, tenant_scope
 from life_graph.core.trust import is_excluded_from_agents
 from life_graph.models.db import AgentSession, AgentTask, Approval, Decision, Intention, Memory
+from life_graph.services import decision_lifecycle
 from life_graph.services.chat_history import versions_of
 from life_graph.services.memory import retrieval
 from life_graph.services.memory import snapshot as snapshot_mod
@@ -302,6 +303,10 @@ class RowState:
     #: When the owner marked this memory wrong (properties.disputed.at), else None.
     disputed_at: datetime | None = None
     decided_at: datetime | None = None
+    #: A decision's newest lifecycle move into its current status: when, and
+    #: whether the owner made it (services/decision_lifecycle.py).
+    status_at: datetime | None = None
+    status_by_owner: bool = False
     review_due: datetime | None = None
     completed_at: datetime | None = None
     expires_at: datetime | None = None
@@ -585,11 +590,25 @@ def _memory(p: BaselineItem, r: RowState, run: _Run) -> None:
 
 
 def _decision(p: BaselineItem, r: RowState, run: _Run) -> None:
+    """A decision's status move. ``at`` is the column for it (``superseded_at``,
+    ``decided_at``, ``reviewed_at``), else the lifecycle trail (a discard);
+    a move the owner made is ``acknowledged`` (ADR M8 §5.4)."""
     before = {"status": p.status}
     after = {"status": r.status}
+    ack = r.status_by_owner
     if r.status != p.status:
         if r.status == "discarded":
-            run.add(_change("discarded", p.ref, before=before, after=after, origin=p.origin))
+            run.add(
+                _change(
+                    "discarded",
+                    p.ref,
+                    before=before,
+                    after=after,
+                    at=r.status_at,
+                    origin=p.origin,
+                    acknowledged=ack,
+                )
+            )
         elif r.status == "superseded" and r.superseded_by:
             new = f"decision:{r.superseded_by}"
             run.add(
@@ -599,14 +618,22 @@ def _decision(p: BaselineItem, r: RowState, run: _Run) -> None:
                     evidence=(p.ref, new),
                     before=before,
                     after={**after, "by": new},
+                    at=r.superseded_at,
                     origin=p.origin,
+                    acknowledged=ack,
                 )
             )
         else:
             at = r.reviewed_at if r.status == "reviewed" else r.decided_at
             run.add(
                 _change(
-                    "decision_status", p.ref, before=before, after=after, at=at, origin=p.origin
+                    "decision_status",
+                    p.ref,
+                    before=before,
+                    after=after,
+                    at=at,
+                    origin=p.origin,
+                    acknowledged=ack,
                 )
             )
     _edited(p, r, run)
@@ -1042,6 +1069,7 @@ def memory_state(m: Any) -> RowState:
 
 def decision_state(d: Any) -> RowState:
     explicit = str(getattr(d, "source", "") or "") == "explicit"
+    move = decision_lifecycle.last_move_to(d, str(d.status)) or {}
     return RowState(
         ref=f"decision:{d.id}",
         status=str(d.status),
@@ -1052,6 +1080,10 @@ def decision_state(d: Any) -> RowState:
         decided_at=_ts(getattr(d, "decided_at", None)),
         reviewed_at=_ts(getattr(d, "reviewed_at", None)),
         review_due=_ts(getattr(d, "review_at", None)),
+        superseded_at=_ts(getattr(d, "superseded_at", None)),
+        status_at=_ts(move.get("at")),
+        status_by_owner=move.get("owner") is True
+        and decision_lifecycle.is_owner_label(move.get("by")),
     )
 
 

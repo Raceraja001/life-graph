@@ -104,6 +104,15 @@ class MemorySettings(BaseModel):
     # also adds the optional leads_to field to the extraction request. No extra
     # model call. Off means the request and the save are exactly as before.
     ingest_typed_links: bool = False
+    # M8 decision lifecycle, memory side (services/decision_lifecycle.py, ADR
+    # adr-m8-ingestion-structure.md §5.4): a capture ties its candidate
+    # decision to the decision memory of the same message; an applied memory
+    # supersede supersedes the old memory's *candidate* decision (and the
+    # memory undo takes it back); the owner keeping or dropping a linked
+    # memory in review confirms or discards the candidate. The owner routes
+    # (POST /judgment/decisions/{id}/confirm|discard|review|supersede) are
+    # always on. Off: decisions do not follow memories, as before.
+    decision_lifecycle: bool = False
     # The owner's lasting facts, put in front of every local Jarvis answer
     # whether or not search finds them (services/profile_card.py). 0 = off.
     profile_card_max_items: int = 40

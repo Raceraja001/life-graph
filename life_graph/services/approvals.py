@@ -1194,7 +1194,10 @@ class ApprovalService:
             new = await self.session.get(Memory, uuid.UUID(str(new_id))) if new_id else None
         except (ValueError, TypeError):
             return
-        supersession.undo(tenant_id, old, new)
+        if supersession.undo(tenant_id, old, new) and old is not None:
+            await supersession.undo_decision_mirror(
+                self.session, tenant_id, old_id=old.id, new_id=new.id if new else None
+            )
 
     async def _apply_deferred_supersede(
         self, tenant_id: str, appr: Approval, *, activate_new: bool
@@ -1223,6 +1226,7 @@ class ApprovalService:
             activate_new=activate_new,
         ):
             return False
+        await supersession.mirror_decisions(self.session, tenant_id, old, new)
         # Reassign: in-place mutation of a JSONB dict is not change-tracked.
         appr.payload = {**payload, "applied": True}
         return True

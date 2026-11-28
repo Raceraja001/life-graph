@@ -619,5 +619,7 @@ async def _supersede(tenant_id: str, old_id: Any, new_id: Any) -> str | None:
         old, new = await supersession.load(session, tenant_id, old_id, new_id, lock=True)
         replaced = supersession.apply(tenant_id, old, new, why="correction")
         content = old.content if replaced and old is not None else None
+        if replaced:
+            await supersession.mirror_decisions(session, tenant_id, old, new)
         await session.commit()
     return content
