@@ -9,6 +9,7 @@ if either isn't available in this environment.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 
@@ -133,6 +134,42 @@ async def test_output_without_a_review_is_not_reviewed(monkeypatch, written):
     assert verdict.needs_human
 
 
+@pytest.mark.asyncio
+async def test_model_pin_goes_through_env_not_a_forbidden_cli_arg(monkeypatch):
+    """PR-Agent 0.50 rejects --config.fallback_models on the command line (no
+    review is written). The pin travels as CONFIG__FALLBACK_MODELS, and the local
+    Ollama address as OLLAMA__API_BASE."""
+    import life_graph.services.dev.pr_agent_review as mod
+
+    seen: dict = {}
+
+    async def _fake_exec(*argv, **kwargs):
+        seen["argv"], seen["env"] = list(argv), kwargs.get("env") or {}
+        out = argv[argv.index("--json-output") + 1]
+
+        class _FakeProc:
+            returncode = 0
+
+            async def communicate(self, _input=None):
+                from pathlib import Path
+
+                Path(out).write_text(
+                    '{"review": {"key_issues_to_review": [], "security_concerns": "No"}}',
+                    encoding="utf-8",
+                )
+                return b"", b""
+
+        return _FakeProc()
+
+    monkeypatch.setattr(mod.asyncio, "create_subprocess_exec", _fake_exec)
+    reviewer = PRAgentReviewer(enabled=True, model="ollama_chat/qwen3:14b")
+    await reviewer.review("code_change", "x", "diff --git a b\n+x\n")
+    assert not any(a.startswith("--config.fallback_models") for a in seen["argv"])
+    assert "--config.model=ollama_chat/qwen3:14b" in seen["argv"]
+    assert seen["env"]["CONFIG__FALLBACK_MODELS"] == "[]"
+    assert seen["env"]["OLLAMA__API_BASE"]
+
+
 # ── Real end-to-end: the actual installed binary + a local model ──
 
 
@@ -204,8 +241,9 @@ def test_json_schema_assumption_still_holds():
                 "--stdin",
                 "review",
                 "--config.model=ollama_chat/qwen3:4b",
-                "--config.fallback_models=[]",
             ],
+            # PR-Agent >= 0.50 forbids --config.fallback_models on the CLI.
+            env={**os.environ, "CONFIG__FALLBACK_MODELS": "[]"},
             input=diff.encode(),
             capture_output=True,
             timeout=120,

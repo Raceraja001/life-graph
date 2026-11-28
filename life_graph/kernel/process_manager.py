@@ -850,6 +850,11 @@ class ProcessManager:
                         history,
                         task_id=(ctx.root_task_id or ctx.task_id) if ctx else None,
                         compare=settings.context_change_shadow,
+                        # M8 precision mode, shadow only: the configured mode
+                        # (recall when none is set) next to the default snapshot.
+                        precision=(settings.context_precision_mode or "recall")
+                        if settings.context_precision_shadow
+                        else "",
                     )
                 )
             # The owner's memories, on a local run only (services/memory/context.py):

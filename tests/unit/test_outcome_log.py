@@ -479,6 +479,8 @@ async def test_second_opinion_statuses_at_the_call_site(
     assert (EventType.SECOND_OPINION_DISSENT in events) is dissent_event
     assert run.second_opinion["verdict"] == status
     assert d._outcome_row(run, None)["properties"]["second_opinion"] == status
+    # Every status is recorded in the result metadata for the task API.
+    assert run.result.metadata["second_opinion_status"] == status
     if lands:
         assert approvals == []
     elif status == "not_reviewed":
@@ -501,3 +503,25 @@ async def test_owner_decision_stores_the_panel_verdict():
     compiled = session.statements[0].compile()
     assert "properties" in str(compiled)
     assert {"review_panel": panel} in compiled.params.values()
+
+
+async def test_team_worker_skips_the_second_opinion(monkeypatch):
+    """A team worker's branch is reviewed at integration; reviewing each worker
+    would double the cost, and a worker's 'not reviewed' would cancel the team."""
+
+    class _Reviewer:
+        async def review(self, *_a):
+            raise AssertionError("a team worker must not be reviewed on its own")
+
+    async def _emit(*_a):
+        return None
+
+    d = TaskDispatcher(session_factory=lambda: None, reviewer=_Reviewer())
+    monkeypatch.setattr(d, "_emit", _emit)
+    run = _run(driver=_Driver(), result=DriverResult(success=True, output="done"))
+    run.handoff = "branch"
+    await d._second_opinion_review(run)
+    assert run.result.success is True
+    assert run.second_opinion["verdict"] == "skipped"
+    assert run.result.metadata["second_opinion_status"] == "skipped"
+    assert "integration" in run.result.metadata["second_opinion_reason"]

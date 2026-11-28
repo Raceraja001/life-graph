@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, Query
 
 from life_graph.api.responses import Envelope, success_response
+from life_graph.config import settings
 from life_graph.services.memory.snapshot import assemble_context
 
 router = APIRouter(prefix="/context", tags=["context"])
@@ -33,6 +34,10 @@ async def context_snapshot(
         None, description="Ask about an earlier instant (valid time); default now"
     ),
 ) -> dict[str, Any]:
-    """Assemble the snapshot for the current tenant (see services/memory/snapshot.py)."""
-    snap = await assemble_context(q, as_of=as_of)
+    """Assemble the snapshot for the current tenant (see services/memory/snapshot.py).
+
+    Under settings.context_precision_mode ("" by default: the normal snapshot)
+    it is built with that precision mode's fixed experiment set.
+    """
+    snap = await assemble_context(q, as_of=as_of, mode=settings.context_precision_mode)
     return success_response(data=snap.to_dict())
