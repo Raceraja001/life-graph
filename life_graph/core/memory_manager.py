@@ -296,12 +296,25 @@ class MemoryManager:
 
     async def _as_said(self, stored: Memory, said: datetime, *, history_of: str | None) -> None:
         """Date *stored* when it was said; with *history_of*, it is already
-        replaced by that newer memory (superseded, as any replaced value is)."""
+        replaced by that newer memory (superseded, as any replaced value is).
+
+        ``valid_from`` moves with ``created_at`` unless the row already has an
+        earlier world time of its own. A ``valid_from`` at or after *said* is
+        only the arrival time; left there, it would sit later than the recorded
+        time and the snapshot would read it as a real world time
+        (snapshot.world_time_known). Moved to *said*, it equals the recorded
+        time again, which is how "no world time" is spelled.
+        """
         from sqlalchemy import update
 
         from life_graph.storage.database import async_session
 
         values: dict[str, Any] = {"created_at": said, "updated_at": said, "last_accessed": said}
+        valid_from = getattr(stored, "valid_from", None)
+        if valid_from is not None and valid_from.tzinfo is None:
+            valid_from = valid_from.replace(tzinfo=UTC)
+        if valid_from is None or valid_from >= said:
+            values["valid_from"] = said
         if history_of:
             values |= {
                 "status": "superseded",
