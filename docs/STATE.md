@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 15:32 UTC` from `race/team-upgrades` @ `e8f74a79`
+Generated `2026-11-28 15:59 UTC` from `race/team-upgrades` @ `4827a1e8`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-28 15:32 UTC` from `race/team-upgrades` @ `e8f74a79`
 
 | | |
 |---|---|
-| HTTP operations | **446** across 384 paths, 49 tags |
+| HTTP operations | **448** across 385 paths, 49 tags |
 | Database tables | **101** |
 | Migrations | **68** (head: `068_dev_outcome_log`) |
 | Event types | **96** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **38** |
-| Config settings | **380** (prefix `LIFE_GRAPH_`) |
-| Test functions | **7134** in 728 files |
+| Config settings | **381** (prefix `LIFE_GRAPH_`) |
+| Test functions | **7150** in 729 files |
 | Dashboard pages | **23** |
-| Python | 600 files, 178,122 lines |
+| Python | 602 files, 178,648 lines |
 
 ---
 
 ## HTTP API
 
-446 operations, grouped by OpenAPI tag.
+448 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -80,7 +80,7 @@ Generated `2026-11-28 15:32 UTC` from `race/team-upgrades` @ `e8f74a79`
 | POST | `/api/v1/study/generate` | Generate Cards |
 | GET | `/api/v1/study/progress` | Study Progress |
 
-### `drivers` — 38
+### `drivers` — 40
 
 | Method | Path | Summary |
 |---|---|---|
@@ -117,6 +117,8 @@ Generated `2026-11-28 15:32 UTC` from `race/team-upgrades` @ `e8f74a79`
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/events` | The task's live session events after a sequence number (long-poll) |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/events/stream` | The task's live session as Server-Sent Events (resumes from Last-Event-ID) |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/messages` | A dev task's steering messages |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/messages` | Send a steering message to a queued or running dev task (owner) |
 | POST | `/api/v1/kernel/drivers/tasks/{task_id}/resume` | Resume a parked dev task now, without waiting for its reset (owner) |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/review-stages` | Every review-stage result of a dev task, and the latest per stage |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/risk` | The risk report of a dev task's change |
@@ -1122,16 +1124,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 561 | 6048 |
+| `tests/unit/` | 562 | 6064 |
 | `tests/integration/` | 166 | 1074 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **728** | **7134** |
+| **total** | **729** | **7150** |
 
 ---
 
 ## Configuration
 
-380 settings, all overridable by environment variable.
+381 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1330,6 +1332,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CONTINUE_KEEP_HOURS` | `24` |
 | `LIFE_GRAPH_DRIVER_TEAM_MAX_PARALLEL` | `1` |
 | `LIFE_GRAPH_DRIVER_TEAM_WORKER_RETRIES` | `1` |
+| `LIFE_GRAPH_DRIVER_STEER_MAX_TURNS` | `2` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_POLL_MINUTES` | `10` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_MAX_ROUNDS` | `3` |

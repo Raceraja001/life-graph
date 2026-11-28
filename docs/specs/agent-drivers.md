@@ -1863,8 +1863,9 @@ await team_rungs.apply_team_rung(run)  # life_graph.services.dev.team_rungs
 ```
 
 It sets `run.packet.persona_model` from `team_rung.model` and `run.reached_top` for a non-local
-`best` rung; it does nothing for any other task and never raises. **Until it is added**, a
-local-rung pin runs the persona's/default local model.
+`best` rung; it does nothing for any other task and never raises. **Added** with the steering
+messages below (`tests/unit/test_steering_messages.py` checks it runs before the floor and leaves
+a non-team task alone).
 
 ### Settings
 
@@ -1877,3 +1878,95 @@ local-rung pin runs the persona's/default local model.
 - The integration task is not retried (re-approve the plan, as before).
 - A retry starts from scratch on a fresh worktree (no `continue_task` of the failed attempt).
 - No new EventBus event types (retries are task events and group history).
+
+## Steering messages (2026-11-28)
+
+> **Status: Built, fixture-tested.** Branch `race/team-upgrades`. No migration: messages live in
+> `agent_tasks.properties.steer_messages`. Code: `services/dev/task_messages.py` (the store, the
+> prompts), `drivers/steering.py` (`SteeringMixin`: start-time append, steering turns, worktree
+> snapshot/restore), `drivers/dispatcher.py` (Steps 2a′ and 4s), `drivers/continue_run.py`
+> (continue_task), `api/drivers_automation.py` (routes). The owner's answer to "steer a running
+> worker", like PandaCode's / race-app's follow-up queue; nothing ported.
+
+Headless coding CLIs take no input mid-run, so a message is delivered at the **next turn
+boundary**, never injected into a running process.
+
+### API
+
+`POST /kernel/drivers/tasks/{id}/messages` (owner only) body `{"text": str}` (unknown fields
+422) → 200 `{queued: <undelivered count incl. this one>, id}`.
+
+- GIVEN *text* trimmed is empty THEN 422 `empty: …`; longer than 4000 chars THEN 422
+  `too_long: …`. Stored trimmed and redacted (`core.redaction.redact_secrets`).
+- GIVEN the task is not `queued` or `running` (completed, failed, parked, cancelled …) THEN 409
+  `not_running: …`. GIVEN 10 messages of the task are undelivered THEN 409 `too_many: …`.
+  404 no such dev task of this tenant; 400 a non-UUID id. A service key is 403.
+- Stored as `{id, text, at, delivered_at: null}` under the task row's lock (`SELECT … FOR
+  UPDATE`, the list rewritten in that transaction); at most 100 kept (delivered ones dropped
+  oldest first). A task event `steer` (`state: queued`).
+
+`GET /kernel/drivers/tasks/{id}/messages` (tenant read) → `{messages: [{id, text, at,
+delivered_at|null, via?, undelivered_reason?}]}`, oldest first. `via` = `instruction` | `turn` |
+`continue` once delivered; `undelivered_reason` = why a message is still waiting (kill switch,
+budget, turn limit, a failed turn, a failed run).
+
+### Delivery
+
+- **Start (no extra turn).** GIVEN messages are undelivered WHEN `dispatch_task` starts (Step
+  2a′, after the WIP check, before the packet is built — i.e. at claim) THEN they are appended
+  to the instruction between `--- MESSAGES FROM THE OWNER (sent after this task was queued) ---`
+  and `--- END OF THE OWNER'S MESSAGES ---`, numbered, and marked delivered (`via:
+  instruction`) once the driver was called (a seed failure, a budget denial or a crash before
+  the run leaves them waiting). continue_task does the same with its follow-up (`via:
+  continue`).
+- **Turn boundary (Step 4s).** GIVEN the run (its first attempt, with any rate-limit rotation
+  or stall retry inside it) ended **successfully** AND messages are undelivered WHEN the run
+  returns, before the tamper / no-change guards and the verifier chain THEN the dispatcher runs
+  one more turn in the same session and workdir — `driver.resume(session_id, prompt)` with
+  prompt "The owner sent these messages while you were working on this task: 1. … Your changes
+  so far are in this working tree; build on them, do not start over. …" — marks them delivered
+  (`via: turn`), and checks again. Its result replaces the run's; then the normal chain
+  (guards, verify, bounce, land) judges the steered worktree.
+- **Bounded:** at most `driver_steer_max_turns` steering turns per dispatch (default 2, 0–5;
+  0 = no steering turns, the start-time append still applies). GIVEN messages still wait when
+  the limit is reached THEN they stay undelivered (`undelivered_reason: the steering turn
+  limit (N) was reached`).
+- **Gated** before every turn like every other extra round (`_round_allowed`): the kill switch
+  (on or unreadable), the per-task cost cap, the Governor (skipped for a subscription-account
+  run, which the account hook gates on plan-window share). GIVEN any says no THEN no turn; the
+  messages stay undelivered with the reason (`steer` event `state: skipped`).
+- **Failure fallback.** GIVEN a steering turn fails (error, timeout, crash) THEN the worktree is
+  put back to its state before the turn (a `git add -A` + `write-tree` snapshot, restored with
+  `read-tree --reset` + `checkout-index -a -f` + `clean -fd`; only in a worktree still linked to
+  its origin) and the **pre-steer result** goes on to verification; the messages stay
+  undelivered (`the steering turn failed: …`, events `failed` and `fallback`). No further
+  steering turn that dispatch.
+- GIVEN the run failed (or was rate-limited / parked) THEN nothing is delivered (`the run did
+  not succeed`).
+- **No resume.** GIVEN the driver cannot resume (`supports_resume` false, e.g. the local
+  driver) or the run left no session id THEN the steering turn is a **re-dispatch in the same
+  worktree** with the steering prompt prepended to the instruction — the run-health fallback
+  for nudges and stall retries (chosen over "deliver at a later continuation", which needs a
+  resumable session too, and over "undeliverable", which would leave local team workers
+  unsteerable).
+- Messages sent after the last boundary of a dispatch (or to a task that then ends) stay
+  undelivered; a later continue_task of that task carries them in its follow-up.
+
+Events (`dev_task_events`, kind `steer`, `data.state`): `queued` (api), `delivering` (with
+`turn`, `of`, `attempt`), `delivered` (`via`), `skipped` / `failed` (`reason`), `fallback`
+(`restored`). The approval payload's `autonomy.steering` lists each delivery. Each steering
+turn is its own attempt (`run.next_attempt`), with its steps emitted and its spend booked.
+
+### Settings
+
+| Env (`LIFE_GRAPH_…`) | Setting | Default | Meaning |
+|---|---|---|---|
+| `DRIVER_STEER_MAX_TURNS` | `driver_steer_max_turns` | 2 | steering turns per dispatch (0–5); 0 = none |
+
+### Not in this step
+
+- No mid-process input (CLIs cannot take it); no message to a parked task (409); no editing or
+  withdrawing a queued message.
+- Other unlocked whole-`properties` writers (checkpoint flushes, the runner's final write) can
+  still, in a millisecond window, overwrite a message written at the same moment — as for every
+  other key on that column today.

@@ -2,7 +2,8 @@
 
 Prefix: /kernel/drivers (same tag as api/drivers.py). Parallel plans show in
 the existing ``GET /kernel/drivers/plans/{id}`` (``team``), the owner retries a
-team's failed worker here (Team upgrades, 2026-11-28), and dependencies on
+team's failed worker here (Team upgrades, 2026-11-28) and steers a running
+task with messages (Steering messages, 2026-11-28), and dependencies on
 the task routes (``depends_on`` on create, ``depends_on`` /
 ``dependency_wait`` on read). docs/specs/agent-drivers.md, "Phase 4b".
 """
@@ -22,6 +23,7 @@ from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.dev import arena as _arena
 from life_graph.services.dev import pr_watch as _pr_watch
+from life_graph.services.dev import task_messages as _task_messages
 from life_graph.services.dev import team_retry as _team_retry
 from life_graph.storage.database import async_session
 
@@ -207,3 +209,47 @@ async def retry_team_worker(
     except _team_retry.TeamError as exc:
         raise HTTPException(status_code=exc.http_status, detail=f"{exc.code}: {exc}") from exc
     return success_response(data=data)
+
+
+# ── Steering messages ────────────────────────────────────────
+
+
+class SteerMessage(BaseModel):
+    """One message to a queued or running dev task (1-4000 chars once trimmed)."""
+
+    model_config = {"extra": "forbid"}
+
+    text: str = Field(..., max_length=2 * _task_messages.MAX_TEXT_CHARS)
+
+
+@router.post(
+    "/tasks/{task_id}/messages",
+    summary="Send a steering message to a queued or running dev task (owner)",
+)
+async def send_task_message(task_id: str, body: SteerMessage, request: Request) -> dict[str, Any]:
+    """Queued for the next turn boundary: a running task gets one more turn in
+    its session after its current run ends successfully (before checks); a
+    queued task gets it in its instruction when it starts. Secrets are
+    redacted before it is stored. → ``{queued: <waiting count>, id}``. 409
+    ``not_running`` (not queued or running) / ``too_many`` (10 waiting); 422
+    ``empty`` / ``too_long``; 404 no such task."""
+    owner_only(request, "Sending a message to a dev task")
+    task = _uuid(task_id, "task_id")
+    try:
+        data = await _task_messages.queue_message(
+            async_session, get_current_tenant_id(), task, body.text
+        )
+    except _task_messages.MessageError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=f"{exc.code}: {exc}") from exc
+    return success_response(data=data)
+
+
+@router.get("/tasks/{task_id}/messages", summary="A dev task's steering messages")
+async def list_task_messages(task_id: str) -> dict[str, Any]:
+    """``{messages: [{id, text, at, delivered_at|null, via?, undelivered_reason?}]}``,
+    oldest first."""
+    task = _uuid(task_id, "task_id")
+    messages = await _task_messages.list_messages(async_session, get_current_tenant_id(), task)
+    if messages is None:
+        raise HTTPException(status_code=404, detail="Dev task not found")
+    return success_response(data={"messages": messages})

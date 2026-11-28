@@ -74,6 +74,7 @@ from life_graph.drivers.seed_branches import (
     seed_report,
     unresolved_markers,
 )
+from life_graph.drivers.steering import SteeringMixin
 from life_graph.drivers.verify_chain import (  # noqa: F401  (re-exported)
     DEFAULT_VERIFY_CHAIN,
     _resolve_verify_chain,
@@ -88,7 +89,7 @@ from life_graph.drivers.workdir import (
     resolve_workdir,
     worktree_intact,
 )
-from life_graph.services.dev import task_events
+from life_graph.services.dev import task_events, team_rungs
 from life_graph.services.dev.autonomy_policy import NEUTRAL, EffectivePolicy
 from life_graph.services.dev.change_policy import policy_from_project
 from life_graph.services.dev.verifiers import (  # noqa: F401  (failure_text: re-exported)
@@ -406,6 +407,12 @@ class _DispatchRun:
     persona_model: str | None = None
     second_opinion: dict | None = None
     outcome_logged: bool = False
+    # Steering messages (2026-11-28, drivers/steering.py): the steering turns
+    # this dispatch ran, and the messages its start carried (marked delivered
+    # once the driver was called) and where they went.
+    steer_turns: int = 0
+    start_messages: list[str] = field(default_factory=list)
+    start_messages_via: str = "instruction"
 
 
 class TaskDispatcher(
@@ -415,6 +422,7 @@ class TaskDispatcher(
     RunHealthMixin,
     ContinueRunMixin,
     LadderMixin,
+    SteeringMixin,
 ):
     """Selects driver, enforces limits, runs verification, manages one-bounce.
 
@@ -482,6 +490,7 @@ class TaskDispatcher(
         2. Build the context packet, scoped to the persona   (_prepare_packet)
         3. Select driver, then the Governor budget gate       (_budget_gate)
         4. Dispatch in the resolved workdir                   (_run_driver)
+           4s. the owner's steering messages, one more turn   (_steer)
            4b. worktree .git link intact                      (_check_worktree_link)
            4c. a code task changed some file, or said nothing
                needed changing ("no changes needed")           (_check_files_changed)
@@ -552,6 +561,10 @@ class TaskDispatcher(
                 tenant_id, run.project_uuid, session, exclude_task_id=task_id
             )
 
+            # Step 2a': the owner's messages sent while it was queued ride in
+            # the instruction (steering messages, no extra turn).
+            run.instruction += await self._take_start_messages(run)
+
             # Step 2: Build context packet (+ persona scope, verifier chain)
             await self._prepare_packet(
                 run,
@@ -575,6 +588,8 @@ class TaskDispatcher(
                     project_id=run.project_uuid,
                 )
             )
+            # Step 3 (teams): a worker pinned to a rung runs that rung's model.
+            await team_rungs.apply_team_rung(run)
             # Step 3a: the deterministic starting floor (persona pins win).
             await self._apply_start_floor(run)
             task_events.emit(
@@ -604,6 +619,10 @@ class TaskDispatcher(
             # No transaction stays open across the agent run (_end_transaction).
             await self._end_transaction(session)
             await self._run_driver(run)
+            await self._settle_start_messages(run)
+            # Step 4s: the owner's steering messages, one more turn each
+            # boundary (bounded, gated), before any check sees the worktree.
+            await self._steer(run)
             await self._check_worktree_link(run)
             await self._check_files_changed(run)
             # Step 4c': an integration task left no conflict marker behind.
