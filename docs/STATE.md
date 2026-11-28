@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 05:08 UTC` from `race/migration` @ `9dd0e05f`
+Generated `2026-11-28 05:33 UTC` from `race/migration` @ `fcf0dd82`
 
 ---
 
@@ -18,7 +18,7 @@ Generated `2026-11-28 05:08 UTC` from `race/migration` @ `9dd0e05f`
 |---|---|
 | HTTP operations | **444** across 382 paths, 49 tags |
 | Database tables | **100** |
-| Migrations | **67** (head: `066_dev_task_groups_pr_watches`) |
+| Migrations | **67** (head: `067_dev_task_groups_pr_watches`) |
 | Event types | **96** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
@@ -733,8 +733,8 @@ Generated `2026-11-28 05:08 UTC` from `race/migration` @ `9dd0e05f`
 |---|---:|:---:|---|
 | `action_safety_rules` | 18 | ✓ | `018_autonomous_ai` |
 | `advisor_sessions` | 13 | ✓ | `014_personal_ai` |
-| `agent_account_limits` | 10 | ✓ | `064_agent_accounts` |
-| `agent_accounts` | 18 | ✓ | `064_agent_accounts` |
+| `agent_account_limits` | 10 | ✓ | `065_agent_accounts` |
+| `agent_accounts` | 18 | ✓ | `065_agent_accounts` |
 | `agent_messages` | 18 | ✓ | `017_agent_networks` |
 | `agent_personas` | 23 | ✓ | `—` |
 | `agent_run_steps` | 12 | ✓ | `044_agent_run_steps` |
@@ -745,7 +745,7 @@ Generated `2026-11-28 05:08 UTC` from `race/migration` @ `9dd0e05f`
 | `audit_log` | 22 | ✓ | `018_autonomous_ai` |
 | `auto_actions` | 31 | ✓ | `018_autonomous_ai` |
 | `autonomy_levels` | 28 | ✓ | `018_autonomous_ai` |
-| `autonomy_policies` | 7 | ✓ | `063_autonomy_policies` |
+| `autonomy_policies` | 7 | ✓ | `064_autonomy_policies` |
 | `budget_spend` | 6 | ✓ | `023_budget_spend` |
 | `capabilities` | 18 | ✓ | `059_durable_capabilities_and_standing_rules` |
 | `connector_accounts` | 18 | ✓ | `039_connectors` |
@@ -753,14 +753,14 @@ Generated `2026-11-28 05:08 UTC` from `race/migration` @ `9dd0e05f`
 | `conversation_messages` | 8 | ✓ | `027_conversations` |
 | `conversations` | 6 | ✓ | `027_conversations` |
 | `cross_system_syncs` | 20 | ✓ | `017_agent_networks` |
-| `dev_automation_breakers` | 10 | ✓ | `065_dev_automation` |
-| `dev_automation_settings` | 6 | ✓ | `065_dev_automation` |
-| `dev_backlog` | 14 | ✓ | `065_dev_automation` |
-| `dev_intake_sources` | 15 | ✓ | `065_dev_automation` |
-| `dev_schedule_runs` | 11 | ✓ | `065_dev_automation` |
-| `dev_schedules` | 13 | ✓ | `065_dev_automation` |
+| `dev_automation_breakers` | 10 | ✓ | `066_dev_automation` |
+| `dev_automation_settings` | 6 | ✓ | `066_dev_automation` |
+| `dev_backlog` | 14 | ✓ | `066_dev_automation` |
+| `dev_intake_sources` | 15 | ✓ | `066_dev_automation` |
+| `dev_schedule_runs` | 11 | ✓ | `066_dev_automation` |
+| `dev_schedules` | 13 | ✓ | `066_dev_automation` |
 | `dev_task_events` | 9 | ✓ | `060_dev_task_events` |
-| `dev_task_groups` | 10 | ✓ | `066_dev_task_groups_pr_watches` |
+| `dev_task_groups` | 10 | ✓ | `067_dev_task_groups_pr_watches` |
 | `device_pairing_codes` | 5 | ✓ | `052_devices` |
 | `devices` | 7 | ✓ | `052_devices` |
 | `documents` | 15 | ✓ | `045_documents` |
@@ -799,7 +799,7 @@ Generated `2026-11-28 05:08 UTC` from `race/migration` @ `9dd0e05f`
 | `notifications` | 14 | ✓ | `013_projects_notifications` |
 | `optimization_runs` | 28 | ✓ | `015_self_improving` |
 | `page_monitors` | 17 | ✓ | `047_page_monitors` |
-| `pr_watches` | 15 | ✓ | `066_dev_task_groups_pr_watches` |
+| `pr_watches` | 15 | ✓ | `067_dev_task_groups_pr_watches` |
 | `preferences` | 21 | ✓ | `014_personal_ai` |
 | `procedures` | 14 | ✓ | `—` |
 | `projects` | 18 | ✓ | `013_projects_notifications` |
@@ -1107,9 +1107,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-67 revisions, head `066_dev_task_groups_pr_watches`.
+67 revisions, head `067_dev_task_groups_pr_watches`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies` · `063_decision_superseded_at` · `064_agent_accounts` · `065_dev_automation` · `066_dev_task_groups_pr_watches`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_decision_superseded_at` · `064_autonomy_policies` · `065_agent_accounts` · `066_dev_automation` · `067_dev_task_groups_pr_watches`
 
 ---
 

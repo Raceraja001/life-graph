@@ -1076,7 +1076,7 @@ class DevTaskEvent(Base):
 class AutonomyPolicy(Base):
     """The owner's autonomy policy: global (``scope='global'``) or one project's.
 
-    docs/specs/agent-drivers.md, "Autonomy policy" (migration 063). ``policy``
+    docs/specs/agent-drivers.md, "Autonomy policy" (migration 064). ``policy``
     holds the auto-approval conditions, the daily cap (global only), review
     stages and fix rounds, validated by services/dev/autonomy_policy.py. No
     row anywhere = today's behaviour: conditions can only narrow

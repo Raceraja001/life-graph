@@ -155,7 +155,7 @@ class EventType(StrEnum):
     TASK_PARKED = "driver:task:parked"
     TASK_UNPARKED = "driver:task:unparked"
     TASK_CONTINUED = "driver:task:continued"
-    # Dev automation (services/dev/automation, migration 065): a notice for the
+    # Dev automation (services/dev/automation, migration 066): a notice for the
     # owner -- a circuit breaker tripped ("Automation paused: ...") or the
     # morning digest. NoticeHandler turns it into a notification + push + Telegram.
     AUTOMATION_NOTICE = "dev:automation:notice"

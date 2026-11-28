@@ -1,4 +1,4 @@
-"""065 — dev automation: intake sources, backlog, dev-task schedules, breakers.
+"""066 — dev automation: intake sources, backlog, dev-task schedules, breakers.
 
 docs/specs/dev-automation.md (Phase 4a of the race-app migration): race-app's
 intake, night-shift scheduler, circuit breaker and morning digest rebuilt in
@@ -11,13 +11,13 @@ so a key is never added twice), ``dev_schedule_runs`` every handled slot
 predecessor task" hold across restarts and overlapping ticks), and
 ``dev_automation_breakers`` the circuit breaker per source / job.
 
-Every feature is off with no rows. Numbered 065, revising 064; the parallel
-``race/automation-teams`` branch takes 066 at merge time.
+Every feature is off with no rows. Revises 065 (agent accounts);
+067 (teams, PR watches) follows it.
 
 No schema qualifier, matching every migration since 023.
 
-Revision ID: 065
-Revises: 064
+Revision ID: 066
+Revises: 065
 Create Date: 2026-11-27
 """
 
@@ -26,8 +26,8 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 from alembic import op
 
-revision = "065"
-down_revision = "064"
+revision = "066"
+down_revision = "065"
 branch_labels = None
 depends_on = None
 

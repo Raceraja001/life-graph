@@ -1,4 +1,4 @@
-"""064 — agent_accounts and agent_account_limits: named logins per coding CLI.
+"""065 — agent_accounts and agent_account_limits: named logins per coding CLI.
 
 Spec docs/specs/agent-drivers.md, "Phase 3b (2026-11-27): accounts, pool,
 limits, resume". ``agent_accounts`` holds one row per named login a driver
@@ -8,13 +8,13 @@ the id of a ``vault_secrets`` row and the identity is stored masked and as a
 keyed hash only. ``agent_account_limits`` keeps the latest reading of each
 plan-limit window per account (from a run, or the opt-in Codex probe).
 
-Numbered 064: it revises 063 (autonomy policies), merged together on
-race/migration, so the chain stays a single head.
+Revises 064 (autonomy policies); both were built together on race/migration
+and follow master's 063, so the chain stays a single head.
 
 No schema qualifier, matching every migration since 023.
 
-Revision ID: 064
-Revises: 062
+Revision ID: 065
+Revises: 064
 Create Date: 2026-11-27
 """
 
@@ -23,8 +23,8 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from alembic import op
 
-revision = "064"
-down_revision = "063"
+revision = "065"
+down_revision = "064"
 branch_labels = None
 depends_on = None
 

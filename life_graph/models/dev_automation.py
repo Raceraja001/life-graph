@@ -7,7 +7,7 @@ jobs, and a per-source / per-job **circuit breaker** stops automatic starts
 after repeated identical failures. Nothing here approves, publishes or merges:
 every task goes through the normal dev-task pipeline and its approvals.
 
-Migration 065 creates every table. Tenant-scoped (CHARTER invariant 4).
+Migration 066 creates every table. Tenant-scoped (CHARTER invariant 4).
 """
 
 from __future__ import annotations

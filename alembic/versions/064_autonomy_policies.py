@@ -1,4 +1,4 @@
-"""063 — autonomy_policies: the owner's auto-approval conditions, review stages, fix rounds.
+"""064 — autonomy_policies: the owner's auto-approval conditions, review stages, fix rounds.
 
 docs/specs/agent-drivers.md, "Autonomy policy" (2026-11-27, owner decision D2).
 One row per (tenant, scope): ``scope`` is ``global`` or a project's UUID as
@@ -12,8 +12,8 @@ Per-task review-stage results and the risk report live in the task's existing
 
 No schema qualifier, matching every migration since 023.
 
-Revision ID: 063
-Revises: 062
+Revision ID: 064
+Revises: 063
 Create Date: 2026-11-27
 """
 
@@ -22,8 +22,8 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from alembic import op
 
-revision = "063"
-down_revision = "062"
+revision = "064"
+down_revision = "063"
 branch_labels = None
 depends_on = None
 

@@ -1,4 +1,4 @@
-"""066 — dev_task_groups and pr_watches: teams, arena races, the PR feedback loop.
+"""067 — dev_task_groups and pr_watches: teams, arena races, the PR feedback loop.
 
 Spec docs/specs/agent-drivers.md, "Phase 4b (2026-11-27)". ``dev_task_groups``
 holds one row per parallel plan (``kind = team``) or arena race (``kind =
@@ -7,13 +7,13 @@ and team membership live in their ``properties``). ``pr_watches`` is the PR
 feedback loop's persisted state per task: rounds used and the dedupe keys of
 feedback already handed back, so a restart never sends the same comment twice.
 
-Revises 065 (dev automation): both were built in parallel and chained here on
+Revises 066 (dev automation): both were built in parallel and chained here on
 race/migration so there is a single head.
 
 No schema qualifier, matching every migration since 023.
 
-Revision ID: 066
-Revises: 065
+Revision ID: 067
+Revises: 066
 Create Date: 2026-11-27
 """
 
@@ -22,8 +22,8 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from alembic import op
 
-revision = "066"
-down_revision = "065"
+revision = "067"
+down_revision = "066"
 branch_labels = None
 depends_on = None
 

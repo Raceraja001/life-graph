@@ -1,7 +1,7 @@
 # Dev Automation — Intake, Schedules, Circuit Breaker, Morning Digest — Feature Spec
 
 > **Status: Built, fixture-tested.** Phase 4a of the race-app migration (branch
-> `race/automation-intake`). Migration `065_dev_automation`; code
+> `race/automation-intake`). Migration `066_dev_automation`; code
 > `life_graph/services/dev/automation/` (`settings`, `clock`, `sources`, `intake`,
 > `scheduler`, `breaker`, `status`, `digest`, `store`, `wiring`, `service`),
 > `life_graph/api/dev_automation.py`, `life_graph/workers/dev_automation.py` (per-minute
@@ -112,7 +112,7 @@ Manual starts check the kill switch only (interactive work is never Governor-blo
 
 The cron takes a session advisory lock (`pg_try_advisory_lock(hashtext('dev_automation_tick'))`); a long tick makes the next one skip. Within and across processes the claims are database-enforced: backlog keys (unique), item transitions (conditional `UPDATE … WHERE status IN (…) RETURNING`), slots and chains (partial unique indexes), the digest day (conditional update of `state`), breakers (`SELECT … FOR UPDATE`). An owner "poll now" during a tick may at worst start one item over `maxConcurrent`.
 
-### SQL (migration `065_dev_automation`)
+### SQL (migration `066_dev_automation`)
 
 ```sql
 CREATE TABLE dev_automation_settings (
@@ -313,7 +313,7 @@ PR feedback polling, `dependsOn`, parallel plans and the arena (branch `race/aut
 
 ## Tasks
 
-- [x] Migration 065, models (`models/dev_automation.py`)
+- [x] Migration 066, models (`models/dev_automation.py`)
 - [x] Settings document, validation, chain checks, draft-id translation
 - [x] Sources: GitHub issues, failing CI, intentions (native), TODO comments (git grep on the base branch)
 - [x] Intake runner: dedupe, limits, gate, sync, reconcile, comments, start/skip

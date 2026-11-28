@@ -9,7 +9,7 @@ restart resumes it. A *PR watch* is the feedback loop's state for one task's
 open pull request: what it has already handed back (``seen``) and how many
 rounds it used.
 
-Migration 066 creates both tables. Tenant-scoped (CHARTER invariant 4).
+Migration 067 creates both tables. Tenant-scoped (CHARTER invariant 4).
 """
 
 from __future__ import annotations

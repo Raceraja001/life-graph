@@ -1,6 +1,6 @@
 # Agent Drivers — Rent the Muscle, Own the Nervous System — Feature Spec
 
-> **Status: Built.** Implemented in `life_graph/drivers/dispatcher.py`. The [2026-11-27 autonomy-policy amendment](#amendment-2026-11-27--autonomy-policy-owner-decision-d2) is built too (migration `063_autonomy_policies`). [Phase 4b](#phase-4b-2026-11-27-dependencies-parallel-plans-pr-feedback-loop-arena) (dependencies, parallel plans, PR feedback loop, arena) is built too (migration `066_dev_task_groups_pr_watches`), off by default. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+> **Status: Built.** Implemented in `life_graph/drivers/dispatcher.py`. The [2026-11-27 autonomy-policy amendment](#amendment-2026-11-27--autonomy-policy-owner-decision-d2) is built too (migration `064_autonomy_policies`). [Phase 4b](#phase-4b-2026-11-27-dependencies-parallel-plans-pr-feedback-loop-arena) (dependencies, parallel plans, PR feedback loop, arena) is built too (migration `066_dev_task_groups_pr_watches`), off by default. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
 
 > _Historical banner (July 2026); the line above and docs/STATE.md are current._ ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `021_agent_drivers.py`; package `life_graph/drivers/` (base protocol, registry, local driver, dispatcher with WIP limits + bounce-once, context packets); `services/verifiers.py`, `services/results_loop.py`; API `api/drivers.py`. **Still pending**: second-opinion reviewer pass; seed personas (`uzhavu-ops`, `dependency-updater`); watcher-finding → task origination. See [CHARTER.md](../../CHARTER.md#current-frontier) for what is genuinely still open. **Do not rebuild what exists.**
 
@@ -452,7 +452,7 @@ LIFE_GRAPH_CONCURRENT_TASKS_PER_TENANT=5
 
 > **Status: Built** (branch `race/autonomy-policy`). Code: `services/dev/autonomy_policy.py`,
 > `services/dev/review_stages.py`, `services/dev/risk_report.py`, `drivers/review_stages.py`
-> (dispatcher mixin), `autonomy/policy/router.py`; migration `063_autonomy_policies`.
+> (dispatcher mixin), `autonomy/policy/router.py`; migration `064_autonomy_policies`.
 > Context: race-app becomes life-graph's frontend and its own autonomy pipeline (race-app
 > `docs/specs/AUTONOMY.md`, `TEAMWORK.md` §1–2) is replaced by these features
 > (race-app `docs/specs/LIFE_GRAPH_MIGRATION.md`, Phase 2).
@@ -573,7 +573,7 @@ owner's auto-approval conditions can only **narrow** `change_policy.auto_gate`.
 ### Data model
 
 ```sql
--- Migration 063_autonomy_policies.py
+-- Migration 064_autonomy_policies.py
 CREATE TABLE autonomy_policies (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id   VARCHAR(64) NOT NULL,
@@ -738,7 +738,7 @@ by one.
 
 ### Tasks
 
-- [x] `autonomy_policies` table + migration 063; model `AutonomyPolicy`
+- [x] `autonomy_policies` table + migration 064; model `AutonomyPolicy`
 - [x] `services/dev/autonomy_policy.py`: schemas, merge, conditions, cap, kill switch; wired last into `auto_gate`
 - [x] `services/dev/review_stages.py` + `drivers/review_stages.py`: stages, review-fix rounds, stored results
 - [x] Verify-fix rounds in `_bounce_or_escalate`; `_bounce_task(attempt=…)`; Governor booking for extra rounds
@@ -838,7 +838,7 @@ operator lists it in `driver_host_env_passthrough`.
 ## Phase 3b (2026-11-27): accounts, pool, limits, resume
 
 > **Status: Part 1 and part 2 built, fixture-tested** (part 2: see
-> [Phase 3b part 2](#phase-3b-part-2-2026-11-27)). Migration `064_agent_accounts.py`;
+> [Phase 3b part 2](#phase-3b-part-2-2026-11-27)). Migration `065_agent_accounts.py`;
 > `services/agent_accounts/` (`catalog`, `env`, `homes`, `identity`, `pool`, `limits`,
 > `service`), `drivers/accounts_hook.py`, `api/agent_accounts.py`; resume paths in
 > `drivers/cli_driver.py`, `codex.py`, `gemini.py`, `claude_code.py`. Everything is **off
@@ -987,7 +987,7 @@ life-graph only ever points the next run at it.
 
 ### Tasks
 
-- [x] Migration 064, models `AgentAccount` / `AgentAccountLimit`
+- [x] Migration 065, models `AgentAccount` / `AgentAccountLimit`
 - [x] `services/agent_accounts/*`: catalog, env overlay + allowlist, homes, identity, pool,
       limits (Codex windows + app-server probe ported from stablyai/orca, Claude passive),
       service
@@ -1179,8 +1179,7 @@ continue). Integration tests against Postgres and recorded runs of signed-in CLI
 ## Phase 4b (2026-11-27): dependencies, parallel plans, PR feedback loop, arena
 
 > **Status: Built, fixture-tested.** Branch `race/automation-teams` (off `race/migration`).
-> Migration `066_dev_task_groups_pr_watches.py` (revises 064; `race/automation-intake` takes
-> 065 in parallel and the merge re-chains them). Code: `services/dev/dependencies.py`,
+> Migration `067_dev_task_groups_pr_watches.py` (revises 066, dev automation). Code: `services/dev/dependencies.py`,
 > `services/dev/team_scope.py`, `services/dev/teams.py`, `drivers/seed_branches.py`,
 > `services/dev/pr_feedback_signals.py`, `services/dev/pr_watch.py`, `services/dev/arena.py`,
 > `services/dev/automation_gate.py`, `models/dev_groups.py`, `api/drivers_automation.py`;
@@ -1315,7 +1314,7 @@ dispatch applies the Governor (unattended workers) and D4 as for any task.
   rejected (`resolved_by = "system: arena"`); the winner's approval is untouched and proceeds
   normally. Decided → 409 `decided`; not a racer → 422.
 
-### Data (migration 066)
+### Data (migration 067)
 
 ```sql
 CREATE TABLE dev_task_groups (
@@ -1451,7 +1450,7 @@ plan tasks. Integration tests against Postgres, a real GitHub PR and signed-in C
 
 ### Tasks
 
-- [x] Migration 066, models `DevTaskGroup`, `PrWatch`
+- [x] Migration 067, models `DevTaskGroup`, `PrWatch`
 - [x] Dependencies: create-time validation (unknown/cyclic 422), hold, release/cancel in the runner loop, API field
 - [x] `Files:` scopes, overlap rules, team fan-out, `max_parallel` claim bound, worker hand-off, seeding (`git apply --3way`), conflict-marker guard, integration task, reconcile + failure cancel, team view
 - [x] PR feedback loop: gh reader (read only), signals + dedupe, one round in flight, max rounds, merged/closed, gate, cron + API

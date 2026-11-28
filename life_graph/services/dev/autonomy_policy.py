@@ -1,7 +1,7 @@
 """The owner's autonomy policy: auto-approval conditions, daily cap, review stages, fix rounds.
 
 docs/specs/agent-drivers.md, "Autonomy policy" (2026-11-27, owner decision D2).
-Stored in ``autonomy_policies`` (migration 063): one global row and at most
+Stored in ``autonomy_policies`` (migration 064): one global row and at most
 one per project, written only by the owner (api: autonomy/policy/router.py).
 
 What it may do, and what it may not:

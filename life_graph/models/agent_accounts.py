@@ -12,7 +12,7 @@ What a row never holds: a credential (``secret_ref`` is the vault row's id;
 the ciphertext lives in ``vault_secrets``) or a raw identity (only a masked
 form such as ``ra***@g***.com`` and a keyed hash used to refuse duplicates).
 
-Migration 064 creates both tables. Tenant-scoped (CHARTER invariant 4).
+Migration 065 creates both tables. Tenant-scoped (CHARTER invariant 4).
 """
 
 from __future__ import annotations

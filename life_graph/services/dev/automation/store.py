@@ -1,4 +1,4 @@
-"""The Postgres :class:`~life_graph.services.dev.automation.ports.Store` (migration 065).
+"""The Postgres :class:`~life_graph.services.dev.automation.ports.Store` (migration 066).
 
 Every statement filters by ``tenant_id`` (CHARTER invariant 4). Claims are
 done by the database, not by read-then-write: backlog keys by ``INSERT … ON
