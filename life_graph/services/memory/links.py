@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -35,6 +35,9 @@ from life_graph.core.errors import (
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory, MemoryLink
 from life_graph.storage.database import async_session
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +211,49 @@ async def delete_link(link_id: uuid.UUID) -> bool:
         result = await session.execute(stmt)
         await session.commit()
         return result.rowcount > 0
+
+
+async def delete_links_of_rejected_memory(
+    session: AsyncSession, memory_id: uuid.UUID, tenant_id: str
+) -> int:
+    """Delete every link of *tenant_id* where a rejected memory is either end.
+
+    A rejected memory was never accepted, so for the owner it never existed:
+    a link to or from it (typed links made at extraction, learned
+    ``ASSOCIATED`` links, any other kind) would only let graph views,
+    :func:`get_links` and search expansion show it. All link types go, not
+    only the ``extraction:`` ones (M8 ADR §5.3).
+
+    Only when the memory is *tenant_id*'s and its status is ``rejected``:
+    another tenant's memory, or a memory that is not rejected, loses nothing.
+    Only this tenant's link rows are deleted. Runs in the caller's *session*
+    (the reject path commits it, with the contradiction items it closes).
+    A memory the owner denied (``/deny``) is ``superseded``, not rejected:
+    it was true once, so its links stay. Only the ``memory_links`` rows go;
+    the best-effort AGE mirror has no delete, as with :func:`delete_link`.
+
+    Returns how many links were deleted.
+    """
+    rejected = (
+        select(Memory.id)
+        .where(
+            Memory.id == memory_id,
+            Memory.tenant_id == tenant_id,
+            Memory.status == "rejected",
+        )
+        .exists()
+    )
+    result = await session.execute(
+        delete(MemoryLink).where(
+            MemoryLink.tenant_id == tenant_id,
+            or_(
+                MemoryLink.source_memory_id == memory_id,
+                MemoryLink.target_memory_id == memory_id,
+            ),
+            rejected,
+        )
+    )
+    return result.rowcount or 0
 
 
 async def get_link_graph(
