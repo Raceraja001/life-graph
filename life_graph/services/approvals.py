@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select, update
 
 from life_graph.autonomy.approvals.service import FEED_STATUS_FOR
+from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_scoped
 from life_graph.models.db import Approval, Memory, Project
@@ -1207,7 +1208,10 @@ class ApprovalService:
         Only while the old memory is still active and the new one is pending
         or active (the owner may have rejected or changed either since).
         Marks the payload ``applied`` so a later reject of *appr* undoes it.
-        Returns whether the supersede happened.
+        With ``ingest_supersession_tiers`` on, the owner's Keep is also a
+        world change when the new fact has a known start: the old fact's
+        ``valid_until`` is set (supersession.apply), and a later reject clears
+        it again (supersession.undo). Returns whether the supersede happened.
         """
         payload = appr.payload or {}
         try:
@@ -1224,6 +1228,7 @@ class ApprovalService:
             why="contradiction approved",
             new_statuses=supersession.PENDING_OR_ACTIVE,
             activate_new=activate_new,
+            world_change=settings.ingest_supersession_tiers,
         ):
             return False
         await supersession.mirror_decisions(self.session, tenant_id, old, new)
@@ -1247,13 +1252,18 @@ class ApprovalService:
         """The owner approved a pending memory: apply its deferred supersedes.
 
         The contradiction approval stays pending, so the owner can still undo
-        the supersede by rejecting it (2026-10-22). Returns how many old
-        memories were superseded.
+        the supersede by rejecting it (2026-10-22). A low-tier "possible
+        update" (ADR M8 §5.2, ``payload.confidence = "low"``) is never applied
+        here: keeping the memory is not agreeing that it replaces the old one,
+        and that tier is never automatic. Returns how many old memories were
+        superseded.
         """
         applied = 0
         for appr in await self._pending_contradictions_for(tenant_id, memory_id):
             if (appr.payload or {}).get("applied") is not False:
                 continue  # already applied at ingest; nothing deferred
+            if (appr.payload or {}).get("confidence") == "low":
+                continue  # only the item's own approve applies a possible update
             if await self._apply_deferred_supersede(tenant_id, appr, activate_new=False):
                 applied += 1
         await self.session.flush()

@@ -113,6 +113,14 @@ class MemorySettings(BaseModel):
     # (POST /judgment/decisions/{id}/confirm|discard|review|supersede) are
     # always on. Off: decisions do not follow memories, as before.
     decision_lifecycle: bool = False
+    # M8 ingestion step 5 (ADR docs/design/adr-m8-ingestion-structure.md §5.2,
+    # services/memory/supersession.py): confidence tiers for a changed fact.
+    # High (same slot, the owner's firm words, confidence >= 0.9) applies at
+    # once, undoably; a detector hit waits as a contradiction approval; a
+    # possible update becomes a review item, at most 5 a day; outside text
+    # never makes one. A real world change also ends the old fact's world
+    # time (valid_until). Off means the save path behaves exactly as before.
+    ingest_supersession_tiers: bool = False
     # The owner's lasting facts, put in front of every local Jarvis answer
     # whether or not search finds them (services/profile_card.py). 0 = off.
     profile_card_max_items: int = 40
