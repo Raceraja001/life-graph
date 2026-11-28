@@ -1,0 +1,2746 @@
+{
+  "benchmark": "life_graph_context_quality_v1",
+  "dataset_sha256": "8e66336dae89357eddfb2125335f5a815046441d945361207bcc038428ecb16c",
+  "questions_sha256": "3e58ee1ad579d06c9e80582e9d52c1f0e650445845520a1a82271e4860485562",
+  "judge": "off (assemble_context calls retrieve(judge=False)); no model call",
+  "arms": {
+    "bge-m3": {
+      "embedder": "bge-m3",
+      "by_category": {
+        "O": {
+          "questions": 3,
+          "precision": 0.75,
+          "precision_without_standing": 0.4286,
+          "standing_items": 9,
+          "recall": 0.7778,
+          "forbidden_as_current": 0,
+          "noise_items": 4,
+          "current_vs_historical": 0.8889,
+          "temporal": 0.8889,
+          "relationship_both_ends": 0.0,
+          "relationship_explicit": 0.0,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 4,
+            "due_intention": 5,
+            "linked_evidence": 3,
+            "search_hit": 4
+          },
+          "denominators": {
+            "precision": 16,
+            "recall": 9,
+            "current_vs_historical": 9,
+            "temporal": 9,
+            "relationship_both_ends": 2,
+            "relationship_explicit": 2,
+            "conflict_recall": 1,
+            "provenance_coverage": 16,
+            "origin_accuracy": 16,
+            "field_accuracy": 0,
+            "abstention_accuracy": 3
+          }
+        },
+        "A": {
+          "questions": 4,
+          "precision": 0.4583,
+          "precision_without_standing": 0.5263,
+          "standing_items": 5,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 13,
+          "current_vs_historical": null,
+          "temporal": null,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 1.0,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "due_intention": 5,
+            "search_hit": 19
+          },
+          "denominators": {
+            "precision": 24,
+            "recall": 7,
+            "current_vs_historical": 0,
+            "temporal": 0,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 0,
+            "provenance_coverage": 24,
+            "origin_accuracy": 24,
+            "field_accuracy": 4,
+            "abstention_accuracy": 4
+          }
+        },
+        "B": {
+          "questions": 1,
+          "precision": 0.8333,
+          "precision_without_standing": 0.8333,
+          "standing_items": 0,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 1,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": 1.0,
+          "relationship_explicit": 1.0,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "decision": 1,
+            "linked_evidence": 1,
+            "open_intention": 1,
+            "search_hit": 3
+          },
+          "denominators": {
+            "precision": 6,
+            "recall": 2,
+            "current_vs_historical": 2,
+            "temporal": 2,
+            "relationship_both_ends": 1,
+            "relationship_explicit": 1,
+            "conflict_recall": 0,
+            "provenance_coverage": 6,
+            "origin_accuracy": 6,
+            "field_accuracy": 0,
+            "abstention_accuracy": 1
+          }
+        },
+        "C": {
+          "questions": 3,
+          "precision": 0.5,
+          "precision_without_standing": 0.5,
+          "standing_items": 0,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 7,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 1.0,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "search_hit": 14
+          },
+          "denominators": {
+            "precision": 14,
+            "recall": 4,
+            "current_vs_historical": 5,
+            "temporal": 5,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 3,
+            "provenance_coverage": 14,
+            "origin_accuracy": 14,
+            "field_accuracy": 2,
+            "abstention_accuracy": 3
+          }
+        },
+        "D": {
+          "questions": 3,
+          "precision": 0.4783,
+          "precision_without_standing": 0.6111,
+          "standing_items": 5,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 12,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": 1.0,
+          "relationship_explicit": 0.0,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "decision": 1,
+            "due_intention": 5,
+            "open_intention": 1,
+            "search_hit": 16
+          },
+          "denominators": {
+            "precision": 23,
+            "recall": 5,
+            "current_vs_historical": 1,
+            "temporal": 1,
+            "relationship_both_ends": 1,
+            "relationship_explicit": 1,
+            "conflict_recall": 1,
+            "provenance_coverage": 23,
+            "origin_accuracy": 23,
+            "field_accuracy": 0,
+            "abstention_accuracy": 3
+          }
+        },
+        "E": {
+          "questions": 3,
+          "precision": 0.4,
+          "precision_without_standing": 0.5,
+          "standing_items": 2,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 6,
+          "current_vs_historical": 1.0,
+          "temporal": 1.0,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 2,
+            "linked_evidence": 1,
+            "search_hit": 7
+          },
+          "denominators": {
+            "precision": 10,
+            "recall": 3,
+            "current_vs_historical": 5,
+            "temporal": 5,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 0,
+            "provenance_coverage": 10,
+            "origin_accuracy": 10,
+            "field_accuracy": 0,
+            "abstention_accuracy": 3
+          }
+        },
+        "F": {
+          "questions": 4,
+          "precision": 0.4054,
+          "precision_without_standing": 0.65,
+          "standing_items": 17,
+          "recall": 0.9231,
+          "forbidden_as_current": 0,
+          "noise_items": 22,
+          "current_vs_historical": null,
+          "temporal": 1.0,
+          "relationship_both_ends": 0.75,
+          "relationship_explicit": 0.25,
+          "conflict_recall": 1.0,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": null,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 3,
+            "decision": 1,
+            "due_intention": 14,
+            "linked_evidence": 1,
+            "open_intention": 1,
+            "search_hit": 17
+          },
+          "denominators": {
+            "precision": 37,
+            "recall": 13,
+            "current_vs_historical": 0,
+            "temporal": 1,
+            "relationship_both_ends": 8,
+            "relationship_explicit": 8,
+            "conflict_recall": 1,
+            "provenance_coverage": 37,
+            "origin_accuracy": 37,
+            "field_accuracy": 0,
+            "abstention_accuracy": 4
+          }
+        },
+        "G": {
+          "questions": 3,
+          "precision": 0.4444,
+          "precision_without_standing": 0.5714,
+          "standing_items": 4,
+          "recall": 1.0,
+          "forbidden_as_current": 0,
+          "noise_items": 10,
+          "current_vs_historical": null,
+          "temporal": null,
+          "relationship_both_ends": null,
+          "relationship_explicit": null,
+          "conflict_recall": null,
+          "provenance_coverage": 1.0,
+          "origin_accuracy": 1.0,
+          "field_accuracy": 1.0,
+          "abstention_accuracy": 1.0,
+          "cross_tenant_leaks": 0,
+          "injection_mislabelled": 0,
+          "determinism_failures": 0,
+          "items_by_reason": {
+            "current_decision": 4,
+            "decision": 1,
+            "search_hit": 13
+          },
+          "denominators": {
+            "precision": 18,
+            "recall": 3,
+            "current_vs_historical": 0,
+            "temporal": 0,
+            "relationship_both_ends": 0,
+            "relationship_explicit": 0,
+            "conflict_recall": 0,
+            "provenance_coverage": 18,
+            "origin_accuracy": 18,
+            "field_accuracy": 10,
+            "abstention_accuracy": 3
+          }
+        }
+      },
+      "per_question": {
+        "O3": {
+          "items": 6,
+          "unresolved_items": 0,
+          "ok_items": 6,
+          "required": 6,
+          "found_required": 5,
+          "missed_required": [
+            "i_aws_book"
+          ],
+          "forbidden_as_current": [],
+          "noise": [],
+          "standing_items": 5,
+          "ok_standing": 5,
+          "item_log": [
+            {
+              "key": "w_task_runbook",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "due_intention": 5,
+            "search_hit": 1
+          },
+          "temporal_checks": 5,
+          "temporal_correct": 5,
+          "cvh_checks": 5,
+          "cvh_correct": 5,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 6,
+          "origin_checked": 6,
+          "origin_correct": 6,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 55.18
+        },
+        "O5": {
+          "items": 4,
+          "unresolved_items": 0,
+          "ok_items": 4,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [],
+          "standing_items": 4,
+          "ok_standing": 4,
+          "item_log": [
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "superseded",
+            "replaced"
+          ],
+          "reasons": {
+            "current_decision": 4
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 4,
+          "origin_checked": 4,
+          "origin_correct": 4,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 64.18
+        },
+        "O7": {
+          "items": 6,
+          "unresolved_items": 0,
+          "ok_items": 2,
+          "required": 2,
+          "found_required": 1,
+          "missed_required": [
+            "w_proj_billing"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "p_constraint_travel",
+            "w_career_goal",
+            "w_not_leaving",
+            "w_task_demo"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "linked_evidence",
+              "score": 0.35,
+              "block": "typed_link"
+            },
+            {
+              "key": "w_task_demo",
+              "kind": "memory",
+              "reason": "linked_evidence",
+              "score": 0.35,
+              "block": "typed_link"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "linked_evidence",
+              "score": 0.35,
+              "block": "typed_link"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "projects"
+          ],
+          "reasons": {
+            "linked_evidence": 3,
+            "search_hit": 3
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 1,
+          "cvh_checks": 2,
+          "cvh_correct": 1,
+          "temporal_wrong": [
+            "w_dep"
+          ],
+          "relations": 2,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [
+            {
+              "pair": [
+                "w_blocker",
+                "w_proj_billing"
+              ],
+              "relation": "constraint -> affected project",
+              "stored_as": "typed_link:BECAUSE",
+              "both_ends": false,
+              "explicit_in_snapshot": false
+            },
+            {
+              "pair": [
+                "w_dep",
+                "w_dep_done"
+              ],
+              "relation": "dependency resolved",
+              "stored_as": "typed_link:RELATED_TO",
+              "both_ends": false,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 6,
+          "origin_checked": 6,
+          "origin_correct": 6,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 62.79
+        },
+        "A1": {
+          "items": 3,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "p_inferred_hobby",
+            "p_mother_care"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_coffee",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9634,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 3
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 3,
+          "origin_checked": 3,
+          "origin_correct": 3,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 2,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 56.69
+        },
+        "A2": {
+          "items": 9,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 3,
+          "found_required": 3,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook"
+          ],
+          "standing_items": 5,
+          "ok_standing": 1,
+          "item_log": [
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_hosp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9582,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "look"
+          ],
+          "reasons": {
+            "due_intention": 5,
+            "search_hit": 4
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 9,
+          "origin_checked": 9,
+          "origin_correct": 9,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 58.46
+        },
+        "A4": {
+          "items": 3,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_fund_old",
+            "p_goal_marathon"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_anniv",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 3
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 3,
+          "origin_checked": 3,
+          "origin_correct": 3,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 2,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 53.48
+        },
+        "A5": {
+          "items": 9,
+          "unresolved_items": 0,
+          "ok_items": 4,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget",
+            "f_fund_goal",
+            "f_salary_new",
+            "l_aws_prereq",
+            "p_inferred_hobby"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9688,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "p_run",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "p_no_meat",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "p_coffee",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 9
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 9,
+          "origin_checked": 9,
+          "origin_correct": 9,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 50.95
+        },
+        "B3": {
+          "items": 6,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "w_career_goal"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_dep",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_task_demo",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9787,
+              "block": "search"
+            },
+            {
+              "key": "w_dep_done",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9632,
+              "block": "search"
+            },
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "linked_evidence",
+              "score": 0.35,
+              "block": "typed_link"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "waiting"
+          ],
+          "reasons": {
+            "decision": 1,
+            "linked_evidence": 1,
+            "open_intention": 1,
+            "search_hit": 3
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 1,
+          "relations_both_ends": 1,
+          "relations_explicit": 1,
+          "relation_detail": [
+            {
+              "pair": [
+                "w_dep",
+                "w_dep_done"
+              ],
+              "relation": "dependency resolved",
+              "stored_as": "typed_link:RELATED_TO",
+              "both_ends": true,
+              "explicit_in_snapshot": true
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 6,
+          "origin_checked": 6,
+          "origin_correct": 6,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 59.72
+        },
+        "C2": {
+          "items": 3,
+          "unresolved_items": 0,
+          "ok_items": 2,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "w_blocker"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9787,
+              "block": "search"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9061,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "repaying"
+          ],
+          "reasons": {
+            "search_hit": 3
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 3,
+          "origin_checked": 3,
+          "origin_correct": 3,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 2,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 51.27
+        },
+        "C3": {
+          "items": 3,
+          "unresolved_items": 0,
+          "ok_items": 2,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_budget"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "f_fund_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "big"
+          ],
+          "reasons": {
+            "search_hit": 3
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 1,
+          "cvh_correct": 1,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 3,
+          "origin_checked": 3,
+          "origin_correct": 3,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 50.91
+        },
+        "C4": {
+          "items": 8,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_car_loan_closed",
+            "f_emi",
+            "f_fund_old",
+            "f_sip",
+            "p_anniv"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_fund_old",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "f_budget",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "f_husband_income_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_anniv",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_sip",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 8
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 2,
+          "conflicts_found": 2,
+          "conflicts_missed": [],
+          "provenance_covered": 8,
+          "origin_checked": 8,
+          "origin_correct": 8,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 50.31
+        },
+        "D2": {
+          "items": 3,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "l_rust_progress_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9946,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_topic",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9892,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9683,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "search_hit": 3
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 1,
+          "cvh_correct": 1,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 3,
+          "origin_checked": 3,
+          "origin_correct": 3,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 53.58
+        },
+        "D3": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 3,
+          "found_required": 3,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "i_clinic",
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook"
+          ],
+          "standing_items": 5,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_progress",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9683,
+              "block": "search"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_aws_book",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "decision": 1,
+            "due_intention": 5,
+            "open_intention": 1,
+            "search_hit": 3
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 1,
+          "relations_both_ends": 1,
+          "relations_explicit": 0,
+          "relation_detail": [
+            {
+              "pair": [
+                "l_aws_prereq",
+                "l_aws_progress"
+              ],
+              "relation": "prerequisite -> progress",
+              "stored_as": "none",
+              "both_ends": true,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 51.62
+        },
+        "D4": {
+          "items": 10,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "f_car_loan_closed",
+            "f_salary_new",
+            "l_aws_goal",
+            "l_aws_prereq",
+            "l_aws_progress",
+            "p_inferred_hobby",
+            "w_job_new"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_progress_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "l_mastered",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_topic",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_progress",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.607,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.598,
+              "block": "search"
+            },
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "mastered"
+          ],
+          "reasons": {
+            "search_hit": 10
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 10,
+          "origin_checked": 10,
+          "origin_correct": 10,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 48.5
+        },
+        "E1": {
+          "items": 1,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_old_employer",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.8955,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "2019"
+          ],
+          "reasons": {
+            "search_hit": 1
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 1,
+          "cvh_correct": 1,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 1,
+          "origin_checked": 1,
+          "origin_correct": 1,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 47.06
+        },
+        "E3": {
+          "items": 3,
+          "unresolved_items": 0,
+          "ok_items": 2,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "w_blocker"
+          ],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_car_loan_closed",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "f_emi",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9632,
+              "block": "search"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9007,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "running"
+          ],
+          "reasons": {
+            "search_hit": 3
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 3,
+          "origin_checked": 3,
+          "origin_correct": 3,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 50.22
+        },
+        "E4": {
+          "items": 6,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_pgqueue",
+            "p_constraint_travel",
+            "w_inferred_jobchange",
+            "w_proj_billing"
+          ],
+          "standing_items": 2,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9687,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9683,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "linked_evidence",
+              "score": 0.35,
+              "block": "typed_link"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 2,
+            "linked_evidence": 1,
+            "search_hit": 3
+          },
+          "temporal_checks": 2,
+          "temporal_correct": 2,
+          "cvh_checks": 2,
+          "cvh_correct": 2,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 6,
+          "origin_checked": 6,
+          "origin_correct": 6,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 49.74
+        },
+        "F1": {
+          "items": 13,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 4,
+          "found_required": 4,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "i_demo",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook",
+            "l_aws_progress",
+            "l_prereq",
+            "p_back",
+            "p_daughter_school"
+          ],
+          "standing_items": 5,
+          "ok_standing": 1,
+          "item_log": [
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9894,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_hosp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9735,
+              "block": "search"
+            },
+            {
+              "key": "l_prereq",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.959,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "l_aws_progress",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.5894,
+              "block": "search"
+            },
+            {
+              "key": "p_daughter_school",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.581,
+              "block": "search"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "mothers care"
+          ],
+          "reasons": {
+            "due_intention": 5,
+            "search_hit": 8
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 2,
+          "relations_both_ends": 2,
+          "relations_explicit": 1,
+          "relation_detail": [
+            {
+              "pair": [
+                "p_mother_hosp",
+                "p_saturday"
+              ],
+              "relation": "past event -> current situation",
+              "stored_as": "typed_link:LEADS_TO",
+              "both_ends": true,
+              "explicit_in_snapshot": true
+            },
+            {
+              "pair": [
+                "p_mother_care",
+                "i_clinic"
+              ],
+              "relation": "responsibility -> commitment",
+              "stored_as": "none",
+              "both_ends": true,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 13,
+          "origin_checked": 13,
+          "origin_correct": 13,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 51.23
+        },
+        "F2": {
+          "items": 9,
+          "unresolved_items": 0,
+          "ok_items": 5,
+          "required": 5,
+          "found_required": 4,
+          "missed_required": [
+            "w_proj_rp"
+          ],
+          "forbidden_as_current": [],
+          "noise": [
+            "i_clinic",
+            "i_fee",
+            "i_payflow_followup",
+            "i_runbook"
+          ],
+          "standing_items": 5,
+          "ok_standing": 1,
+          "item_log": [
+            {
+              "key": "w_career_goal",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_goal_link",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "w_job_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.949,
+              "block": "search"
+            },
+            {
+              "key": "w_task_demo",
+              "kind": "memory",
+              "reason": "linked_evidence",
+              "score": 0.35,
+              "block": "typed_link"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "connect"
+          ],
+          "reasons": {
+            "due_intention": 5,
+            "linked_evidence": 1,
+            "search_hit": 3
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 3,
+          "relations_both_ends": 1,
+          "relations_explicit": 0,
+          "relation_detail": [
+            {
+              "pair": [
+                "w_career_goal",
+                "w_proj_rp"
+              ],
+              "relation": "goal -> project",
+              "stored_as": "typed_link:LEADS_TO",
+              "both_ends": false,
+              "explicit_in_snapshot": false
+            },
+            {
+              "pair": [
+                "w_proj_rp",
+                "w_task_demo"
+              ],
+              "relation": "project -> task",
+              "stored_as": "typed_link:LEADS_TO",
+              "both_ends": false,
+              "explicit_in_snapshot": false
+            },
+            {
+              "pair": [
+                "w_task_demo",
+                "i_demo"
+              ],
+              "relation": "task -> commitment",
+              "stored_as": "none",
+              "both_ends": true,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 9,
+          "origin_checked": 9,
+          "origin_correct": 9,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 53.01
+        },
+        "F3": {
+          "items": 7,
+          "unresolved_items": 0,
+          "ok_items": 2,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_caregiver",
+            "d_pause_rust",
+            "l_mastered",
+            "w_not_leaving"
+          ],
+          "standing_items": 3,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "w_kafka_consequence",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_not_leaving",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6559,
+              "block": "search"
+            },
+            {
+              "key": "l_mastered",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 3,
+            "decision": 1,
+            "search_hit": 3
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 2,
+          "relations_both_ends": 2,
+          "relations_explicit": 1,
+          "relation_detail": [
+            {
+              "pair": [
+                "d_pgqueue",
+                "w_kafka_consequence"
+              ],
+              "relation": "decision -> consequence",
+              "stored_as": "none",
+              "both_ends": true,
+              "explicit_in_snapshot": false
+            },
+            {
+              "pair": [
+                "d_pgqueue",
+                "d_kafka"
+              ],
+              "relation": "decision supersedes decision",
+              "stored_as": "decision_supersession",
+              "both_ends": true,
+              "explicit_in_snapshot": true
+            }
+          ],
+          "conflicts_expected": 1,
+          "conflicts_found": 1,
+          "conflicts_missed": [],
+          "provenance_covered": 7,
+          "origin_checked": 7,
+          "origin_correct": 7,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 53.17
+        },
+        "F5": {
+          "items": 8,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 2,
+          "found_required": 2,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "i_clinic",
+            "i_demo",
+            "i_payflow_followup",
+            "i_runbook",
+            "p_mother_hosp"
+          ],
+          "standing_items": 4,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_pickup",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "p_daughter_school",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_hosp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "i_fee",
+              "kind": "intention",
+              "reason": "open_intention",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "i_payflow_followup",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_runbook",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_demo",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            },
+            {
+              "key": "i_clinic",
+              "kind": "intention",
+              "reason": "due_intention",
+              "score": 0.22,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "paid"
+          ],
+          "reasons": {
+            "due_intention": 4,
+            "open_intention": 1,
+            "search_hit": 3
+          },
+          "temporal_checks": 1,
+          "temporal_correct": 1,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 1,
+          "relations_both_ends": 1,
+          "relations_explicit": 0,
+          "relation_detail": [
+            {
+              "pair": [
+                "i_fee",
+                "p_daughter_school"
+              ],
+              "relation": "commitment -> deadline / who",
+              "stored_as": "none",
+              "both_ends": true,
+              "explicit_in_snapshot": false
+            }
+          ],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 8,
+          "origin_checked": 8,
+          "origin_correct": 8,
+          "origin_wrong": [],
+          "field_checks": 0,
+          "field_correct": 0,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 58.16
+        },
+        "G2": {
+          "items": 4,
+          "unresolved_items": 0,
+          "ok_items": 1,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_pause_rust",
+            "l_rust_topic",
+            "p_goal_marathon"
+          ],
+          "standing_items": 1,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_inferred_hobby",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "l_rust_topic",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "p_goal_marathon",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9291,
+              "block": "search"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 1,
+            "search_hit": 3
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 4,
+          "origin_checked": 4,
+          "origin_correct": 4,
+          "origin_wrong": [],
+          "field_checks": 4,
+          "field_correct": 4,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 51.77
+        },
+        "G5": {
+          "items": 11,
+          "unresolved_items": 0,
+          "ok_items": 4,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [
+            "d_billing_vendor",
+            "d_pause_rust",
+            "d_pgqueue",
+            "f_salary_new",
+            "p_back",
+            "p_constraint_travel",
+            "w_inferred_jobchange"
+          ],
+          "standing_items": 3,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "p_mother_care",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "p_mother_hosp",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9403,
+              "block": "search"
+            },
+            {
+              "key": "p_constraint_travel",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6667,
+              "block": "search"
+            },
+            {
+              "key": "p_back",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6455,
+              "block": "search"
+            },
+            {
+              "key": "p_saturday",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6354,
+              "block": "search"
+            },
+            {
+              "key": "f_salary_new",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6256,
+              "block": "search"
+            },
+            {
+              "key": "w_inferred_jobchange",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.6162,
+              "block": "search"
+            },
+            {
+              "key": "d_caregiver",
+              "kind": "decision",
+              "reason": "decision",
+              "score": 0.25,
+              "block": "keyword"
+            },
+            {
+              "key": "d_billing_vendor",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pause_rust",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            },
+            {
+              "key": "d_pgqueue",
+              "kind": "decision",
+              "reason": "current_decision",
+              "score": 0.21,
+              "block": "standing"
+            }
+          ],
+          "insufficient": false,
+          "missing": [],
+          "reasons": {
+            "current_decision": 3,
+            "decision": 1,
+            "search_hit": 7
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 11,
+          "origin_checked": 11,
+          "origin_correct": 11,
+          "origin_wrong": [],
+          "field_checks": 2,
+          "field_correct": 2,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 53.39
+        },
+        "G6": {
+          "items": 3,
+          "unresolved_items": 0,
+          "ok_items": 3,
+          "required": 1,
+          "found_required": 1,
+          "missed_required": [],
+          "forbidden_as_current": [],
+          "noise": [],
+          "standing_items": 0,
+          "ok_standing": 0,
+          "item_log": [
+            {
+              "key": "f_injection",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 1.0,
+              "block": "search"
+            },
+            {
+              "key": "w_blocker",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9839,
+              "block": "search"
+            },
+            {
+              "key": "w_proj_billing",
+              "kind": "memory",
+              "reason": "search_hit",
+              "score": 0.9683,
+              "block": "search"
+            }
+          ],
+          "insufficient": false,
+          "missing": [
+            "ask"
+          ],
+          "reasons": {
+            "search_hit": 3
+          },
+          "temporal_checks": 0,
+          "temporal_correct": 0,
+          "cvh_checks": 0,
+          "cvh_correct": 0,
+          "temporal_wrong": [],
+          "relations": 0,
+          "relations_both_ends": 0,
+          "relations_explicit": 0,
+          "relation_detail": [],
+          "conflicts_expected": 0,
+          "conflicts_found": 0,
+          "conflicts_missed": [],
+          "provenance_covered": 3,
+          "origin_checked": 3,
+          "origin_correct": 3,
+          "origin_wrong": [],
+          "field_checks": 4,
+          "field_correct": 4,
+          "field_wrong": [],
+          "abstention_correct": 1,
+          "flag_missing": false,
+          "leaks": [],
+          "injection_mislabelled": [],
+          "determinism_failures": 0,
+          "p50_ms": 55.64
+        }
+      },
+      "change_detection": null,
+      "zero_tolerance": {
+        "cross_tenant_leaks": 0,
+        "cloud_model_calls": 0,
+        "forbidden_as_current": 0,
+        "rows_left_after_cleanup": 0
+      },
+      "model_calls_by_route": {},
+      "latency_ms": {
+        "runs": 72,
+        "p50": 52.76,
+        "p95": 63.28,
+        "max": 117.9
+      }
+    }
+  },
+  "skipped": {},
+  "run": {
+    "experiments": [
+      "B",
+      "C",
+      "F",
+      "G"
+    ],
+    "experiment_names": [
+      "budget",
+      "hub",
+      "links",
+      "query_type"
+    ],
+    "xp_set": {
+      "COSINE_FLOOR": 0.75
+    },
+    "constants": {
+      "TIE_TOLERANCE": 0.02,
+      "LINK_SEEDS": 5,
+      "LINK_PULL": 6,
+      "LINK_FLOOR": 0.25,
+      "DUPLICATE_SIMILARITY": 0.85,
+      "MIN_KEEP": 3,
+      "RELATIVE_FLOOR": 0.6,
+      "ELBOW_GAP": 0.2,
+      "COSINE_FLOOR": 0.75,
+      "COSINE_GAP": 0.08,
+      "HUB_WEIGHT": 0.5
+    },
+    "split": "tune",
+    "split_rule": "sha256(question id)[0] % 2: 0 tune, 1 test"
+  }
+}

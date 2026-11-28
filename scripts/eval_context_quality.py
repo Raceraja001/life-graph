@@ -96,6 +96,26 @@ supersede is shown as current, and that is what the arm measures.
     python scripts/eval_context_quality.py --arms ingest --write-baseline --write-report
     python scripts/eval_context_quality.py --record-fixtures         # local Ollama, no DB
     python scripts/eval_context_quality.py --arms hashing,bge-m3 --answer --write-report
+
+Precision experiments (services/memory/snapshot_experiments.py, eval-only):
+``--experiments A,B,...`` (letters or names: A rank, B query_type, C links,
+D dedupe, E evidence, F budget, G hub) runs the snapshot questions with those
+options on. ``--xp-set NAME=VALUE`` sets one of the module's TUNABLE
+constants for the run, ``--max-items N`` a tighter hard budget, and
+``--split tune|test`` only half of the questions, by a stable hash of the
+question id (tune on one half, report on the other). All four are recorded
+in the report JSON (``run``); with none of them the run and the report are
+what they were. They cannot write the committed report or baseline: use
+``--output``. Change detection (O6's ``changes`` mode) always runs without
+experiments.
+
+    python scripts/eval_context_quality.py --arms bge-m3 --experiments B,F --split tune \
+        --output /tmp/xp_bf_tune.json
+
+Each snapshot question's row carries ``item_log`` (per item: gold key, kind,
+reason, score and source block; labels only, no content) and the
+standing-block counts, and every summary gives ``precision_without_standing``
+next to ``precision``.
 """
 
 from __future__ import annotations
@@ -132,6 +152,22 @@ REPORT_JSON = DIR / "report.json"
 REPORT_MD = DIR / "report.md"
 
 CATEGORIES = ("O", "A", "B", "C", "D", "E", "F", "G")
+#: Question-independent reasons (services/memory/snapshot.STANDING_REASONS).
+STANDING = frozenset({"due_intention", "current_decision"})
+#: Reason -> the block of the snapshot that brought the item.
+BLOCKS = {
+    "search_hit": "search",
+    "entity_link": "expansion",
+    "neighbour": "expansion",
+    "dated_episode": "expansion",
+    "cold_tier": "expansion",
+    "decision": "keyword",
+    "open_intention": "keyword",
+    "due_intention": "standing",
+    "current_decision": "standing",
+    "linked_evidence": "typed_link",
+}
+SPLITS = ("tune", "test")
 CATEGORY_NAMES = {
     "O": "owner's ten",
     "A": "personal",
@@ -518,6 +554,7 @@ def score_snapshot(q: dict[str, Any], snap: Any, world: World, other: World, tok
     in_conflicts = {k for p in pairs for k in p}
     related = _relation_pairs(snap, key_of)
     ctx = {"included": included, "items": items, "pairs": pairs, "world": world, "related": related}
+    standing = {k for k, i in items.items() if i.reason in STANDING}
     out: dict[str, Any] = {
         "items": len(snap.items),
         "unresolved_items": len(snap.items) - len(items),
@@ -527,6 +564,9 @@ def score_snapshot(q: dict[str, Any], snap: Any, world: World, other: World, tok
         "missed_required": sorted(required - included),
         "forbidden_as_current": sorted(included & forbidden),
         "noise": sorted(included - ok - forbidden),
+        "standing_items": len(standing),
+        "ok_standing": len(standing & ok),
+        "item_log": _item_log(snap, key_of),
         "insufficient": snap.insufficient,
         "missing": list(getattr(snap, "missing", ())),
         "reasons": _reasons(snap),
@@ -615,6 +655,25 @@ def score_snapshot(q: dict[str, Any], snap: Any, world: World, other: World, tok
     return out
 
 
+def _item_log(snap: Any, key_of: dict[str, str]) -> list[dict[str, Any]]:
+    """Per item, in snapshot order: gold key, kind, reason, score, block. No content."""
+    return [
+        {
+            "key": key_of.get(i.source_ref.id, "?"),
+            "kind": i.source_ref.kind,
+            "reason": i.reason,
+            "score": i.score,
+            "block": BLOCKS.get(i.reason, "other"),
+        }
+        for i in snap.items
+    ]
+
+
+def question_split(qid: str) -> str:
+    """ "tune" or "test": the first byte of sha256(question id), even or odd. Stable."""
+    return SPLITS[hashlib.sha256(qid.encode()).digest()[0] % 2]
+
+
 def _reasons(snap: Any) -> dict[str, int]:
     """How many items each inclusion reason brought (search_hit, entity_link, ...)."""
     out: dict[str, int] = {}
@@ -626,6 +685,8 @@ def _reasons(snap: Any) -> dict[str, int]:
 SUMS = (
     "items",
     "ok_items",
+    "standing_items",
+    "ok_standing",
     "required",
     "found_required",
     "temporal_checks",
@@ -651,6 +712,11 @@ def summarise(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "questions": len(rows),
         "precision": _rate(t["ok_items"], t["items"]),
+        # The same, the question-independent block left out of both counts.
+        "precision_without_standing": _rate(
+            t["ok_items"] - t["ok_standing"], t["items"] - t["standing_items"]
+        ),
+        "standing_items": t["standing_items"],
         "recall": _rate(t["found_required"], t["required"]),
         "forbidden_as_current": sum(len(r["forbidden_as_current"]) for r in rows),
         "noise_items": sum(len(r["noise"]) for r in rows),
@@ -706,7 +772,9 @@ def _main_spec(data: dict[str, Any]) -> dict[str, Any]:
     return {k: data[k] for k in ("memories", "decisions", "intentions", "typed_links", "approvals")}
 
 
-async def _ask(q: dict[str, Any], tenant: str, now: datetime, repeat: int) -> tuple[Any, list, int]:
+async def _ask(
+    q: dict[str, Any], tenant: str, now: datetime, repeat: int, snapshot_kw: dict | None = None
+) -> tuple[Any, list, int]:
     from life_graph.core.tenant import tenant_scope
     from life_graph.services.memory.snapshot import assemble_context, without_timings
 
@@ -717,7 +785,7 @@ async def _ask(q: dict[str, Any], tenant: str, now: datetime, repeat: int) -> tu
     with tenant_scope(tenant):
         for _ in range(max(2, repeat)):
             t0 = time.perf_counter()
-            snap = await assemble_context(q["query"], as_of=as_of, now=now)
+            snap = await assemble_context(q["query"], as_of=as_of, now=now, **(snapshot_kw or {}))
             latencies.append((time.perf_counter() - t0) * 1000.0)
             dumps.add(json.dumps(without_timings(snap.to_dict()), sort_keys=True))
     return snap, latencies, int(len(dumps) != 1)
@@ -742,7 +810,11 @@ async def build_world(
 
 
 async def run_snapshot_questions(
-    data: dict[str, Any], questions: list[dict[str, Any]], repeat: int, fx: dict | None = None
+    data: dict[str, Any],
+    questions: list[dict[str, Any]],
+    repeat: int,
+    fx: dict | None = None,
+    snapshot_kw: dict | None = None,
 ) -> dict[str, Any]:
     """Build the main and look-alike tenants once, ask every snapshot question, clean up.
 
@@ -762,7 +834,7 @@ async def run_snapshot_questions(
             structure = await ingest.structure_report(main, data, state)
         await seed(other, data["other_tenant"])
         for q in questions:
-            snap, lat, nondet = await _ask(q, main.tenant, now, repeat)
+            snap, lat, nondet = await _ask(q, main.tenant, now, repeat, snapshot_kw)
             row = score_snapshot(q, snap, main, other, tokens)
             row["determinism_failures"] = nondet
             row["p50_ms"] = round(statistics.median(lat), 2)
@@ -1094,11 +1166,21 @@ async def run_arm(
     repeat: int = 3,
     only: set[str] | None = None,
     ollama_url: str = OLLAMA_URL,
+    snapshot_kw: dict | None = None,
+    split: str | None = None,
 ) -> dict[str, Any]:
-    """One embedding arm over every (or *only* the) question(s)."""
+    """One embedding arm over every (or *only* the, or one *split*'s) question(s).
+
+    *snapshot_kw* goes to every snapshot question's assemble_context
+    (``experiments``, ``budget``); change questions never get it.
+    """
     from life_graph.evals import production_retrieval_arm as arm
 
-    questions = [q for q in gq["questions"] if only is None or q["id"] in only]
+    questions = [
+        q
+        for q in gq["questions"]
+        if (only is None or q["id"] in only) and (split is None or question_split(q["id"]) == split)
+    ]
     snap_qs = [q for q in questions if q.get("mode", "snapshot") == "snapshot"]
     change_qs = [q for q in questions if q.get("mode") == "changes"]
     fx = ingest.load_fixtures() if arm_name == "ingest" else None
@@ -1110,7 +1192,7 @@ async def run_arm(
             arm.ollama_embedder(texts, model="bge-m3", base_url=ollama_url), "bge-m3"
         )
     with embed_ctx, arm.production_fakes(), model_guard(calls):
-        main = await run_snapshot_questions(data, snap_qs, repeat, fx)
+        main = await run_snapshot_questions(data, snap_qs, repeat, fx, snapshot_kw)
         per_q, snaps, latencies = main["per_question"], main["snapshots"], main["latencies"]
         rows_left = main["rows_left"]
         changes_out = None
@@ -1165,7 +1247,59 @@ def _all_texts(data: dict[str, Any], gq: dict[str, Any]) -> list[str]:
     texts += [m["content"] for m in data["other_tenant"]["memories"]]
     texts += [q["query"] for q in gq["questions"]]
     texts.append(data["change_scenario"]["query"])
+    # The hub experiment (G) embeds these; the lookup embedder refuses unknown texts.
+    texts += list(_xp().HUB_PROBES)
     return texts
+
+
+def _xp() -> Any:
+    from life_graph.services.memory import snapshot_experiments
+
+    return snapshot_experiments
+
+
+def experiment_run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(the run's record for the report, assemble_context keywords) from the flags.
+
+    Both empty without --experiments / --xp-set / --max-items / --split.
+    Sets the --xp-set constants on the experiments module for this process.
+    """
+    xp = _xp()
+    record: dict[str, Any] = {}
+    kw: dict[str, Any] = {}
+    chosen = xp.parse(args.experiments)
+    if chosen:
+        record["experiments"] = xp.letters(chosen)
+        record["experiment_names"] = sorted(chosen)
+        kw["experiments"] = chosen
+    settings_: dict[str, float] = {}
+    for item in args.xp_set:
+        name, _, value = item.partition("=")
+        name = name.strip().upper()
+        if name not in xp.TUNABLE or not value.strip():
+            raise SystemExit(
+                f"--xp-set {item!r}: use NAME=VALUE, NAME one of {', '.join(xp.TUNABLE)}"
+            )
+        cast = type(getattr(xp, name))
+        setattr(xp, name, cast(float(value)) if cast is int else cast(value))
+        settings_[name] = getattr(xp, name)
+    if settings_:
+        record["xp_set"] = settings_
+    if chosen or settings_:
+        record["constants"] = {n: getattr(xp, n) for n in xp.TUNABLE}
+    if args.max_items:
+        from life_graph.services.memory.snapshot import DEFAULT_BUDGET, Budget
+
+        kw["budget"] = Budget(
+            max_items=args.max_items,
+            max_chars=DEFAULT_BUDGET.max_chars,
+            item_chars=DEFAULT_BUDGET.item_chars,
+        )
+        record["max_items"] = args.max_items
+    if args.split:
+        record["split"] = args.split
+        record["split_rule"] = "sha256(question id)[0] % 2: 0 tune, 1 test"
+    return record, kw
 
 
 def _strip(arm_report: dict[str, Any]) -> dict[str, Any]:
@@ -1175,6 +1309,7 @@ def _strip(arm_report: dict[str, Any]) -> dict[str, Any]:
 async def run(args: argparse.Namespace) -> dict[str, Any]:
     data, gq = load()
     only = set(args.only.split(",")) if args.only else None
+    run_record, snapshot_kw = experiment_run(args)
     report: dict[str, Any] = {
         "benchmark": "life_graph_context_quality_v1",
         "dataset_sha256": hashlib.sha256(DATASET_PATH.read_bytes()).hexdigest(),
@@ -1183,6 +1318,9 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
         "arms": {},
         "skipped": {},
     }
+    if run_record:
+        # Only when set, so a plain run's report is what it was.
+        report["run"] = run_record
     snaps_for_answer = None
     for name in [a.strip() for a in args.arms.split(",") if a.strip()]:
         if name == "bge-m3":
@@ -1191,7 +1329,14 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                 report["skipped"]["bge-m3"] = why
                 continue
         result = await run_arm(
-            name, data, gq, repeat=args.repeat, only=only, ollama_url=args.ollama_url
+            name,
+            data,
+            gq,
+            repeat=args.repeat,
+            only=only,
+            ollama_url=args.ollama_url,
+            snapshot_kw=snapshot_kw,
+            split=args.split,
         )
         report["arms"][name] = _strip(result)
         if name == "bge-m3" or snaps_for_answer is None:
@@ -1202,7 +1347,12 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             report["skipped"]["answer"] = why
         else:
             calls: dict[str, int] = {}
-            questions = [q for q in gq["questions"] if only is None or q["id"] in only]
+            questions = [
+                q
+                for q in gq["questions"]
+                if (only is None or q["id"] in only)
+                and (args.split is None or question_split(q["id"]) == args.split)
+            ]
             with model_guard(calls, allow_local_chat=True):
                 ans = await run_answer_arm(
                     questions, snaps_for_answer[1], args.ollama_url, args.answer_model, gq
@@ -1348,6 +1498,7 @@ def _f(v: Any) -> str:
 SNAP_COLS = (
     ("questions", "n"),
     ("precision", "P"),
+    ("precision_without_standing", "P w/o standing"),
     ("recall", "R"),
     ("forbidden_as_current", "forb"),
     ("noise_items", "noise"),
@@ -1564,7 +1715,32 @@ def main() -> int:
         default=os.environ.get("LIFE_GRAPH_TEST_DATABASE_SUFFIX", "_test"),
         help='Suffix for the database name (default "_test"; "" uses the configured DB)',
     )
+    parser.add_argument(
+        "--experiments",
+        default="",
+        help="Eval-only snapshot experiments, letters or names: A rank, B query_type, "
+        "C links, D dedupe, E evidence, F budget, G hub (services/memory/snapshot_experiments.py)",
+    )
+    parser.add_argument(
+        "--xp-set",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Set one experiment constant for this run (snapshot_experiments.TUNABLE)",
+    )
+    parser.add_argument(
+        "--max-items", type=int, default=None, help="A tighter hard budget for every snapshot"
+    )
+    parser.add_argument(
+        "--split", choices=SPLITS, default=None, help="Only one half of the questions (stable hash)"
+    )
     args = parser.parse_args()
+    tried = args.experiments or args.xp_set or args.max_items or args.split
+    if tried and (args.write_report or args.write_baseline):
+        parser.error(
+            "--experiments/--xp-set/--max-items/--split cannot write the committed report "
+            "or baseline; use --output"
+        )
     _point_at_test_database(args.db_suffix)
     logging.getLogger("life_graph").setLevel(logging.ERROR)
     if args.record_fixtures:
