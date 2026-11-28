@@ -226,7 +226,7 @@ dev = [
     # `import-contracts` job.
     # Pinned to releases more than two months old (supply-chain caution, as
     # with LiteLLM/Trivy in 2026-10); grimp is its import-graph engine.
-    "import-linter==2.15",
+    "import-linter==2.17",
     "grimp==3.20",
 ]
 # Everything a full self-hosted deployment uses, so `pip install life-graph[all]`
