@@ -99,7 +99,8 @@ supersede is shown as current, and that is what the arm measures.
 
 Precision experiments (services/memory/snapshot_experiments.py, eval-only):
 ``--experiments A,B,...`` (letters or names: A rank, B query_type, C links,
-D dedupe, E evidence, F budget, G hub) runs the snapshot questions with those
+D dedupe, E evidence, F budget, G hub, H undated, I goals, J overview,
+K domain) runs the snapshot questions with those
 options on. ``--xp-set NAME=VALUE`` sets one of the module's TUNABLE
 constants for the run (passed with each call, never set on the module),
 ``--mode recall|precision`` a production precision mode (MODES: its fixed set
@@ -1256,6 +1257,9 @@ def _all_texts(data: dict[str, Any], gq: dict[str, Any]) -> list[str]:
     texts.append(data["change_scenario"]["query"])
     # The hub experiment (G) embeds these; the lookup embedder refuses unknown texts.
     texts += list(_xp().HUB_PROBES)
+    # The undated-intention experiment (H) embeds the text of open intentions.
+    texts += [i["content"] for i in data.get("intentions", [])]
+    texts += [i["content"] for i in data["other_tenant"].get("intentions", [])]
     return texts
 
 
@@ -1748,7 +1752,8 @@ def main() -> int:
         "--experiments",
         default="",
         help="Eval-only snapshot experiments, letters or names: A rank, B query_type, "
-        "C links, D dedupe, E evidence, F budget, G hub (services/memory/snapshot_experiments.py)",
+        "C links, D dedupe, E evidence, F budget, G hub, H undated, I goals, J overview, "
+        "K domain (services/memory/snapshot_experiments.py)",
     )
     parser.add_argument(
         "--xp-set",

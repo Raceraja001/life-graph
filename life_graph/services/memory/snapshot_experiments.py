@@ -77,6 +77,42 @@ The options
   :data:`HUB_PROBES`. A penalty, not a drop: alone it changes nothing; with
   F it moves the cut.
 
+Structural recall options (the misses B + C + F leave,
+docs/audits/2026-11-28-m8-context-precision-evaluation.md §5):
+
+* **H** ``undated`` -- open intentions with no due time at all (no trigger
+  time, no promise ``due_by``, no expiry: ``i_aws_book``, O3) are never "due"
+  and so reach a snapshot only by sharing a word with the question. H reads
+  them (this tenant's, open, not expired, at most :data:`SIDE_PULL`) and
+  adds one (reason ``undated_intention``) when the question asks for
+  commitments as a whole (:func:`asks_for`; not when it asks about due
+  times, :func:`asks_for_due`), when its words support the
+  question, or when its meaning does: the cosine of its text's local
+  embedding to the question's is at least :data:`INTENTION_FLOOR`. Not for
+  an ``as_of`` question.
+* **I** ``goals`` -- goals are stored as ordinary memories (a ``goal`` tag,
+  or the extractor's ``intention`` fact type with goal words: "wants to",
+  "plans to"), which search does not know as a kind, so "what are my active
+  goals?" missed ``l_aws_goal`` (O1, O2). I reads this tenant's active goal
+  records (:func:`is_goal_memory`, at most :data:`GOAL_PULL`, the same
+  checks as C's pulls) and adds one (reason ``goal_record``) when the
+  question asks for goals as a whole, or when its words support the
+  question. They are the "goal kind" B's gate reads (KIND_TAG_WORDS).
+* **J** ``overview`` -- an overview or aggregate question ("my finances",
+  "what should you consider before ...", "what is missing before ...",
+  :func:`is_overview`) needs many records, and F's cut took the tail (O9
+  ``f_emi``, O10). For such a question F keeps at least
+  :data:`OVERVIEW_MIN_KEEP` hits and cuts below :data:`OVERVIEW_FLOOR` of the
+  top similarity instead (whichever is looser). Alone it changes nothing.
+* **K** ``domain`` -- for an overview question that names a life domain
+  (finance, health, work, family, learning: :data:`DOMAINS`), F never cuts a
+  memory tagged with that domain (O9's ``f_emi``, ``f_husband_income_new``).
+  A hold, not a pull: only candidates the reads already found. Alone it
+  changes nothing.
+
+H, I and the hold of K never bypass a safety check, and B keeps what H and
+I added (they passed their own gate).
+
 The constants are first guesses, not tuned values; the eval can set them
 for a run (:data:`TUNABLE`) and should tune on its ``--split tune`` half.
 
@@ -123,6 +159,10 @@ DEDUPE = "dedupe"
 EVIDENCE = "evidence"
 BUDGET = "budget"
 HUB = "hub"
+UNDATED = "undated"
+GOALS = "goals"
+OVERVIEW = "overview"
+DOMAIN = "domain"
 
 #: Option letter -> name, as the eval's ``--experiments`` takes them.
 OPTIONS = {
@@ -133,6 +173,10 @@ OPTIONS = {
     "E": EVIDENCE,
     "F": BUDGET,
     "G": HUB,
+    "H": UNDATED,
+    "I": GOALS,
+    "J": OVERVIEW,
+    "K": DOMAIN,
 }
 LETTERS = {name: letter for letter, name in OPTIONS.items()}
 NAMES = frozenset(OPTIONS.values())
@@ -144,6 +188,11 @@ DUE_INTENTION = "due_intention"
 CURRENT_DECISION = "current_decision"
 SEARCH_HIT = "search_hit"
 NEIGHBOUR = "neighbour"
+#: The reasons H and I give what they add.
+UNDATED_INTENTION = "undated_intention"
+GOAL_RECORD = "goal_record"
+#: Added by an option's own gate: B does not judge them again.
+PULLED_REASONS = frozenset({UNDATED_INTENTION, GOAL_RECORD})
 
 #: A: scores this close (relative to the higher one) are a tie.
 TIE_TOLERANCE = 0.02
@@ -178,6 +227,16 @@ HUB_PROBES = (
     "What is my situation?",
     "What did I say about myself?",
 )
+#: H: most open intentions with no due time read.
+SIDE_PULL = 10
+#: H: least cosine (question vs the intention's text) for a match by meaning.
+INTENTION_FLOOR = 0.6
+#: I: most goal records added.
+GOAL_PULL = 8
+#: J: for an overview question F keeps at least this many hits ...
+OVERVIEW_MIN_KEEP = 8
+#: ... and cuts only below this share of the top similarity (fused: RELATIVE_FLOOR's role).
+OVERVIEW_FLOOR = 0.6
 #: Constants the eval may set for a run (``--xp-set NAME=VALUE``), recorded in its report.
 TUNABLE = (
     "TIE_TOLERANCE",
@@ -191,6 +250,11 @@ TUNABLE = (
     "COSINE_FLOOR",
     "COSINE_GAP",
     "HUB_WEIGHT",
+    "SIDE_PULL",
+    "INTENTION_FLOOR",
+    "GOAL_PULL",
+    "OVERVIEW_MIN_KEEP",
+    "OVERVIEW_FLOOR",
 )
 
 
@@ -209,6 +273,11 @@ class Tunables:
     cosine_floor: float = COSINE_FLOOR
     cosine_gap: float = COSINE_GAP
     hub_weight: float = HUB_WEIGHT
+    side_pull: int = SIDE_PULL
+    intention_floor: float = INTENTION_FLOOR
+    goal_pull: int = GOAL_PULL
+    overview_min_keep: int = OVERVIEW_MIN_KEEP
+    overview_floor: float = OVERVIEW_FLOOR
 
     def named(self) -> dict[str, float]:
         """NAME -> value, in :data:`TUNABLE` order (what the eval's report records)."""
@@ -487,7 +556,9 @@ def query_type_filter(
     for item in items:
         key = item.source_ref.key()
         text_ = support.get(key, item.content)
-        if item.source_ref.kind in KIND_OF_STANDING.values():
+        if item.reason in PULLED_REASONS:
+            keep = True
+        elif item.source_ref.kind in KIND_OF_STANDING.values():
             keep = item.source_ref.kind in wanted_kinds or supports(query, text_)
             if item.reason in wanted:
                 asked.add(key)
@@ -719,6 +790,181 @@ def adaptive_cut(
     return (
         [i for i in items if i.source_ref.key() not in gone],
         [i for i in items if i.source_ref.key() in gone],
+    )
+
+
+# ── H, I: asked for as a whole ─────────────────────────────────
+
+
+def asks_for(query: str, types: frozenset[str], kind: str) -> bool:
+    """Whether the question asks for *kind* (GOAL, COMMITMENT) as a whole.
+
+    It does when *kind* is one of its types and it has no subject of its own
+    (no FACT type: "what are my active goals?") or is broad ("what are my
+    current priorities?", BROAD_WORDS). "my goal of becoming an engineering
+    manager" names a subject, so only the records that support it count.
+    """
+    if kind not in types:
+        return False
+    return FACT not in types or bool(BROAD_WORDS & set(tokens(query)))
+
+
+#: H: words of a question about due times ("which deadlines are coming up?"):
+#: an intention with no due time cannot answer it by kind, only by words or meaning.
+DUE_ASK = _phrases(
+    "deadline|deadlines|due|overdue|coming up|upcoming|this week|next week|today|tomorrow"
+    "|next few days",
+    "kedu|naalaikku|indha vaaram|adutha vaaram",
+    "கெடு|நாளை|இந்த வார|அடுத்த வார",
+)
+
+
+def asks_for_due(query: str) -> bool:
+    """Whether *query* asks about due times (DUE_ASK)."""
+    words = tokens(query)
+    return any(_has_phrase(words, p) for p in DUE_ASK)
+
+
+#: I: tags that make a memory a goal record.
+GOAL_TAGS = frozenset(
+    {"goal", "goals", "aim", "ambition", "aspiration", "target", "objective", "ilakku", "இலக்கு"}
+)
+#: I: words that make an extractor ``intention`` a goal ("wants to run", "plans to pass").
+GOAL_WORDS = frozenset(
+    {
+        "goal",
+        "goals",
+        "want",
+        "wants",
+        "plan",
+        "plans",
+        "planning",
+        "aim",
+        "aims",
+        "aspire",
+        "aspires",
+        "hope",
+        "hopes",
+        "target",
+        "become",
+        "ambition",
+    }
+)
+#: I: the fact type the extractor gives a want or a plan (extraction/llm.py).
+GOAL_FACT_TYPE = "intention"
+
+
+def is_goal_memory(tags: Iterable[str] | None, fact_type: str | None, text_: str) -> bool:
+    """A goal record: tagged as a goal, or an extracted ``intention`` in goal words."""
+    tagged = {str(t).strip().lower() for t in (tags or []) if isinstance(t, str)}
+    if tagged & GOAL_TAGS:
+        return True
+    if str(fact_type or "").strip().lower() != GOAL_FACT_TYPE:
+        return False
+    return bool(GOAL_WORDS & set(tokens(text_)))
+
+
+def cosine(a: list[float] | None, b: list[float] | None) -> float | None:
+    """Cosine similarity of two vectors; None when either is missing, empty or mismatched."""
+    if not a or not b or len(a) != len(b):
+        return None
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    return dot / (na * nb) if na and nb else None
+
+
+# ── J, K: overview questions ──────────────────────────────────
+
+#: J: words and phrases of an overview or aggregate question (English,
+#: Tanglish, Tamil; matched like KEYWORDS: an ASCII word itself, a Tamil word
+#: as a prefix). A question that asks what is missing
+#: (sufficiency.asks_for_gaps) is one too.
+OVERVIEW_KEYWORDS = _phrases(
+    "overview|summary|summarise|summarize|sum up|overall|everything|in general|big picture"
+    "|whole picture|situation|finances|financial|consider|considerations|factors|constraints"
+    "|what else|all my|all of my|state of",
+    "ellam|ellaamae|ellame|motham|mothama|nilamai|nelamai|panam vishayam|kanakku",
+    "எல்லா|மொத்த|சுருக்க|நிலைம|நிதி நிலை",
+)
+
+
+def is_overview(query: str) -> bool:
+    """Whether *query* asks for an overview (OVERVIEW_KEYWORDS) or for what is missing."""
+    words = tokens(query)
+    if any(_has_phrase(words, p) for p in OVERVIEW_KEYWORDS):
+        return True
+    return sufficiency.asks_for_gaps(query)
+
+
+#: K: a life domain -> (the question's words for it, the tags its records carry).
+DOMAINS: dict[str, tuple[tuple[tuple[str, ...], ...], frozenset[str]]] = {
+    "finance": (
+        _phrases(
+            "finance|finances|financial|money|loan|loans|emi|salary|income|budget|savings"
+            "|spending|expenses|expense|afford|debt|investment|investments",
+            "panam|kaasu|selavu|sambalam|kadan|varumanam|semippu",
+            "பண|காசு|செலவ|சம்பள|கடன|வருமான|சேமிப்ப|நிதி",
+        ),
+        frozenset({"finance", "money", "loan", "income", "budget", "savings", "investment"}),
+    ),
+    "health": (
+        _phrases(
+            "health|medical|doctor|clinic|hospital|medicine|medicines|illness|diabetes",
+            "udambu|udal nalam|maruthuvam|maruthuvar|aaspathiri",
+            "உடல்நல|உடல் நல|மருத்துவ|மருந்த|நோய",
+        ),
+        frozenset({"health", "medical"}),
+    ),
+    "work": (
+        _phrases(
+            "work|job|career|office|project|projects|manager|promotion",
+            "velai|office velai|udhyogam",
+            "வேலை|பணிய|அலுவலக",
+        ),
+        frozenset({"work", "career", "project"}),
+    ),
+    "family": (
+        _phrases(
+            "family|kids|children|child|daughter|son|husband|wife|mother|father|parents",
+            "kudumbam|amma|appa|pasanga|kuzhandhai|purushan|manaivi",
+            "குடும்ப|அம்மா|அப்பா|குழந்த|மகள|மகன|கணவ|மனைவ",
+        ),
+        frozenset({"family"}),
+    ),
+    "learning": (
+        _phrases(
+            "learning|learn|study|studying|course|courses|exam|exams|certification",
+            "padippu|padikkuren|thervu",
+            "படிப்ப|படிக்க|தேர்வ|பயிற்சி",
+        ),
+        frozenset({"learning"}),
+    ),
+}
+
+
+def query_domains(query: str) -> frozenset[str]:
+    """The life domains *query* names (DOMAINS keys)."""
+    words = tokens(query)
+    return frozenset(
+        name
+        for name, (phrases, _) in DOMAINS.items()
+        if any(_has_phrase(words, p) for p in phrases)
+    )
+
+
+def domain_tags(domains: Iterable[str]) -> frozenset[str]:
+    """The tags of the records of *domains*."""
+    return frozenset(t for d in domains if d in DOMAINS for t in DOMAINS[d][1])
+
+
+def overview_tunables(t: Tunables) -> Tunables:
+    """J: *t* with F's cut loosened for an overview question (never tightened)."""
+    return dataclasses.replace(
+        t,
+        min_keep=max(int(t.min_keep), int(t.overview_min_keep)),
+        cosine_floor=min(t.cosine_floor, t.overview_floor),
+        relative_floor=min(t.relative_floor, t.overview_floor),
     )
 
 
