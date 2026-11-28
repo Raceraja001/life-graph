@@ -25,7 +25,9 @@
    - The best safe configuration reaches about **0.47–0.55 precision** across all 45 questions, against a target of 0.70.
    - Its recall is **0.93**, so the target of ≥ 0.90 is met; on the held-out split it is 0.88.
    - Every safety metric holds in every run: leaks 0, cloud calls 0, forbidden-as-current 0, provenance 1.00, abstention 1.00.
-   - Reaching 0.70 needs ranking that tells near-topic memories apart, and no score threshold separates them. That requires a local reranker or the existing judge. Either one breaks the snapshot's deterministic "no model, same output" contract, which is an owner decision (§6).
+   - No score threshold separates near-topic memories from relevant ones.
+   - **A local cross-encoder reranker was then measured (§5.1) and does not close the gap either.** It orders better than cosine, but at recall ≥ 0.90 it reaches the same precision as the rules (0.46 vs 0.47).
+   - The remaining gap is structural: broad questions need goals, intentions with no due time, and linked records that share no words with the question.
    - **The critical-question target (≥ 0.95) is not met even by the baseline** (0.88 on the owner's ten).
 5. **Does it now retrieve the right context rather than merely similar memories?** It is better, but only partly.
    - With B + C + F, snapshots shrink from 18.6 to 8.4 items. Precision roughly doubles on every split, and the owner's-ten precision goes 0.41 → 0.70.
@@ -34,7 +36,7 @@
 6. **What should the next M8 milestone implement?** See §7. In short:
    - promote B + C + F behind a default-off setting, with its own shadow comparison;
    - fix the three structural recall misses;
-   - then decide on a local reranker, measured against these numbers.
+   - the reranker was measured and is not adopted now ([ADR](../design/adr-m8-context-reranker.md)).
 7. **Is Life Graph ready for proactive context briefs?** **Not yet.**
    - Critical-question recall is 0.74–0.88, under the 0.95 target.
    - Precision is about 0.5, so briefs would carry about one irrelevant record per relevant one.
@@ -47,7 +49,7 @@
 | Merged | **nothing**: #454 and this audit wait for owner approval |
 | Deployed | **nothing** |
 | Operationally verified | **nothing**: no real-data run; production snapshots are unchanged (shadow mode as before) |
-| Not verified | how these options behave on the owner's real memories; the cost of the G probes at scale; the reranker option |
+| Not verified | how these options behave on the owner's real memories; the cost of the G probes at scale |
 
 ## 1. Current state, inspected first
 
@@ -232,9 +234,33 @@ Tuned gains carry over to the unseen questions. The precision gain holds, and **
   - goals are stored as ordinary memories with no type the retriever uses (O1, O2);
   - an intention with no due time is unreachable except by shared words (O3);
   - broad "overview" questions need many records, and a relevance cut removes the tail (O9, O10).
-- **The next step up needs a judgement of relevance per record.** That means a local cross-encoder reranker, or the existing local judge used in `/search`, applied to the top ~20.
-  - It stays local-only, but the snapshot stops being deterministic and gains latency.
-  - That is an architectural decision for the owner, not something to slip in.
+- **A judgement of relevance per record was tested next (§5.1).** It helps ordering, but not enough to reach 0.70.
+
+### 5.1 Local reranker, measured (added 2026-11-28)
+
+- **Setup:**
+  - model `BAAI/bge-reranker-v2-m3`, fp16 on the local GPU, offline;
+  - candidates: B + C with no cut, 10.9 items per question at recall 0.946;
+  - script and results in `evals/context_quality/precision-2026-11-28/rerank/`.
+
+| Policy (all 45) | P | R | items/q | owner's ten P / R |
+|---|---|---|---|---|
+| Candidates, no cut | 0.356 | 0.946 | 10.9 | 0.57 / 0.87 |
+| Top 5, cosine | 0.577 | 0.677 | 4.7 | 0.76 / 0.55 |
+| Top 5, reranker | 0.642 | 0.763 | 4.7 | 0.78 / 0.58 |
+| Top 8, cosine | 0.435 | 0.763 | 7.4 | 0.69 / 0.71 |
+| Top 8, reranker | 0.483 | 0.860 | 7.4 | 0.69 / 0.74 |
+| Reranker, logit margin 8, keep ≥ 5 | 0.457 | 0.925 | 8.0 | 0.57 / 0.82 |
+| Rules, recall config | 0.467 | 0.928 | 8.4 | 0.70 / 0.83 |
+
+- **Determinism:** identical scores on two passes.
+- **Latency:** 19 ms p50 and 52 ms p95 per question, on the GPU.
+- **Absolute probabilities are uninformative:** almost every pair scores below 0.005, so only rank and margin policies work.
+- **Verdict:**
+  - At equal size, the reranker's order beats cosine order by about 5 precision points and 6–10 recall points.
+  - At recall ≥ 0.90, it matches the deterministic rules but does not beat them.
+  - It is not adopted now ([ADR](../design/adr-m8-context-reranker.md)).
+  - It is to be re-measured after the structural recall fixes.
 
 ## 6. Recommended ranking and selection architecture
 
@@ -249,7 +275,7 @@ Tuned gains carry over to the unseen questions. The precision gain holds, and **
    - relative to the top hit, floor ≈ 0.70, always keeping ≥ 3;
    - only search hits and learned neighbours are cut, never conflicts, exclusions or abstention logic.
 4. **Evidence and safety pass (unchanged):** provenance, origin labels, hostile handling, tenant filter, contradictions kept visible.
-5. **Optional, needs an owner decision:** a local reranker over the top ~20 before step 3, with the determinism and latency trade-off measured against this audit's numbers.
+5. **Not now:** a local reranker over the candidates before step 3. It was measured in §5.1 and does not beat step 3 at the recall the targets need. It will be re-measured after the structural fixes ([ADR](../design/adr-m8-context-reranker.md)).
 6. **Do not adopt:**
    - **fixed caps**, which cost recall;
    - **G**, while it costs owner-question recall and about 15 ms;
@@ -258,7 +284,7 @@ Tuned gains carry over to the unseen questions. The precision gain holds, and **
 
 ## 7. Prioritised implementation plan (each its own PR, no merge or deploy without approval)
 
-1. **Merge #454** (experiment options, eval-only; default path byte-identical). Owner approval needed.
+1. **Merge #454** (experiment options, eval-only; default path byte-identical). Merged 2026-11-28.
 2. **Typed-link expansion (C) as a default-off setting** `context_typed_link_expansion`.
    - It is recall-only: +0.02 on tune, and fixes F2.
    - It is the smallest safe change.
@@ -270,7 +296,7 @@ Tuned gains carry over to the unseen questions. The precision gain holds, and **
    - give goals a type the retriever can use;
    - let open intentions with no due time be retrieved by meaning, not only words (O3);
    - make "overview" questions (O9 and O10 style) raise the cut's minimum. B already classifies them.
-5. **Reranker ADR:** a local cross-encoder versus the existing judge, the determinism contract, latency budget and failure mode.
+5. **Reranker ADR:** done ([adr-m8-context-reranker.md](../design/adr-m8-context-reranker.md)). Not adopted now. It sets the conditions for revisiting.
 6. **Owner-question recall ≥ 0.95** as a gate before any proactive brief.
 
 ## 8. Reproducing
