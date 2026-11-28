@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DriverSettings(BaseModel):
@@ -215,6 +215,11 @@ class DriverSettings(BaseModel):
     verifier_sandbox_cache_dir: str = ""  # cached project venvs; "" = ~/.cache/life-graph/...
     verifier_sandbox_memory: str = "4g"
     verifier_sandbox_cpus: str = "4"
+    # Cache GC for the bun-*/node-* dependency envs (sandbox.gc_envs): per
+    # project and toolchain the newest `keep` stay; older ones are removed once
+    # unused for the grace period, never while a setup holds their lock.
+    verifier_sandbox_env_keep: int = Field(2, ge=1)
+    verifier_sandbox_env_gc_grace_hours: float = Field(24.0, ge=0)
     # The sandbox's setup phase reads agent-edited manifests, so it runs on an
     # internal network whose only way out is the task runtime's egress proxy
     # (driver_runtime_egress_image), relaying only to these hosts on 443 per
@@ -222,6 +227,8 @@ class DriverSettings(BaseModel):
     # manifests are also checked first (services/dev/setup_guard.py).
     verifier_setup_egress_python: str = "pypi.org,files.pythonhosted.org"
     verifier_setup_egress_node: str = "registry.npmjs.org"
+    # sandbox_toolchain=bun: `bun install` fetches tarballs from the npm registry.
+    verifier_setup_egress_bun: str = "registry.npmjs.org"
     # The Gradle wrapper (services.gradle.org redirects to downloads.gradle.org),
     # the plugin portal, Maven Central and Google's Maven (Android).
     verifier_setup_egress_jvm: str = (

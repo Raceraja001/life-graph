@@ -1,0 +1,41 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "bun-workspace-fixture",
+    },
+    "apps/web": {
+      "name": "@fx/web",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fx/lib": "workspace:*",
+        "is-number": "7.0.0",
+      },
+    },
+    "packages/empty": {
+      "name": "@fx/empty",
+      "version": "0.1.0",
+    },
+    "packages/lib": {
+      "name": "@fx/lib",
+      "version": "0.1.0",
+      "dependencies": {
+        "is-odd": "3.0.1",
+      },
+    },
+  },
+  "packages": {
+    "@fx/empty": ["@fx/empty@workspace:packages/empty"],
+
+    "@fx/lib": ["@fx/lib@workspace:packages/lib"],
+
+    "@fx/web": ["@fx/web@workspace:apps/web"],
+
+    "is-number": ["is-number@7.0.0", "", {}, "sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng=="],
+
+    "is-odd": ["is-odd@3.0.1", "", { "dependencies": { "is-number": "^6.0.0" } }, "sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA=="],
+
+    "is-odd/is-number": ["is-number@6.0.0", "", {}, "sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg=="],
+  }
+}

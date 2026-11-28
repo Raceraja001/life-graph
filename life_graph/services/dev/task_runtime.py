@@ -79,7 +79,9 @@ logger = logging.getLogger(__name__)
 # 2026-11-19.2: the internal network gets an explicit subnet from
 #   driver_runtime_subnet_pool (same internal + isolated-gateway network; only
 #   where its addresses come from changed).
-POLICY_VERSION = "2026-11-19.2"
+# 2026-11-28.1: a Bun project's prepared node_modules trees may be mounted
+#   read-only below /work (sandbox_deps.DepsPlan).
+POLICY_VERSION = "2026-11-28.1"
 
 OUTBOUND_NETWORK = "lg-rt-outbound"
 EGRESS_PORT = 8080
@@ -139,6 +141,10 @@ class RuntimeRequest:
     # read-only so the agent can run its tests offline.
     tool_env: Path | None = None
     tool_env_target: str = sandbox.VENV
+    # Further read-only binds, (host source, container target): a project's
+    # prepared dependency trees (sandbox_deps.DepsPlan), each at its
+    # workspace's node_modules strictly below /work.
+    read_only_binds: tuple[tuple[Path, str], ...] = ()
     env: dict[str, str] = field(default_factory=dict)
     # NAME -> value, handed to the docker client only and passed into the
     # container by name (sandbox.PASSTHROUGH_ENV_ALLOWED limits the names).
@@ -667,6 +673,15 @@ class DockerTaskRuntime:
             binds.append(
                 Bind(str(Path(req.tool_env).resolve()), req.tool_env_target, read_only=True)
             )
+        for source, target in req.read_only_binds:
+            # Only ever a subtree of the worktree's mount, never over it or
+            # elsewhere (the bind validator checks the source side).
+            if not target.startswith(f"{sandbox.WORK}/"):
+                raise SandboxPolicyError(
+                    f"sandbox spec {names['container']!r}",
+                    [f"read-only bind target {target!r} is not under {sandbox.WORK}"],
+                )
+            binds.append(Bind(str(Path(source).resolve()), target, read_only=True))
         env = {"HOME": "/tmp", "LANG": "C.UTF-8", "TZ": "UTC", **req.env}
         if req.egress_allowlist:
             proxy = f"http://{names['proxy']}:{EGRESS_PORT}"

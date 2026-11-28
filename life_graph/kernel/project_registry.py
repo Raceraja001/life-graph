@@ -39,8 +39,10 @@ logger = logging.getLogger(__name__)
 #                          manifests, and the setup's egress (services/dev/setup_guard.py)
 #   sandbox_test_command  what tests_pass runs, e.g. "python -m pytest -q tests/unit"
 #   sandbox_test_timeout  seconds tests_pass may take
-#   sandbox_toolchain     "python" (default), "node" or "jvm" (Gradle): which verifier image checks run in
-#   sandbox_js_test_runner  "vitest" (default) or "jest", for JS/TS acceptance tests
+#   sandbox_toolchain     "python" (default), "node", "bun" (Bun workspaces) or "jvm" (Gradle):
+#                          which verifier image checks run in
+#   sandbox_js_test_runner  "vitest" (default; "bun" on the bun toolchain), "jest" or "bun",
+#                          for JS/TS acceptance tests
 #   sandbox_start_command, sandbox_app_port, sandbox_e2e_command, sandbox_e2e_timeout
 #                          app_e2e_pass: start the app in the sandbox, then drive it
 #   required_checks       verifiers every dev task in this project must pass

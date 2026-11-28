@@ -58,17 +58,36 @@ class _Run:
 _WRITE_TOOLS = frozenset({"file_write", "code_edit"})
 
 
+# Toolchains the run_tests MCP tool serves (tools/run_tests.py). Bun is NOT one
+# of them, deliberately: OpenCode runs on the host, not in the task runtime, so
+# a Bun project's read-only node_modules mounts (sandbox_deps.DepsPlan) never
+# reach it -- only the claude_code container gets them. A Bun project on
+# OpenCode runs without tests and its metadata says so (_run_tests_status).
+_RUN_TESTS_TOOLCHAINS = ("python", "jvm")
+
+
+def _toolchain(packet: ContextPacket) -> str:
+    return ((packet.project_context or {}).get("sandbox_toolchain") or "python").strip().lower()
+
+
 def _can_run_tests(packet: ContextPacket) -> bool:
     """A Python or JVM project, with the sandbox on and run_tests in the persona's tools."""
+    return _run_tests_status(packet) == "offered"
+
+
+def _run_tests_status(packet: ContextPacket) -> str:
+    """Whether this dispatch gets the run_tests tool, or why not (DriverResult metadata)."""
     from life_graph.services.dev import sandbox
 
     allowed = packet.allowed_tools
-    ctx = packet.project_context or {}
-    return (
-        (allowed is None or "run_tests" in allowed)
-        and sandbox.enabled()
-        and (ctx.get("sandbox_toolchain") or "python").strip().lower() in ("python", "jvm")
-    )
+    if allowed is not None and "run_tests" not in allowed:
+        return "not offered: not in the persona's tools"
+    if not sandbox.enabled():
+        return "not offered: sandbox is off"
+    toolchain = _toolchain(packet)
+    if toolchain not in _RUN_TESTS_TOOLCHAINS:
+        return f"unsupported: {toolchain} toolchain (opencode has no task runtime)"
+    return "offered"
 
 
 def _allow_csv(raw) -> str:
@@ -400,6 +419,7 @@ class OpencodeDriver:
                     "isolated": worktree is not None,
                     "exit_status": "ok" if success else "failed",
                     "self_checks": self_checks,
+                    "run_tests": _run_tests_status(packet),
                 },
             )
         finally:

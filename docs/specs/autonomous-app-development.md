@@ -1,6 +1,7 @@
 # Autonomous App Development — Roadmap Spec
 
-> **Status: Built (2026-10-14).** All four phases. The user handed this over to build end to
+> **Status: Built (2026-10-14).** Phases 0–4. Phase 5 (Bun workspaces): sandbox side built
+> 2026-11-28, agent side in progress. The user handed this over to build end to
 > end ("you can decide and complete these… third party info needed means, use
 > stubs"). Each item records what was built and what is stubbed.
 
@@ -90,6 +91,70 @@ watch. On 2026-10-13 a human had to rescue it from:
     - **Isolation:** per-tenant scratch and worktree directories. Process isolation is
       `driver_claude_sandbox` (`task` = the per-task runtime,
       `docs/design/adr-secure-task-runtime.md`); a worktree alone isolates files only.
+
+### Phase 5 — Bun workspaces in the sandbox — sandbox side BUILT (2026-11-28); agent side in progress
+
+Decision record: race-app `docs/research/2026-11-28-bun-sandbox/04-decision.md` (extend life-graph's
+own sandbox; experiment 2c). A project on `sandbox_toolchain: bun` is checked in the Node verifier
+image, which carries a Bun binary pinned by digest (the same pin as the driver image; a unit test
+keeps them equal). Code: `services/dev/sandbox.py` (`prepare_bun_env`, `run(deps=…)`,
+`_bind_violations`, `gc_envs`), `sandbox_bun.py` (workspace globs, ready check),
+`sandbox_deps.py` (`deps_mounts` → `DepsPlan`), `setup_guard.py` (bun manifests),
+`verifiers.py` (bun branches).
+
+14. **Manifests-only install.** The root `package.json`'s `workspaces` globs (an array or
+    `{packages: […]}`) expand to the manifest list: root `package.json`, `bun.lock`/`bun.lockb`,
+    every workspace `package.json`. They are copied on the host into a `.partial-` directory at
+    their relative paths; the setup container sees only that directory, on an internal network
+    whose only way out is the egress proxy (`verifier_setup_egress_bun`, default
+    `registry.npmjs.org`, plus `sandbox_setup_allow`). Default setup:
+    `bun install --frozen-lockfile --ignore-scripts`; install scripts never run
+    (`npm_config_ignore_scripts=true`) unless `sandbox_setup_allow` lists `scripts`. Key:
+    `"bun-" + _env_key(image, setup + scripts flag, expanded manifests)`.
+    - GIVEN a workspace glob with `..`, an absolute path, `~`/`$`, or a symlinked workspace
+      directory WHEN setup is prepared THEN it is refused and every check is inconclusive.
+    - GIVEN a dependency from GitHub, a tarball URL, another registry or a path outside the repo
+      (in any workspace `package.json` or in `bun.lock`), or a `bun.lockb` without `bun.lock`
+      WHEN setup is prepared THEN it is refused before docker runs.
+    - GIVEN the default setup and no lockfile WHEN setup is prepared THEN it is refused.
+15. **Ready check before publish.** After the install `bun --version` must print a version, the root
+    `node_modules` must exist and every workspace with dependencies must resolve them (its own
+    `node_modules`, or each package hoisted into the root one).
+    - GIVEN an install that exits 0 but left a workspace without its `node_modules` WHEN setup
+      finishes THEN nothing is renamed into place and the check is inconclusive, never a pass.
+16. **Mount plan.** `deps_mounts(ctx, worktree)` returns `None` for other toolchains; for `bun` a
+    `DepsPlan`: one read-only mount per `node_modules` in the env at `/work/<ws>/node_modules`
+    (root first), `path_prepend=("/work/node_modules/.bin",)`,
+    `env={"BUN_INSTALL_CACHE_DIR": "/tmp/.bun", "DO_NOT_TRACK": "1"}`, and the mountpoints it
+    pre-created (`mkdir`) in the worktree.
+    - GIVEN `git check-ignore` does not ignore a mountpoint (or the worktree is not a git
+      checkout) WHEN the plan is made THEN it is refused (`DepsUnavailableError`) before any
+      directory is created.
+    - GIVEN a mountpoint that already exists as a symlink or a file WHEN the plan is made THEN it
+      is refused.
+    - GIVEN a plan WHEN it is made THEN `git status` in the worktree is unchanged.
+17. **Checks in place.** `tests_pass` runs `bun test` (or `sandbox_test_command`) on the read-only
+    `/work` with the plan's mounts, `--network none`, read-only root, non-root, no `/tmp` copy.
+    `acceptance_tests_pass` runs bound JS/TS tests with `bun test ./<file> -t <name>`
+    (`sandbox_js_test_runner` defaults to `bun` there) and needs at least one `N pass` when a
+    name is bound; `app_e2e_pass` uses the same plan. Lint stays as for Node (ruff only).
+    - GIVEN setup fails or is refused WHEN any of these checks runs THEN it is inconclusive.
+18. **Bind rule.** A read-only bind may come from a finished env (a direct child of the cache
+    root) or from a `node_modules` directory inside a finished `bun-`/`node-` env; never a
+    `.partial-` or `.gc-` path, never through a symlink or `..`, never writable.
+19. **Cache GC.** Each published `bun-`/`node-` env has a `<key>.lg-meta.json` sidecar naming the
+    repositories (git common dir, hashed) that used it; its mtime is the last use. Per project
+    and toolchain the newest `verifier_sandbox_env_keep` (2) stay; older ones are removed once
+    unused for `verifier_sandbox_env_gc_grace_hours` (24), never while their setup lock is held
+    (renamed to `.gc-` first). Runs after every publish.
+20. **Agent side** (in progress): the claude_code driver mounts the same `DepsPlan` read-only in the
+    task runtime (`drivers/claude_code.py`, `task_runtime.py`).
+
+Tests: `tests/unit/test_bun_sandbox.py`; the opt-in real-docker run
+`LIFE_GRAPH_DOCKER_SMOKE=1 pytest tests/unit/test_bun_sandbox_smoke.py` (fixture
+`tests/fixtures/bun_workspace`: install through the egress proxy, mounts, `bun test` on a
+read-only `/work` with no network). Out of scope: Playwright/e2e browsers; tools that write
+beside the project (Vite `node_modules/.vite`, Next `.next`) may need cache-dir overrides.
 
 ## What is stubbed, and how to switch it on
 

@@ -12,6 +12,10 @@
 #
 # Build: docker/claude-driver/build.sh
 FROM ghcr.io/astral-sh/uv:0.12.14 AS uv
+# Bun for projects on `sandbox_toolchain: bun`: the same pinned binary as
+# docker/verifier-node (a unit test keeps the pins equal), so the agent runs
+# its project's tests with the runtime the verifiers use.
+FROM oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 AS bun
 
 FROM python:3.12-slim
 # git: the CLI's own Bash tool uses it for context (git diff/log), not for
@@ -26,6 +30,8 @@ RUN apt-get update \
 # the runtime's egress allowlist reaches no package index.
 COPY --from=uv /uv /usr/local/bin/uv
 RUN pip install --no-cache-dir "pytest==9.1.1" "ruff==0.16.1" "mypy==1.15.0"
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx && bun --version
 COPY claude-bin /usr/local/bin/claude
 RUN chmod +x /usr/local/bin/claude
 # Never run as root; the sandbox also passes --user explicitly.

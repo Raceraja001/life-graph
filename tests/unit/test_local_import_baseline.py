@@ -75,7 +75,10 @@ BASELINE = {
     # 626 -> 628 (Phase 4b): tasks.create_dev_task imports services.dev.dependencies
     # lazily (dependencies imports tasks at module level), and runner.housekeep
     # imports dependencies/teams lazily like the tasks import beside it.
-    "services": 628,
+    # 628 -> 629 (Bun toolchain, sandbox side): sandbox.prepare_bun_env imports
+    # sandbox_bun and setup_guard lazily, as prepare_env/_check_manifests already
+    # do for setup_guard: both import sandbox at module level (SandboxUnavailableError).
+    "services": 629,
     "storage": 7,
     "tools": 101,
     "watchers": 28,

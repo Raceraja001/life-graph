@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 07:44 UTC` from `master` @ `ff072ec`
+Generated `2026-11-28 07:49 UTC` from `race/bun-toolchain` @ `7149111e`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-28 07:44 UTC` from `master` @ `ff072ec`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **38** |
-| Config settings | **363** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6820** in 707 files |
+| Config settings | **366** (prefix `LIFE_GRAPH_`) |
+| Test functions | **6894** in 711 files |
 | Dashboard pages | **23** |
-| Python | 588 files, 171,224 lines |
+| Python | 590 files, 172,337 lines |
 
 ---
 
@@ -1119,16 +1119,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 542 | 5738 |
+| `tests/unit/` | 546 | 5812 |
 | `tests/integration/` | 164 | 1070 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **707** | **6820** |
+| **total** | **711** | **6894** |
 
 ---
 
 ## Configuration
 
-363 settings, all overridable by environment variable.
+366 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1363,8 +1363,11 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_VERIFIER_SANDBOX_CACHE_DIR` | `''` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_MEMORY` | `'4g'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_CPUS` | `'4'` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX_ENV_KEEP` | `2` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX_ENV_GC_GRACE_HOURS` | `24.0` |
 | `LIFE_GRAPH_VERIFIER_SETUP_EGRESS_PYTHON` | `'pypi.org,files.pythonhosted.org'` |
 | `LIFE_GRAPH_VERIFIER_SETUP_EGRESS_NODE` | `'registry.npmjs.org'` |
+| `LIFE_GRAPH_VERIFIER_SETUP_EGRESS_BUN` | `'registry.npmjs.org'` |
 | `LIFE_GRAPH_VERIFIER_SETUP_EGRESS_JVM` | `'services.gradle.org,downloads.gradle.org,downloads.gradl…` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX` | `'none'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_IMAGE` | `'life-graph-claude-driver:latest'` |

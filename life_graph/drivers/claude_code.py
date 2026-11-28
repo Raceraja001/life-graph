@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import json
 import logging
 import os
@@ -38,7 +39,7 @@ from life_graph.drivers.host_exec import (
 from life_graph.drivers.steps import claude_event_steps, parse_claude_stream
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.services.agent_accounts.limits import claude_windows
-from life_graph.services.dev import sandbox
+from life_graph.services.dev import sandbox, sandbox_deps
 
 logger = logging.getLogger(__name__)
 
@@ -234,29 +235,107 @@ _TOOL_CACHE_ENV = {
     "UV_PYTHON_DOWNLOADS": "never",
 }
 
+# The image's own PATH after whatever a mounted environment puts first.
+_BASE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 # Set when the project's environment is mounted at /venv: its tools come
 # first, `uv run` uses it as is (no sync into the read-only mount, no .venv
 # created in the worktree), and the project imports from the worktree the way
 # the verifiers import it (sandbox.py, PYTHONPATH=/work:/work/src).
 _PROJECT_ENV_VARS = {
     "VIRTUAL_ENV": sandbox.VENV,
-    "PATH": f"{sandbox.VENV}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "PATH": f"{sandbox.VENV}/bin:{_BASE_PATH}",
     "PYTHONPATH": f"{sandbox.WORK}:{sandbox.WORK}/src",
     "UV_PROJECT_ENVIRONMENT": sandbox.VENV,
     "UV_NO_SYNC": "1",
 }
 
+# The only names a dependency plan (sandbox_deps.DepsPlan.env) may set in the
+# agent's container: tool cache locations and telemetry opt-outs. Anything
+# else in a plan is dropped (and logged) -- a plan never sets PATH, HOME, the
+# proxy, a Claude variable or a secret; the spec validator still checks values.
+_DEPS_ENV_ALLOWED = frozenset(
+    {
+        "BUN_INSTALL_CACHE_DIR",
+        "BUN_RUNTIME_TRANSPILER_CACHE_PATH",
+        "XDG_CACHE_HOME",
+        "DO_NOT_TRACK",
+    }
+)
+_CONTAINER_PATH_UNSAFE = re.compile(r"[:,=\s\x00\"']")
 
-async def _project_tool_env(cwd: Path, packet: ContextPacket | None) -> tuple[Path | None, str]:
+# What the agent is told when a Bun project's dependencies are mounted
+# (``--append-system-prompt``; the Python env needs no note, its tools are
+# where an agent looks for them).
+_DEPS_NOTE = (
+    "Project toolchain: Bun. `bun` is on PATH, and the project's dependencies are already "
+    "installed and mounted READ-ONLY at: {targets}. Run the project's scripts and tests with "
+    "them (`bun run <script>`, `bun test`, binaries in node_modules/.bin are on PATH). You "
+    "cannot install, add, remove or upgrade packages here: `bun add` / `bun install` fail on "
+    "the read-only mounts and there is no registry access. If the task needs a dependency "
+    "change, propose it in the diff (package.json, plus bun.lock if you can) and say so in "
+    "your summary; the environment is rebuilt from the manifests when the change is verified. "
+    "Never commit node_modules."
+)
+
+
+def _under_work(path: str) -> bool:
+    """A container path strictly below /work, with nothing that changes its meaning."""
+    parts = path.split("/")
+    return (
+        path.startswith(f"{sandbox.WORK}/")
+        and ".." not in parts
+        and "." not in parts[1:]
+        and not _CONTAINER_PATH_UNSAFE.search(path)
+    )
+
+
+def _checked_deps_plan(plan: sandbox_deps.DepsPlan) -> sandbox_deps.DepsPlan:
+    """*plan* with its env cut to the allowlist; raises when a mount or PATH entry is wrong.
+
+    The runtime's bind validator still checks every source; this checks what
+    only the driver knows: targets and PATH entries live under the worktree.
+    """
+    if plan.toolchain != "bun":
+        raise sandbox_deps.DepsUnavailableError(f"plan is for {plan.toolchain!r}, not bun")
+    if not plan.mounts:
+        raise sandbox_deps.DepsUnavailableError("plan mounts nothing")
+    targets = [m.target for m in plan.mounts]
+    if len(set(targets)) != len(targets):
+        raise sandbox_deps.DepsUnavailableError("plan mounts one target twice")
+    for target in (*targets, *plan.path_prepend):
+        if not _under_work(target):
+            raise sandbox_deps.DepsUnavailableError(f"plan path {target!r} is not under /work")
+    dropped = sorted(set(plan.env) - _DEPS_ENV_ALLOWED)
+    if dropped:
+        logger.warning("claude_code: dependency plan env not passed: %s", ", ".join(dropped))
+    env = {k: v for k, v in plan.env.items() if k in _DEPS_ENV_ALLOWED}
+    return dataclasses.replace(plan, env=env)
+
+
+def _deps_env(plan: sandbox_deps.DepsPlan) -> dict[str, str]:
+    """The container env for a (checked) dependency plan: its PATH first, then the image's."""
+    return {**plan.env, "PATH": ":".join((*plan.path_prepend, _BASE_PATH))}
+
+
+def _deps_note(plan: sandbox_deps.DepsPlan) -> str:
+    return _DEPS_NOTE.format(targets=", ".join(m.target for m in plan.mounts))
+
+
+async def _project_tool_env(
+    cwd: Path, packet: ContextPacket | None
+) -> tuple[Path | sandbox_deps.DepsPlan | None, str]:
     """The project's cached verifier environment for the task runtime, or why not.
 
-    The same :func:`sandbox.prepare_env` call the verifiers make, with the
-    same registry setup command, so the driver and the checks share one
-    environment (usually a cache hit). On a first attempt the manifests are
-    the project's own; on a bounce they are the worktree's as attempt 1 left
-    them, which is what the verifiers and the run_tests tool already build
-    from, so this adds no new input. A first build takes extra wall time
-    before the agent starts; it does not count against the agent's
+    Python: the same :func:`sandbox.prepare_env` call the verifiers make, with
+    the same registry setup command, so the driver and the checks share one
+    environment (usually a cache hit), mounted at /venv. Bun: the
+    :func:`sandbox_deps.deps_mounts` plan the verifiers use, each mount
+    read-only at its workspace's node_modules. On a first attempt the
+    manifests are the project's own; on a bounce they are the worktree's as
+    attempt 1 left them, which is what the verifiers and the run_tests tool
+    already build from, so this adds no new input. A first build takes extra
+    wall time before the agent starts; it does not count against the agent's
     in-container time limit. Best-effort: without it the agent still works,
     it just cannot run tests (and says so).
     """
@@ -266,9 +345,15 @@ async def _project_tool_env(cwd: Path, packet: ContextPacket | None) -> tuple[Pa
         return None, "not mounted: verifier sandbox is off"
     ctx = packet.project_context if packet else {}
     toolchain = (ctx.get("sandbox_toolchain") or "python").strip().lower()
-    if toolchain != "python":
+    if toolchain not in ("python", "bun"):
         return None, f"not mounted: {toolchain} toolchain"
     try:
+        if toolchain == "bun":
+            plan = await sandbox_deps.deps_mounts(dict(ctx), Path(cwd))
+            if plan is None:
+                raise sandbox_deps.DepsUnavailableError("no dependency plan for this project")
+            plan = _checked_deps_plan(plan)
+            return plan, f"mounted read-only (bun: {len(plan.mounts)} node_modules)"
         venv = await sandbox.prepare_env(
             Path(cwd), ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
         )
@@ -782,8 +867,15 @@ class ClaudeCodeDriver:
             **_TOOL_CACHE_ENV,
         }
         tool_env, tool_note = await _project_tool_env(cwd, packet)
-        if tool_env is not None:
+        venv = tool_env if isinstance(tool_env, Path) else None
+        deps = tool_env if isinstance(tool_env, sandbox_deps.DepsPlan) else None
+        # The image's own binary, not args[0] (the host's configured path).
+        command: tuple[str, ...] = (sandbox.DRIVER_CLI, *args[1:])
+        if venv is not None:
             env.update(_PROJECT_ENV_VARS)
+        if deps is not None:
+            env.update(_deps_env(deps))
+            command = (*command, "--append-system-prompt", _deps_note(deps))
         if audit is not None:
             audit["tool_env"] = tool_note
         req = task_runtime.RuntimeRequest(
@@ -791,11 +883,11 @@ class ClaudeCodeDriver:
             tenant_id=str(packet.tenant_id) if packet else "unknown",
             driver="claude_code",
             image=settings.driver_claude_sandbox_image,
-            # The image's own binary, not args[0] (the host's configured path).
-            command=(sandbox.DRIVER_CLI, *args[1:]),
+            command=command,
             workspace=cwd,
             credentials=None if secret_env else creds_dir,
-            tool_env=tool_env,
+            tool_env=venv,
+            read_only_binds=tuple((m.source, m.target) for m in deps.mounts) if deps else (),
             env=env,
             secret_env=secret_env,
             egress_allowlist=tuple(settings.driver_runtime_egress_allowlist_list),
