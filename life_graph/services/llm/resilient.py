@@ -1,11 +1,23 @@
 """ResilientLLM — ordered free-model failover with cooldowns + health recording.
 
 Every completion tries the caller's model first, then the configured free
-fallback chain, skipping any model currently in cooldown. A 429 benches a model
-for `llm_cooldown_429_seconds` (or its Retry-After); other errors for
-`llm_cooldown_error_seconds`. Health is recorded to LLMHealth from real outcomes
-— never a probe. When every model is exhausted (or all cooling and the one forced
-retry also fails) it raises ResilientLLMExhaustedError; callers run their own fallback.
+fallback chain, skipping any model currently in cooldown. Health is recorded to
+LLMHealth from real outcomes — never a probe. When every model is exhausted (or
+all cooling and the one forced retry also fails) it raises
+ResilientLLMExhaustedError; callers run their own fallback.
+
+Errors are classified (``classify_error``, router council decision 2026-11-28):
+
+* Real failures bench the model, with an exponential cooldown: ``429`` (rate
+  limit; `llm_cooldown_429_seconds` or its Retry-After), ``timeout`` and
+  ``error`` (5xx, connection errors, anything unrecognised; base
+  `llm_cooldown_error_seconds`).
+* Request errors are about this request (or our configuration), not the
+  model's health, so they never bench it: ``bad_request`` (400/422),
+  ``context_window``, ``content_policy``, and ``auth`` (401/403, its own class
+  so a misconfigured key is visible). The call still moves on down the chain:
+  after ``context_window`` the models known to have a larger context window
+  go next; after ``content_policy`` the models of other providers go next.
 """
 
 from __future__ import annotations
@@ -25,6 +37,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterator
 
 from life_graph.config import settings
+from life_graph.services.llm import local_runtime
 from life_graph.services.llm.fallback_pin import _allowed_fallbacks
 from life_graph.services.llm.health import LLMHealth
 
@@ -179,8 +192,6 @@ def _local_model_kwargs(model: str) -> dict[str, Any]:
     if not model.startswith(LOCAL_PROVIDERS):
         return {}
 
-    from life_graph.services.llm import local_runtime
-
     extra: dict[str, Any] = {"keep_alive": local_runtime.keep_alive()}
     if model.startswith(("ollama/", "ollama_chat/")):
         # The same context size as every other Life Graph request: a different
@@ -228,16 +239,110 @@ def _bridge_provider_credentials() -> None:
         os.environ["VERTEXAI_LOCATION"] = settings.vertex_location
 
 
-def _classify(exc: Exception) -> str:
-    """Classify an LLM call failure into a cooldown/health-recording bucket."""
+# Error classes. BENCHING ones say the model is unwell; the rest say the
+# request (or our credentials) was wrong and another model may still serve it.
+RATE_LIMIT = "429"
+TIMEOUT = "timeout"
+SERVER_ERROR = "error"
+BAD_REQUEST = "bad_request"
+CONTEXT_WINDOW = "context_window"
+CONTENT_POLICY = "content_policy"
+AUTH = "auth"
+BENCHING_KINDS = frozenset({RATE_LIMIT, TIMEOUT, SERVER_ERROR})
+
+# Providers that report an overflow as a plain 400 LiteLLM couldn't map.
+_CONTEXT_PHRASES = (
+    "context length",
+    "context window",
+    "context_length_exceeded",
+    "maximum context",
+    "prompt is too long",
+    "too many tokens",
+    "input is too long",
+)
+
+
+def classify_error(exc: BaseException) -> str:
+    """Put an LLM call failure into one of the classes above.
+
+    LiteLLM's own exception types first (subclasses before their 400 parent),
+    then a bare HTTP ``status_code`` for anything else. Unknown → ``error``,
+    which benches: an unexplained failure is treated as the model's.
+    """
+    if isinstance(exc, litellm.ContextWindowExceededError):
+        return CONTEXT_WINDOW
+    if isinstance(exc, litellm.ContentPolicyViolationError):
+        return CONTENT_POLICY
     if isinstance(exc, litellm.RateLimitError):
-        return "429"
-    if isinstance(exc, litellm.Timeout) or exc.__class__.__name__ in {
+        return RATE_LIMIT
+    if isinstance(exc, (litellm.Timeout, TimeoutError)) or exc.__class__.__name__ in {
         "Timeout",
         "APITimeoutError",
     }:
-        return "timeout"
-    return "error"
+        return TIMEOUT
+    if isinstance(exc, (litellm.AuthenticationError, litellm.PermissionDeniedError)):
+        return AUTH
+    if isinstance(exc, (litellm.BadRequestError, litellm.UnprocessableEntityError)):
+        return _bad_request_kind(exc)
+    status = getattr(exc, "status_code", None)
+    if status == 429:
+        return RATE_LIMIT
+    if status in (401, 403):
+        return AUTH
+    if status in (400, 422):
+        return _bad_request_kind(exc)
+    return SERVER_ERROR
+
+
+def _bad_request_kind(exc: BaseException) -> str:
+    text = str(exc).lower()
+    return CONTEXT_WINDOW if any(p in text for p in _CONTEXT_PHRASES) else BAD_REQUEST
+
+
+def context_window_of(model: str) -> int | None:
+    """Best-known input context size for *model*, or None when unknown.
+
+    Ollama models all run with the one ``num_ctx`` Life Graph asks for
+    (services/llm/local_runtime.py), whatever the model could hold; anything
+    else comes from LiteLLM's model map, which knows most hosted models.
+    """
+    if model.startswith(("ollama/", "ollama_chat/")):
+        return local_runtime.num_ctx() or None
+    try:
+        info = litellm.get_model_info(model)
+    except Exception:  # noqa: BLE001 - unmapped model: size unknown
+        return None
+    size = info.get("max_input_tokens") or info.get("max_tokens")
+    return int(size) if size else None
+
+
+def reorder_after(kind: str, failed: str, rest: list[str]) -> list[str]:
+    """The rest of the chain, reordered for a request error on *failed*.
+
+    ``context_window``: models known to be larger than *failed* first (chain
+    order kept), then models of unknown size, then those known not to be
+    larger — they would very likely overflow too. If *failed*'s own size is
+    unknown, the chain is left as it is (next model).
+    ``content_policy``: models of another provider first, then the same
+    provider's. Anything else: unchanged.
+    """
+    if kind == CONTEXT_WINDOW:
+        limit = context_window_of(failed)
+        if limit is None:
+            return rest
+        sizes = {m: context_window_of(m) for m in rest}
+        larger = [m for m in rest if (sizes[m] or 0) > limit]
+        unknown = [m for m in rest if sizes[m] is None]
+        smaller = [m for m in rest if sizes[m] is not None and sizes[m] <= limit]
+        return [*larger, *unknown, *smaller]
+    if kind == CONTENT_POLICY:
+        provider = provider_of(failed)
+        if not provider:
+            return rest
+        others = [m for m in rest if provider_of(m) != provider]
+        same = [m for m in rest if provider_of(m) == provider]
+        return [*others, *same]
+    return rest
 
 
 def _retry_after(exc: Exception) -> float | None:
@@ -360,7 +465,10 @@ class ResilientLLM:
             chain = [primary, *await self._rank_fallbacks(primary)]
             self._append_last_resorts(chain)
         skipped: list[str] = []
-        for m in chain:
+        last_kind: str | None = None
+        queue = list(chain)
+        while queue:
+            m = queue.pop(0)
             # A provider at its daily limit is skipped outright, and is not a
             # candidate for the forced retry below either: that limit is the
             # provider's rule, not a transient cooldown.
@@ -378,34 +486,53 @@ class ResilientLLM:
             try:
                 return await self._attempt(m, messages, kwargs)
             except Exception as exc:  # noqa: BLE001 - classify + fail over
-                kind = _classify(exc)
-                fails = await self._health.record_failure(m, kind)
-                retry_after = _retry_after(exc) if kind == "429" else None
-                if retry_after is not None:
-                    cd = retry_after
-                else:
-                    base = (
-                        settings.llm_cooldown_429_seconds
-                        if kind == "429"
-                        else settings.llm_cooldown_error_seconds
+                last_kind = kind = classify_error(exc)
+                if kind not in BENCHING_KINDS:
+                    # The request, not the model: no failure count, no cooldown.
+                    await self._health.record_request_error(m, kind)
+                    queue = reorder_after(kind, m, queue)
+                    logger.warning(
+                        "Model %s rejected the request (%s); not benched, next: %s",
+                        m,
+                        kind,
+                        queue[0] if queue else "none",
                     )
-                    cd = min(base * 2 ** (fails - 1), settings.llm_cooldown_max_seconds)
-                await self._health.set_cooldown(m, cd)
-                logger.warning(
-                    "Model %s failed (%s); benched %ss (failure #%d)", m, kind, cd, fails
-                )
+                    continue
+                await self._bench(m, kind, exc)
 
         # Every model failed or was skipped. If some were only SKIPPED (cooling),
         # force ONE live attempt on the one soonest to recover — don't give up blind.
         if skipped:
             cooldowns = {mm: await _safe_cooldown(self._health, mm) for mm in skipped}
-            forced = min(cooldowns, key=cooldowns.get)
+            forced = min(cooldowns, key=cooldowns.__getitem__)
             await _count_request(forced)
             try:
                 return await self._attempt(forced, messages, kwargs)
             except Exception as exc:  # noqa: BLE001
-                await self._health.record_failure(forced, _classify(exc))
-        raise ResilientLLMExhaustedError(f"All models exhausted: {chain}")
+                last_kind = kind = classify_error(exc)
+                if kind in BENCHING_KINDS:
+                    await self._health.record_failure(forced, kind)
+                else:
+                    await self._health.record_request_error(forced, kind)
+        raise ResilientLLMExhaustedError(
+            f"All models exhausted: {chain}" + (f" (last error: {last_kind})" if last_kind else "")
+        )
+
+    async def _bench(self, model: str, kind: str, exc: Exception) -> None:
+        """Record a real failure and cool *model* down (exponential, capped)."""
+        fails = await self._health.record_failure(model, kind)
+        retry_after = _retry_after(exc) if kind == RATE_LIMIT else None
+        if retry_after is not None:
+            cd = retry_after
+        else:
+            base = (
+                settings.llm_cooldown_429_seconds
+                if kind == RATE_LIMIT
+                else settings.llm_cooldown_error_seconds
+            )
+            cd = min(base * 2 ** (fails - 1), settings.llm_cooldown_max_seconds)
+        await self._health.set_cooldown(model, cd)
+        logger.warning("Model %s failed (%s); benched %ss (failure #%d)", model, kind, cd, fails)
 
     async def chat(
         self,
