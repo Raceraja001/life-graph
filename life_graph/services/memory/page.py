@@ -36,7 +36,7 @@ from sqlalchemy.orm import defer
 from life_graph.core import evidence as ev
 from life_graph.core import slots
 from life_graph.core.utils import iso_or_none as _iso
-from life_graph.services.memory import transitions
+from life_graph.services.memory import supersession, transitions
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -527,17 +527,7 @@ async def drop(tenant_id: str, memory_id: uuid.UUID, store: Any) -> dict[str, An
 
 async def _restore_replaced(tenant_id: str, memory_id: uuid.UUID) -> None:
     async with async_session() as session:
-        await session.execute(
-            text(
-                # superseded_at goes too: an undo restores the old value as
-                # current belief on every timeline (retrieval.is_known_at).
-                "UPDATE memories SET status = 'active', superseded_by = NULL, updated_at = NOW(),"
-                " properties = COALESCE(properties, '{}'::jsonb) - 'superseded_at'"
-                " WHERE tenant_id = :t AND superseded_by = :id AND status = 'superseded'"
-                " AND NOT (COALESCE(properties, '{}'::jsonb) ? 'merged_into')"
-            ),
-            {"id": memory_id, "t": tenant_id},
-        )
+        await supersession.restore_replaced_by(session, tenant_id, memory_id)
         await session.commit()
     _changed(tenant_id)
 

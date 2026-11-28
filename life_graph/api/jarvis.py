@@ -102,7 +102,7 @@ from life_graph.services.chat_turn import (
     stream_turn,
 )
 from life_graph.services.lead import LEAD
-from life_graph.services.memory import transitions
+from life_graph.services.memory import supersession, transitions
 from life_graph.services.memory.sources import source_label
 from life_graph.storage.database import async_session
 
@@ -1228,18 +1228,9 @@ async def undo_save(memory_id: uuid.UUID):
             # A near-duplicate merged into this one (merged_into) is not an
             # earlier value: it stays folded away, as page._restore_replaced
             # leaves it (2026-11-25).
-            await session.execute(
-                text(
-                    # superseded_at goes too, or the restored fact still reads
-                    # as replaced to a question "as of now" (retrieval.is_known_at).
-                    "UPDATE memories SET status = 'active', superseded_by = NULL,"
-                    " updated_at = NOW(),"
-                    " properties = COALESCE(properties, '{}'::jsonb) - 'superseded_at'"
-                    " WHERE tenant_id = :t AND superseded_by = :id AND status = 'superseded'"
-                    " AND NOT (COALESCE(properties, '{}'::jsonb) ? 'merged_into')"
-                ),
-                {"id": memory_id, "t": tenant_id},
-            )
+            # superseded_at goes too, or the restored fact still reads as
+            # replaced to a question "as of now" (retrieval.is_known_at).
+            await supersession.restore_replaced_by(session, tenant_id, memory_id)
         await session.commit()
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Nothing to undo.")

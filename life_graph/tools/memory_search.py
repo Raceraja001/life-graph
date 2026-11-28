@@ -34,6 +34,7 @@ from typing import Any
 
 from life_graph.core.run_taint import TAINTED_REFUSAL, outside_content_seen
 from life_graph.scoring.ranking import INDEX_CONTENT_CHARS
+from life_graph.services.memory import supersession
 from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
@@ -606,31 +607,17 @@ async def _supersede(tenant_id: str, old_id: Any, new_id: Any) -> str | None:
     is_known_at): a question "as of now" must not read the old value as
     current belief. Undo paths remove it again (services/memory/page.py
     _restore_replaced, api/jarvis.py undo_save, a rejected contradiction).
+
+    The writes are services/memory/supersession.py ``apply``. Both rows are
+    locked while read, so of two corrections of one fact only one replaces
+    it (services/memory/page.py ``correct`` relies on that). Both must be
+    *tenant_id*'s.
     """
-    from datetime import UTC, datetime
-
-    from sqlalchemy import text
-
     from life_graph.storage.database import async_session
 
-    stamp = json.dumps({"superseded_at": datetime.now(UTC).isoformat()})
     async with async_session() as session:
-        old = (
-            await session.execute(
-                text(
-                    "UPDATE memories SET status = 'superseded', superseded_by = :new,"
-                    " updated_at = NOW(),"
-                    " properties = COALESCE(properties, '{}'::jsonb) || CAST(:stamp AS jsonb)"
-                    " WHERE id = :old AND tenant_id = :t AND status = 'active' AND id <> :new"
-                    " RETURNING content"
-                ),
-                {"old": old_id, "new": new_id, "t": tenant_id, "stamp": stamp},
-            )
-        ).first()
-        if old is not None:
-            await session.execute(
-                text("UPDATE memories SET supersedes = :old WHERE id = :new AND tenant_id = :t"),
-                {"old": old_id, "new": new_id, "t": tenant_id},
-            )
+        old, new = await supersession.load(session, tenant_id, old_id, new_id, lock=True)
+        replaced = supersession.apply(tenant_id, old, new, why="correction")
+        content = old.content if replaced and old is not None else None
         await session.commit()
-    return old[0] if old else None
+    return content
