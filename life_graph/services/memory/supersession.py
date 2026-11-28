@@ -211,8 +211,9 @@ def _aware(value: Any) -> datetime | None:
 def world_start(new: Any) -> datetime | None:
     """When *new*'s fact started being true in the world, if it says so.
 
-    Known when the row carries ``properties.world_time`` (set by the world-time
-    rules, ADR §5.1) or its ``valid_from`` is earlier than its recorded time
+    Known when the row carries a ``properties.world_time`` start (set by the
+    world-time rules, ADR §5.1; an end alone, ``world_time.end``, is not a
+    start) or its ``valid_from`` is earlier than its recorded time
     (``created_at``), to the second: ``valid_from`` = recorded is how "no world
     time" is spelled (snapshot.world_time_known). A correction ("actually it
     is Anna Nagar") has no start here: the old value was never true, so it
@@ -224,7 +225,8 @@ def world_start(new: Any) -> datetime | None:
     start = _aware(getattr(new, "valid_from", None))
     if start is None:
         return None
-    if props.get("world_time"):
+    world = props.get("world_time")
+    if isinstance(world, dict) and world.get("start"):
         return start
     recorded = _aware(getattr(new, "created_at", None))
     if recorded is not None and int(start.timestamp()) < int(recorded.timestamp()):

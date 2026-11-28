@@ -4,6 +4,10 @@
     "precision": 1.0,
     "recall": 1.0
   },
+  "world_end": {
+    "precision": 1.0,
+    "recall": 1.0
+  },
   "supersession": {
     "precision": 1.0,
     "recall": 1.0,

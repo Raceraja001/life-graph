@@ -669,6 +669,18 @@ class MemoryManager:
         started = world_time.for_fact(fact, properties)
         if started is not None:
             world_time.record(properties, started)
+        # When it stops being true ("until 20 November", "March varaikum"),
+        # from its own words, with ingest_world_end on: the extractor's own
+        # valid_until is then kept only when a rule agrees. Off, the
+        # extractor's valid_until is stored as before.
+        ended = world_time.end_for_fact(fact, properties, started)
+        if ended is not None:
+            world_time.record_end(properties, ended)
+        valid_until = (
+            (ended.end if ended is not None else None)
+            if world_time.end_enabled()
+            else _end_of_day(fact.valid_until)
+        )
         kept_because = _auto_approved(fact, trust_tier, contradicts=bool(other_clashes))
         active_now = kept_because is not None
         if kept_because:
@@ -699,7 +711,7 @@ class MemoryManager:
             # tags: decay exempts importance_tier='critical', and without this
             # every new memory was stored 'normal' (code review, 2026-10-22).
             importance_tier=tier,
-            valid_until=_end_of_day(fact.valid_until),
+            valid_until=valid_until,
             **world_time.store_kwargs(started),
         )
         if (new_this_message := _new_this_message.get()) is not None:

@@ -138,6 +138,14 @@ class MemorySettings(BaseModel):
     # valid_from that a rule must agree with. Off: saves, the extraction
     # schema and every row are exactly as before.
     ingest_world_time: bool = False
+    # M8 world END (services/memory/world_time.py, ADR m8-ingestion §5.1):
+    # a new memory gets valid_until from its own words ("until 20 November",
+    # "till March", "நவம்பர் 20 வரை", "March varaikum") by deterministic
+    # rules, recorded in properties.world_time.end with valid_until_by =
+    # "rules". The model's own valid_until is kept only when a rule agrees.
+    # Separate from ingest_world_time on purpose: that one is on in prod.
+    # Off: the save path stores the extractor's valid_until exactly as before.
+    ingest_world_end: bool = False
     # The owner's lasting facts, put in front of every local Jarvis answer
     # whether or not search finds them (services/profile_card.py). 0 = off.
     profile_card_max_items: int = 40

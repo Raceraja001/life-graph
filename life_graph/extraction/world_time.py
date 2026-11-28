@@ -1,4 +1,4 @@
-"""When a fact started being true in the world, from its own words (ADR m8-ingestion §5.1).
+"""When a fact started, and stopped, being true in the world, from its own words (ADR m8-ingestion §5.1).
 
 Pure rules, no I/O and no model. Given a text and the moment it was said (the
 *anchor*: ``said_at`` for a late capture, else now, in the owner's time zone),
@@ -34,6 +34,11 @@ What never gives a start (the result is ``None``):
   read for a start (§5.1 point 2) and a model's date can be checked against
   it (point 3, :func:`from_model`);
 * two different starts in one text: which fact is which is not known.
+
+The end of a fact (:func:`find_end`, :func:`world_end_of`) is the other side:
+"until 20 November", "till March", "நவம்பர் 20 வரை", "March varaikum". See
+the "World end" section below. An end is never read from a hedged, negated
+or planned text either.
 
 "Now" and "currently" are deliberately unknown: they say a state holds now,
 not that it began today. The ADR table lists them with "the said day"; that
@@ -118,11 +123,17 @@ MONTHS: dict[str, int] = {
     "டிசம்பர்": 12,
 }
 #: "may" is also a verb: a month only with a day, a year or a preposition.
-WEEKDAYS = frozenset(
-    {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
-    | {"திங்கள்", "செவ்வாய்", "புதன்", "வியாழன்", "வெள்ளி", "சனி", "ஞாயிறு"}
-    | {"thingal", "sevvai", "budhan", "vyazhan", "velli", "sani", "nyayiru"}
-)
+#: Each weekday word, Monday = 0 (English, Tamil, Tanglish).
+WEEKDAY_INDEX: dict[str, int] = {
+    word: i
+    for names in (
+        ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"),
+        ("திங்கள்", "செவ்வாய்", "புதன்", "வியாழன்", "வெள்ளி", "சனி", "ஞாயிறு"),
+        ("thingal", "sevvai", "budhan", "vyazhan", "velli", "sani", "nyayiru"),
+    )
+    for i, word in enumerate(names)
+}
+WEEKDAYS = frozenset(WEEKDAY_INDEX)
 NUMBER_WORDS = {
     "a": 1,
     "an": 1,
@@ -211,15 +222,24 @@ TAMIL: dict[str, frozenset[str]] = {
 }
 _TA_UNIT = {"week": WEEK, "month": MONTH, "year": YEAR, "day": DAY}
 
+#: Festivals: a time the rules see but cannot place (no calendar here).
+FESTIVALS = frozenset({"pongal", "diwali", "deepavali", "onam", "ugadi", "பொங்கல்", "தீபாவளி"})
 #: Seen as a time but not placeable: counted, never resolved.
-VAGUE = frozenset(
-    {"recently", "lately", "nowadays", "currently", "now", "tonight", "earlier", "ago"}
-    | {"சமீபத்தில்", "இப்போ", "இப்போது", "இப்ப", "ippo", "ippa", "ipo", "samipathula"}
-    | {"pongal", "diwali", "deepavali", "onam", "ugadi", "பொங்கல்", "தீபாவளி"}
+VAGUE = (
+    frozenset(
+        {"recently", "lately", "nowadays", "currently", "now", "tonight", "earlier", "ago"}
+        | {"சமீபத்தில்", "இப்போ", "இப்போது", "இப்ப", "ippo", "ippa", "ipo", "samipathula"}
+    )
+    | FESTIVALS
 )
 
-#: Intention, hedge, negation or an end, as whole tokens: the text gives no start.
-TAMIL_BLOCK = frozenset(
+#: "Until" in Tamil and Tanglish: it follows the time ("நவம்பர் 20 வரை").
+TAMIL_UNTIL = frozenset(
+    {"வரை", "வரைக்கும்", "வரையில்"}
+    | {"varai", "varaikum", "varaikkum", "varaiku", "varaikku", "varaiyil"}
+)
+#: Intention, hedge or negation, as whole tokens: the text is not a firm fact.
+TAMIL_NOT_FIRM = frozenset(
     # hedge
     {"ஒருவேளை", "இருக்கலாம்", "தெரியல", "தெரியலை", "தெரியவில்லை", "நினைக்கிறேன்", "போல"}
     | {"oruvela", "oruvelai", "irukalam", "irukkalam", "theriyala", "therila", "theriyalai"}
@@ -233,16 +253,17 @@ TAMIL_BLOCK = frozenset(
     | {"venum", "vendum", "poren", "porom", "poraen", "pogiren", "pogirom"}
     | {"pannuven", "seiven", "varuven", "poven", "vanguven", "pannanum", "seiyanum"}
     | {"poganum", "vanganum", "pannuvom"}
-    # until
-    | {"வரை", "வரைக்கும்", "varai", "varaikum", "varaikkum", "varaiku"}
 )
+#: Intention, hedge, negation or an end, as whole tokens: the text gives no start.
+TAMIL_BLOCK = TAMIL_NOT_FIRM | TAMIL_UNTIL
 #: Tamil verb endings: may / let's (-லாம்), must (-ணும்), I will (-ப்பேன், -வேன்),
 #: going to (-போறேன்), did not (-வில்லை, -ல்லை).
 TAMIL_BLOCK_ENDINGS = ("லாம்", "ணும்", "ப்பேன்", "வேன்", "போறேன்", "போகிறேன்", "வில்லை", "ல்லை")
 #: Words with those endings that are not verbs: எல்லாம் is "all", எல்லை "a border".
 TAMIL_NOT_BLOCK = frozenset({"எல்லாம்", "எல்லை"})
 
-_EN_BLOCK = re.compile(
+#: An intention, a hedge or a negation in English: the text is not a firm fact.
+_EN_NOT_FIRM = re.compile(
     r"\b(?:\w+(?:'|’)ll|\w+n(?:'|’)t|won(?:'|’)t|can(?:'|’)t)\b"  # I'll, didn't
     r"|\b(?:will|shall|gonna|wanna|planning|intend(?:s|ed)?\s+to|hope\s+to|hoping\s+to)\b"
     r"|\b(?:am|is|are|i'?m|we'?re|they'?re|he'?s|she'?s|im)\s+going\s+to\b"
@@ -251,10 +272,11 @@ _EN_BLOCK = re.compile(
     r"|\bsupposedly\b|\bnot\s+sure\b|\bi\s+(?:think|guess|believe|suppose)\b"
     r"|\b(?:may|might|could)\s+(?:have|be)\b"
     r"|\b(?:not|never|no\s+longer|no\s+more|nor)\b"
-    r"|\b(?:dont|didnt|doesnt|isnt|wasnt|arent|werent|havent|hasnt|hadnt|wont|cant)\b"
-    r"|\b(?:until|till|untill|upto|up\s+to)\b",
+    r"|\b(?:dont|didnt|doesnt|isnt|wasnt|arent|werent|havent|hasnt|hadnt|wont|cant)\b",
     re.IGNORECASE,
 )
+#: An end in English: the text gives no start.
+_EN_UNTIL = re.compile(r"\b(?:until|till|untill|upto|up\s+to)\b", re.IGNORECASE)
 
 #: A sentence's full stop may follow a date; another digit group may not.
 _ISO = re.compile(r"(?<![\d/.-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d/-]|\.\d)")
@@ -291,16 +313,23 @@ def tokens(text: str) -> list[str]:
     return out
 
 
-def blocked(text: str) -> bool:
-    """True when *text* is a plan, an intention, hedged, negated or an end ("until")."""
-    if _EN_BLOCK.search(text or ""):
+def not_firm(text: str) -> bool:
+    """True when *text* is a plan, an intention, hedged or negated: no start and no end."""
+    if _EN_NOT_FIRM.search(text or ""):
         return True
     for tok in tokens(text):
-        if tok in TAMIL_BLOCK:
+        if tok in TAMIL_NOT_FIRM:
             return True
         if len(tok) > 4 and tok.endswith(TAMIL_BLOCK_ENDINGS) and tok not in TAMIL_NOT_BLOCK:
             return True
     return False
+
+
+def blocked(text: str) -> bool:
+    """True when *text* is a plan, an intention, hedged, negated or an end ("until")."""
+    if not_firm(text) or _EN_UNTIL.search(text or ""):
+        return True
+    return any(tok in TAMIL_UNTIL for tok in tokens(text))
 
 
 # ── Hits ──────────────────────────────────────────────────────
@@ -744,12 +773,373 @@ def from_model(value: object, text: str, anchor: datetime, tz: tzinfo = UTC) -> 
 
 def _within(day: date, hit: _Hit) -> bool:
     """True when *day* falls in the period a placed *hit* names."""
-    assert hit.day is not None
-    start = hit.day
-    if hit.precision == DAY:
+    assert hit.day is not None and hit.precision is not None
+    return _in_period(day, hit.day, hit.precision)
+
+
+def _in_period(day: date, start: date, precision: str) -> bool:
+    """True when *day* falls in the *precision* period that begins on *start*."""
+    if precision == DAY:
         return day == start
-    if hit.precision == WEEK:
+    if precision == WEEK:
         return start <= day < start + timedelta(weeks=1)
-    if hit.precision == MONTH:
+    if precision == MONTH:
         return (day.year, day.month) == (start.year, start.month)
     return day.year == start.year
+
+
+def _after_period(start: date, precision: str) -> date:
+    """The first day after the *precision* period that begins on *start*."""
+    if precision == DAY:
+        return start + timedelta(days=1)
+    if precision == WEEK:
+        return start + timedelta(weeks=1)
+    if precision == MONTH:
+        return _months_back(start, -1)
+    return date(start.year + 1, 1, 1)
+
+
+# ── World end ─────────────────────────────────────────────────
+#
+# When a fact stops being true, from its own words. Same anchor, tokens and
+# "not firm" rule as the start. What gives an end:
+#
+# * "until" / "till" / "untill" followed by a time: "until 20 November",
+#   "till March", "until 2027", "till tomorrow", "until next week", "until
+#   the end of this month", "until 15/12/2026"; "up to" / "upto" only when a
+#   time follows ("up to ₹5,000" is an amount, not an end);
+# * a time followed by வரை / வரைக்கும் / வரையில் or the Tanglish varai /
+#   varaikum / varaikkum / varaiku: "நவம்பர் 20 வரை", "அடுத்த மாசம் வரை",
+#   "March varaikum", "December 15 varaikkum", "month end"-style "மார்ச்
+#   கடைசி வரை" / "March end varaikum".
+#
+# The end is the first instant after the named period, in the owner's time
+# zone: "until 20 November" is true all of 20 November, "till March" all of
+# March. A fact never ends earlier than its words allow. A month or date with
+# no year is the next one that has not ended yet ("till March" said in
+# November is next March), or, when the text is in the past tense ("was on
+# leave until 20 November"), the most recent one that has begun.
+#
+# What never gives an end (None):
+#
+# * a hedged, negated or planned text ("I will stay till March", "maybe
+#   until Friday", "I can't travel until …"): :func:`not_firm`;
+# * an "until" with no time the rules can read: "until Amma's routine is
+#   stable", "until now", "till then";
+# * a time the rules see but cannot place: "until Friday", "till Pongal".
+#   The model's own valid_until may fill these (:func:`end_from_model`);
+# * two different ends in one text.
+#
+# A past ending told as an event ("I paid off the car loan in October", "the
+# leave ended last week") is a fact that stays true: it gets the event's
+# start, and the supersession step (services/memory/supersession.py) ends the
+# old fact ("pays a car loan EMI") with it. It does not end itself.
+
+#: English words that open an end; the time follows.
+EN_UNTIL = frozenset({"until", "till", "til", "untill"})
+#: "upto" / "up to": an end only when a time follows.
+EN_UP_TO = frozenset({"upto"})
+#: "the end of …", "March end", "மார்ச் கடைசி": the end of the period, which is
+#: already where an end is put.
+_END_WORDS = frozenset({"end", "கடைசி", "kadaisi", "kadasi"})
+#: Past tense: a month or date with no year is the most recent one.
+PAST_WORDS = frozenset(
+    {"was", "were", "had", "used"}
+    | {"இருந்தேன்", "இருந்தது", "இருந்தோம்", "இருந்தார்", "இருந்தாங்க", "இருந்தாள்"}
+    | {"irundhen", "irunthen", "irundhuchu", "irunthuchu", "irundhom", "irunthom"}
+    | {"irundhaan", "irundhaanga", "irundha", "iruntha"}
+)
+#: Placeholders for numeric dates (letters only, so tokens() keeps them whole).
+_DATE_MARK = "qqdate"
+
+
+@dataclass(frozen=True)
+class WorldEnd:
+    """The end of a fact in the world: the first instant after the named period."""
+
+    end: datetime
+    precision: str
+    rule: str
+    source: str = CONTENT
+
+
+@dataclass(frozen=True)
+class _Period:
+    """A time an end names: placed (``day`` set) or only seen ("Friday", "Pongal")."""
+
+    rule: str
+    day: date | None = None
+    precision: str | None = None
+    weekday: int | None = None
+
+
+def _mark_dates(text: str) -> tuple[str, dict[str, date | None]]:
+    """*text* with ISO and d/m/yyyy dates replaced by placeholder words, and their days."""
+    days: dict[str, date | None] = {}
+
+    def put(found: date | None) -> str:
+        n = len(days)
+        key = _DATE_MARK + chr(97 + n // 26) + chr(97 + n % 26)
+        days[key] = found
+        return f" {key} "
+
+    def iso(m: re.Match[str]) -> str:
+        return put(_make_day(int(m.group(1)), int(m.group(2)), int(m.group(3))))
+
+    def dmy(m: re.Match[str]) -> str:
+        a, b, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        day, month = (b, a) if b > 12 >= a else (a, b)  # day first unless clearly second
+        return put(_make_day(year, month, day))
+
+    return _DMY.sub(dmy, _ISO.sub(iso, text or "")), days
+
+
+def _month_index(year: int, month: int) -> int:
+    return year * 12 + month - 1
+
+
+def _end_month(today: date, month: int, past: bool) -> date:
+    """The month with no year an end names: the next not yet ended, or the last begun."""
+    if past:
+        return _past_month(today, month)
+    year = today.year if month >= today.month else today.year + 1
+    return date(year, month, 1)
+
+
+def _end_day(today: date, month: int, day: int, year: int | None, past: bool) -> date | None:
+    """The date an end names; with no year, the next on or after *today* (or last, *past*)."""
+    if year is not None:
+        return _make_day(year, month, day)
+    if past:
+        return _with_day(today, month, day, None)
+    found = _make_day(today.year, month, day)
+    if found is None or found < today:
+        found = _make_day(today.year + 1, month, day)
+    return found
+
+
+def _end_unit(tok: str) -> str | None:
+    """week / month / year in English, Tamil or Tanglish (never day)."""
+    if tok in ("week", "month", "year"):
+        return UNITS[tok]
+    unit = _ta_unit(tok)
+    return None if unit == DAY else unit
+
+
+def _end_relative(toks: list[str], j: int, today: date) -> tuple[int, _Period] | None:
+    """today, tomorrow, yesterday; next / this / last + week, month, year; a weekday."""
+    t, nxt = _at(toks, j), _at(toks, j + 1)
+    if t in ("today", "tonight") or t in TAMIL["today"]:
+        return 1, _Period("until.today", today, DAY)
+    if t == "tomorrow" or t in TAMIL["tomorrow"]:
+        return 1, _Period("until.tomorrow", today + timedelta(days=1), DAY)
+    if t == "yesterday" or t in TAMIL["yesterday"]:
+        return 1, _Period("until.yesterday", today - timedelta(days=1), DAY)
+    unit = _end_unit(nxt)
+    back = None
+    if t in ("next", "coming") or t in TAMIL["next"]:
+        back = -1
+    elif t == "this" or t in TAMIL["this"]:
+        back = 0
+    elif t in ("last", "previous") or t in TAMIL["last"]:
+        back = 1
+    if unit is not None and back is not None:
+        name = {-1: "next", 0: "this", 1: "last"}[back]
+        return 2, _Period(f"until.{name}_{unit}", _period_start(today, unit, back), unit)
+    if back is not None and nxt in WEEKDAYS:
+        return 2, _Period("until.weekday", weekday=WEEKDAY_INDEX[nxt])
+    if t in WEEKDAYS:
+        return 1, _Period("until.weekday", weekday=WEEKDAY_INDEX[t])
+    if t in FESTIVALS:
+        return 1, _Period("until.festival")
+    return None
+
+
+def _end_calendar(toks: list[str], j: int, today: date, past: bool) -> tuple[int, _Period] | None:
+    """20 November [2026], November 20[, 2026], March [2027], 2027 (+ மாசம் / வருஷம்)."""
+    t = _at(toks, j)
+    day = _day_of_month(t)
+    if day is not None:
+        k = _skip_ordinal(toks, j + 1)
+        k = k + 1 if _at(toks, k) == "of" else k
+        month = MONTHS.get(_at(toks, k))
+        if month is None:
+            return None
+        year, end = _date_tail(toks, k + 1)
+        found = _end_day(today, month, day, year, past)
+        return (end - j, _Period("until.date", found, DAY)) if found else None
+    month = MONTHS.get(t)
+    if month is not None:
+        day = _day_of_month(_at(toks, j + 1))
+        if day is not None:
+            year, end = _date_tail(toks, _skip_ordinal(toks, j + 2))
+            found = _end_day(today, month, day, year, past)
+            return (end - j, _Period("until.date", found, DAY)) if found else None
+        year = _year(_at(toks, j + 1))
+        if year is not None:
+            return 2, _Period("until.month_year", date(year, month, 1), MONTH)
+        k = j + 2 if _at(toks, j + 1) in TAMIL["month"] else j + 1
+        return k - j, _Period("until.month", _end_month(today, month, past), MONTH)
+    year = _year(t)
+    if year is not None:
+        k = j + 2 if _at(toks, j + 1) in TAMIL["year"] else j + 1
+        return k - j, _Period("until.year", date(year, 1, 1), YEAR)
+    return None
+
+
+def _end_phrase(
+    toks: list[str], j: int, today: date, days: dict[str, date | None], past: bool
+) -> tuple[int, _Period] | None:
+    """The time an end names, starting at token *j*: (tokens used, period) or None."""
+    t = _at(toks, j)
+    if t in days:
+        found = days[t]
+        return (1, _Period("until.date", found, DAY)) if found else None
+    k = j + 1 if t == "the" else j
+    if _at(toks, k) == "end" and _at(toks, k + 1) == "of":
+        k += 2
+        k = k + 1 if _at(toks, k) == "the" and _end_unit(_at(toks, k + 1)) else k
+        unit = _end_unit(_at(toks, k))
+        if unit is not None:  # "the end of the month": this one
+            return k + 1 - j, _Period(f"until.end_of_{unit}", _period_start(today, unit, 0), unit)
+        inner = _end_calendar(toks, k, today, past) or _end_relative(toks, k, today)
+        if inner is None or inner[1].precision == DAY:
+            return None
+        return k - j + inner[0], inner[1]
+    base = j + 1 if t == "the" else j  # "until the 20th of November"
+    found = _end_calendar(toks, base, today, past) or _end_relative(toks, base, today)
+    if found is None:
+        return None
+    used, period = found
+    used += base - j
+    if period.precision not in (None, DAY) and _at(toks, j + used) in _END_WORDS:
+        used += 1  # "March end", "மார்ச் கடைசி": the period's end
+    return used, period
+
+
+def _end_hits(text: str, today: date) -> list[_Period | None]:
+    """One entry per "until" in *text*: the period it names, or None for none readable.
+
+    An "up to" that names no time is an amount ("up to ₹5,000") and is left
+    out. A Tamil வரை / varaikum reads the time before it, an English "until"
+    the time after it.
+    """
+    marked, days = _mark_dates(text)
+    toks = tokens(marked)
+    past = any(tok in PAST_WORDS for tok in toks)
+    out: list[_Period | None] = []
+    for i, tok in enumerate(toks):
+        if tok in EN_UNTIL or tok in EN_UP_TO or (tok == "up" and _at(toks, i + 1) == "to"):
+            start = i + 2 if tok == "up" else i + 1
+            found = _end_phrase(toks, start, today, days, past)
+            if found is not None:
+                out.append(found[1])
+            elif tok in EN_UNTIL:
+                out.append(None)
+        elif tok in TAMIL_UNTIL:
+            back = None
+            for k in (5, 4, 3, 2, 1):
+                found = _end_phrase(toks, i - k, today, days, past) if i - k >= 0 else None
+                if found is not None and found[0] == k:
+                    back = found[1]
+                    break
+            out.append(back)
+    return out
+
+
+def _end_result(period: _Period, tz: tzinfo, source: str) -> WorldEnd:
+    assert period.day is not None and period.precision is not None
+    after = _after_period(period.day, period.precision)
+    return WorldEnd(
+        datetime.combine(after, time(0, 0), tzinfo=tz), period.precision, period.rule, source
+    )
+
+
+def end_count(text: str, anchor: datetime | None = None, tz: tzinfo = UTC) -> int:
+    """How many "until"s *text* holds that name a time or nothing (see :func:`_end_hits`)."""
+    today = _local_day(anchor or datetime.now(UTC), tz)
+    return len(_end_hits(text, today))
+
+
+def find_end(
+    text: str, anchor: datetime, tz: tzinfo = UTC, *, source: str = CONTENT
+) -> WorldEnd | None:
+    """The end *text* gives a fact said at *anchor*, or None for unknown.
+
+    None when the text is not firm (:func:`not_firm`), has no "until", has an
+    "until" the rules cannot read or place, or names two different ends.
+    """
+    if not text or not_firm(text):
+        return None
+    hits = _end_hits(text, _local_day(anchor, tz))
+    if not hits or any(h is None or h.day is None for h in hits):
+        return None
+    ends = {(h.day, h.precision): h for h in hits if h is not None}
+    if len(ends) != 1:
+        return None
+    return _end_result(next(iter(ends.values())), tz, source)
+
+
+def world_end_of(
+    content: str, source_text: str | None, anchor: datetime, tz: tzinfo = UTC
+) -> WorldEnd | None:
+    """The end of one extracted fact, read like :func:`world_time_of`.
+
+    1. The fact's content.
+    2. The owner's own words (*source_text*), only when the content names no
+       time and no "until" at all, and the owner's words hold one "until"
+       and at most one time phrase.
+
+    A content that is not firm stops here.
+    """
+    if content and not_firm(content):
+        return None
+    found = find_end(content, anchor, tz, source=CONTENT)
+    if found is not None or not source_text:
+        return found
+    if end_count(content, anchor, tz) or phrase_count(content, anchor, tz):
+        return None
+    if end_count(source_text, anchor, tz) != 1 or phrase_count(source_text, anchor, tz) > 1:
+        return None
+    return find_end(source_text, anchor, tz, source=SOURCE_TEXT)
+
+
+#: How far from the said day a model's date for "until Friday" may be.
+_WEEKDAY_SPAN = 7
+#: How far for "till Pongal": a festival is at most a year away.
+_FESTIVAL_SPAN = 366
+
+
+def end_from_model(value: object, text: str, anchor: datetime, tz: tzinfo = UTC) -> WorldEnd | None:
+    """An end date the local model proposed (``valid_until``), checked like :func:`from_model`.
+
+    Kept only when it is a YYYY-MM-DD date, *text* is firm and has an
+    "until" with a time, and a rule agrees: the date is inside the period a
+    placed "until" names, or on the weekday of "until Friday" within a week
+    of the said day, or within a year of it for "till Pongal". The end is
+    the first instant after that day. A bare model date, with no "until" in
+    the text, gives None. Call it only when :func:`world_end_of` found nothing.
+    """
+    if not isinstance(value, str) or not text or not_firm(text):
+        return None
+    try:
+        day = date.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    today = _local_day(anchor, tz)
+    hits = _end_hits(text, today)
+    if not hits or any(h is None for h in hits):
+        return None
+    if not any(_end_agrees(day, h, today) for h in hits if h is not None):
+        return None
+    return _end_result(_Period("model", day, DAY), tz, MODEL)
+
+
+def _end_agrees(day: date, period: _Period, today: date) -> bool:
+    """True when the model's *day* fits the time an "until" names."""
+    if period.day is not None and period.precision is not None:
+        return _in_period(day, period.day, period.precision)
+    delta = (day - today).days
+    if period.weekday is not None:
+        return day.weekday() == period.weekday and abs(delta) <= _WEEKDAY_SPAN
+    return abs(delta) <= _FESTIVAL_SPAN

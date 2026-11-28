@@ -4,9 +4,12 @@
 Scores the labelled cases in ``evals/ingestion_structure/cases.json`` against
 the real save-path code, with all the M8 ingestion flags on
 (``ingest_world_time``, ``ingest_supersession_tiers``, ``ingest_slot_pairing``,
-``ingest_typed_links``, ``decision_lifecycle``):
+``ingest_typed_links``, ``decision_lifecycle``, ``ingest_world_end``):
 
 * ``world_time`` -- extraction/world_time.py ``world_time_of`` on one fact.
+* ``world_end`` -- services/memory/world_time.py ``end_of`` on one fact: the
+  rules' "until 20 November" / "March varaikum", then the model's
+  ``valid_until`` only when a rule agrees.
 * ``supersession`` -- an active old memory and a new fact (the extractor's raw
   item, read through extraction/llm.py's own checks) go through
   ``MemoryManager._process_fact`` with the real contradiction detector, the
@@ -26,6 +29,8 @@ Zero-tolerance counts (``--verify`` fails on any):
 
 * ``world_time_set_where_unknown`` -- a start where the gold has none;
 * ``world_time_future_given_start`` -- a plan given a start;
+* ``world_end_set_where_unknown`` -- an end where the gold has none;
+* ``world_end_before_start`` -- an end at or before the fact's own start;
 * ``wrong_auto_supersede`` -- a supersede applied at once (high tier) where
   the gold says the two facts are not one attribute;
 * ``decision_confirmed_without_owner`` -- a decision moved to decided, or read
@@ -74,6 +79,8 @@ SUPERSEDE_TIERS = frozenset({"high", "medium"})
 ZERO = (
     "world_time_set_where_unknown",
     "world_time_future_given_start",
+    "world_end_set_where_unknown",
+    "world_end_before_start",
     "wrong_auto_supersede",
     "decision_confirmed_without_owner",
     "outside_supersede_or_link",
@@ -130,6 +137,45 @@ def score_world_time(data: dict[str, Any]) -> dict[str, Any]:
         "denominators": {"precision": len(made), "recall": len(has)},
         "set_where_unknown": [c["id"] for c, g, w in made if w is None],
         "future_given_start": [c["id"] for c, g, _ in made if c["category"] == "future"],
+        "misses": [f"{c['id']}: {g} != {w}" for c, g, w in rows if g != w],
+    }
+
+
+# ── World end ─────────────────────────────────────────────────
+
+
+def score_world_end(data: dict[str, Any]) -> dict[str, Any]:
+    from life_graph.extraction.world_time import world_time_of
+    from life_graph.services.memory.world_time import end_of
+
+    tz = ZoneInfo(data["tz"])
+    rows = []
+    before_start = []
+    for c in data.get("world_end", []):
+        anchor = datetime.fromisoformat(c.get("said_at") or data["anchor"])
+        found = end_of(
+            c["content"], c.get("source_text"), anchor, tz, model_value=c.get("model_valid_until")
+        )
+        got = None if found is None else (found.end.date().isoformat(), found.precision)
+        want = c["expect"]
+        gold = (
+            None
+            if want is None
+            else (date.fromisoformat(want["end"]).isoformat(), want["precision"])
+        )
+        rows.append((c, got, gold))
+        started = world_time_of(c["content"], c.get("source_text"), anchor, tz)
+        if found is not None and started is not None and found.end <= started.start:
+            before_start.append(c["id"])
+    made = [r for r in rows if r[1] is not None]
+    has = [r for r in rows if r[2] is not None]
+    return {
+        "cases": len(rows),
+        "precision": _rate(sum(g == w for _, g, w in made), len(made)),
+        "recall": _rate(sum(g == w for _, g, w in has), len(has)),
+        "denominators": {"precision": len(made), "recall": len(has)},
+        "set_where_unknown": [c["id"] for c, g, w in made if w is None],
+        "before_start": before_start,
         "misses": [f"{c['id']}: {g} != {w}" for c, g, w in rows if g != w],
     }
 
@@ -589,6 +635,7 @@ async def evaluate(data: dict[str, Any], now: datetime | None = None) -> dict[st
     calls: dict[str, int] = {}
     with flags_on(), _no_models(calls):
         wt = score_world_time(data)
+        we = score_world_end(data)
         sup = [(c, await run_supersession_case(c, now)) for c in data.get("supersession", [])]
         lnk = [(c, await run_links_case(c, now)) for c in data.get("links", [])]
         caps = [
@@ -602,6 +649,7 @@ async def evaluate(data: dict[str, Any], now: datetime | None = None) -> dict[st
     s, li, de = score_supersession(sup), score_links(lnk), score_decisions(caps, mvs)
     all_cases = (
         data.get("world_time", [])
+        + data.get("world_end", [])
         + data.get("supersession", [])
         + data.get("links", [])
         + data.get("decisions", [])
@@ -610,6 +658,8 @@ async def evaluate(data: dict[str, Any], now: datetime | None = None) -> dict[st
     zero = {
         "world_time_set_where_unknown": len(wt["set_where_unknown"]),
         "world_time_future_given_start": len(wt["future_given_start"]),
+        "world_end_set_where_unknown": len(we["set_where_unknown"]),
+        "world_end_before_start": len(we["before_start"]),
         "wrong_auto_supersede": len(s["wrong_auto_supersede"]),
         "decision_confirmed_without_owner": len(de["confirmed_without_owner"]),
         "outside_supersede_or_link": len(s["outside"]) + len(li["outside"]) + len(de["outside"]),
@@ -623,6 +673,7 @@ async def evaluate(data: dict[str, Any], now: datetime | None = None) -> dict[st
         "tamil_or_tanglish_share": round(tamil / max(len(all_cases), 1), 3),
         "zero_tolerance": zero,
         "world_time": wt,
+        "world_end": we,
         "supersession": s,
         "links": li,
         "decisions": de,
@@ -645,6 +696,7 @@ def _no_models(calls: dict[str, int]):
 #: The rates --verify holds to the baseline, per section.
 RATES = {
     "world_time": ("precision", "recall"),
+    "world_end": ("precision", "recall"),
     "supersession": (
         "precision",
         "recall",
