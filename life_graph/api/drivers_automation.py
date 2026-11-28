@@ -1,7 +1,8 @@
 """Agent-driver automation API (Phase 4b): the PR feedback loop and the arena.
 
 Prefix: /kernel/drivers (same tag as api/drivers.py). Parallel plans show in
-the existing ``GET /kernel/drivers/plans/{id}`` (``team``) and dependencies on
+the existing ``GET /kernel/drivers/plans/{id}`` (``team``), the owner retries a
+team's failed worker here (Team upgrades, 2026-11-28), and dependencies on
 the task routes (``depends_on`` on create, ``depends_on`` /
 ``dependency_wait`` on read). docs/specs/agent-drivers.md, "Phase 4b".
 """
@@ -10,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -21,6 +22,7 @@ from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.dev import arena as _arena
 from life_graph.services.dev import pr_watch as _pr_watch
+from life_graph.services.dev import team_retry as _team_retry
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -159,4 +161,49 @@ async def pick_arena_winner(arena_id: str, body: ArenaPick, request: Request) ->
         data = await _arena.pick_winner(async_session, get_current_tenant_id(), arena_id, task_id)
     except _arena.ArenaError as exc:
         raise _arena_error(exc) from exc
+    return success_response(data=data)
+
+
+# ── Teams (parallel plans) ───────────────────────────────────
+
+
+class WorkerRetry(BaseModel):
+    """Optional overrides for one retried team worker."""
+
+    model_config = {"extra": "forbid"}
+
+    tier: Literal["cheap", "balanced", "best"] | None = None
+    persona: str | None = Field(None, min_length=1, max_length=100)
+
+
+@router.post(
+    "/plans/{plan_id}/workers/{task_id}/retry",
+    status_code=202,
+    summary="Re-run one failed worker of a parallel plan (owner)",
+)
+async def retry_team_worker(
+    plan_id: str, task_id: str, request: Request, body: WorkerRetry | None = None
+) -> dict[str, Any]:
+    """Queue a fresh attempt of a failed, timed-out or cancelled worker (on
+    *tier*'s rung / as *persona* when given, else one rung up). When the team
+    failed because of this worker it is reopened: status ``running`` again and
+    the tasks the team cancelled are queued again. 404 unknown plan/worker;
+    409 ``not_failed`` / ``superseded`` / ``retry_pending`` / ``team_busy`` /
+    ``failed_elsewhere``; 422 ``unknown_persona`` or a bad tier."""
+    owner_only(request, "Retrying a team worker")
+    plan = _uuid(plan_id, "plan_id")
+    task = _uuid(task_id, "task_id")
+    body = body or WorkerRetry()
+    try:
+        data = await _team_retry.owner_retry(
+            async_session,
+            get_current_tenant_id(),
+            plan,
+            task,
+            tier=body.tier,
+            persona=body.persona,
+            by=resolver(request) or "owner",
+        )
+    except _team_retry.TeamError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=f"{exc.code}: {exc}") from exc
     return success_response(data=data)

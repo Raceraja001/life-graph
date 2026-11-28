@@ -290,6 +290,8 @@ def test_decide():
 
 
 async def test_a_failing_worker_cancels_the_rest_of_its_team(monkeypatch):
+    # driver_team_worker_retries = 0: the Phase 4b behaviour, no retry.
+    monkeypatch.setattr(settings, "driver_team_worker_retries", 0)
     group = DevTaskGroup(
         id=uuid.uuid4(), tenant_id="t1", kind="team", status="running", properties={},
         source_ref="plan-1",

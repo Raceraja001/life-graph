@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -343,6 +343,22 @@ class DevTaskCreate(BaseModel):
             "Unknown ids or a cycle: 422."
         ),
     )
+    team_worker_persona: str | None = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "With plan_only, for a plan that runs as a team: the persona its workers use "
+            "unless a task line says `Agent:` (unknown persona: a warning on the team)."
+        ),
+    )
+    team_worker_tier: Literal["cheap", "balanced", "best"] | None = Field(
+        None,
+        description=(
+            "With plan_only, for a team: the escalation tier its workers start on unless a "
+            "task line says `Tier:` (cheap = bottom rung, best = top, capped as the ladder is)."
+        ),
+    )
 
 
 @router.post(
@@ -387,7 +403,22 @@ async def create_dev_task(body: DevTaskCreate, request: Request):
             verify_chain=["no_diff_in_plan"] if body.plan_only else None,
             start=not body.queue,
             timeout_seconds=body.timeout_seconds,
-            properties={"requested_by": resolver(request)},
+            properties={
+                "requested_by": resolver(request),
+                # Team upgrades (2026-11-28): the plan's worker defaults.
+                **(
+                    {
+                        k: v
+                        for k, v in {
+                            "team_worker_persona": body.team_worker_persona,
+                            "team_worker_tier": body.team_worker_tier,
+                        }.items()
+                        if v
+                    }
+                    if body.plan_only
+                    else {}
+                ),
+            },
             depends_on=body.depends_on or None,
         )
     except DependencyError as exc:

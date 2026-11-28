@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 14:13 UTC` from `master` @ `c708439`
+Generated `2026-11-28 15:32 UTC` from `race/team-upgrades` @ `e8f74a79`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-28 14:13 UTC` from `master` @ `c708439`
 
 | | |
 |---|---|
-| HTTP operations | **445** across 383 paths, 49 tags |
+| HTTP operations | **446** across 384 paths, 49 tags |
 | Database tables | **101** |
 | Migrations | **68** (head: `068_dev_outcome_log`) |
 | Event types | **96** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **38** |
-| Config settings | **379** (prefix `LIFE_GRAPH_`) |
-| Test functions | **7107** in 727 files |
+| Config settings | **380** (prefix `LIFE_GRAPH_`) |
+| Test functions | **7134** in 728 files |
 | Dashboard pages | **23** |
-| Python | 597 files, 176,761 lines |
+| Python | 600 files, 178,122 lines |
 
 ---
 
 ## HTTP API
 
-445 operations, grouped by OpenAPI tag.
+446 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -80,7 +80,7 @@ Generated `2026-11-28 14:13 UTC` from `master` @ `c708439`
 | POST | `/api/v1/study/generate` | Generate Cards |
 | GET | `/api/v1/study/progress` | Study Progress |
 
-### `drivers` — 37
+### `drivers` — 38
 
 | Method | Path | Summary |
 |---|---|---|
@@ -96,6 +96,7 @@ Generated `2026-11-28 14:13 UTC` from `master` @ `c708439`
 | GET | `/api/v1/kernel/drivers/outcomes` | Per dispatch: driver, model, ladder rung and why, verdicts, outcome, shadow tier |
 | GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
 | GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
+| POST | `/api/v1/kernel/drivers/plans/{plan_id}/workers/{task_id}/retry` | Re-run one failed worker of a parallel plan (owner) |
 | GET | `/api/v1/kernel/drivers/pr-watch` | Watched pull requests of the PR feedback loop |
 | POST | `/api/v1/kernel/drivers/pr-watch/poll` | Check every watched PR now (owner) |
 | POST | `/api/v1/kernel/drivers/pr-watch/{task_id}/stop` | Stop watching a task's PR (owner) |
@@ -1121,16 +1122,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 560 | 6021 |
+| `tests/unit/` | 561 | 6048 |
 | `tests/integration/` | 166 | 1074 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **727** | **7107** |
+| **total** | **728** | **7134** |
 
 ---
 
 ## Configuration
 
-379 settings, all overridable by environment variable.
+380 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1328,6 +1329,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CONTINUE_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_CONTINUE_KEEP_HOURS` | `24` |
 | `LIFE_GRAPH_DRIVER_TEAM_MAX_PARALLEL` | `1` |
+| `LIFE_GRAPH_DRIVER_TEAM_WORKER_RETRIES` | `1` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_POLL_MINUTES` | `10` |
 | `LIFE_GRAPH_DRIVER_PR_FEEDBACK_MAX_ROUNDS` | `3` |
