@@ -165,6 +165,7 @@ import logging
 import time
 import unicodedata
 import uuid
+import weakref
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -173,6 +174,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import defer
 
 from life_graph import runtime
+from life_graph.config import settings
 from life_graph.core import evidence as ev
 from life_graph.core.tenant import get_current_tenant_id, tenant_scope
 from life_graph.core.trust import is_excluded_from_agents
@@ -247,6 +249,10 @@ EXCLUSION_POOL = 20
 POOL_STATUSES = ("active", "pending", "superseded")
 #: Shadow mode's time box (kernel/process_manager.py).
 SHADOW_TIMEOUT_S = 1.0
+#: The precision-mode shadow comparison's own time box (shadow_precision):
+#: separate from SHADOW_TIMEOUT_S so a slow default snapshot does not starve
+#: it and bias the sample towards fast turns.
+SHADOW_PRECISION_TIMEOUT_S = 1.0
 #: The clock stage timings read (a test replaces it; the event loop keeps its own).
 _clock = time.monotonic
 #: The stages ``timings_ms`` reports, in this order.
@@ -441,6 +447,13 @@ class ContextSnapshot:
     relations: tuple[ContextRelation, ...] = ()
     #: (stage, milliseconds) in TIMING_STAGES order; not part of equality.
     timings_ms: tuple[tuple[str, float], ...] = field(default=(), compare=False)
+    #: True when no view of the records could be built (empty query, the
+    #: embedding failed, a read failed). Not in to_dict, compact or equality:
+    #: callers that compare snapshots (shadow_precision) read it.
+    degraded: bool = field(default=False, compare=False)
+    #: The query's local embedding, so a second snapshot of the same turn does
+    #: not embed it again (shadow_precision). Never serialised, not in equality.
+    query_embedding: tuple[float, ...] | None = field(default=None, compare=False, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1398,6 +1411,7 @@ async def assemble_context(
     experiments: frozenset[str] = frozenset(),
     tunables: xp.Tunables | None = None,
     mode: str = "",
+    query_embedding: list[float] | tuple[float, ...] | None = None,
 ) -> ContextSnapshot:
     """A bounded, read-only snapshot of what bears on *query* for the current tenant.
 
@@ -1416,6 +1430,9 @@ async def assemble_context(
     production code uses (settings.context_precision_mode). "" (the default)
     is the normal snapshot. A mode cannot be combined with *experiments* or
     *tunables*; an unknown one is a ValueError.
+
+    *query_embedding* is *query*'s embedding when the caller already has it
+    (a second snapshot of the same turn); the embed stage is then skipped.
     """
     chosen = xp.parse(experiments)
     picked = xp.mode(mode)
@@ -1436,23 +1453,28 @@ async def assemble_context(
     }
     tenant_id = get_current_tenant_id()
     if not query.strip():
-        return ContextSnapshot(**base, explanation="Empty query: nothing was searched.")
+        return ContextSnapshot(
+            **base, explanation="Empty query: nothing was searched.", degraded=True
+        )
 
     def timings() -> tuple[tuple[str, float], ...]:
         parts.timings["total"] = _ms_since(started)
         return parts.timings_tuple()
 
-    try:
-        with parts.timed("embed"):
-            embedding = await runtime.get_memory_manager().generate_embedding(query)
-    except Exception as exc:  # noqa: BLE001 — no vector means no memory search, never a fallback
-        logger.warning("Context snapshot: embedding failed (%s)", type(exc).__name__)
-        embedding = None
+    embedding: list[float] | None = list(query_embedding) if query_embedding else None
+    if embedding is None:
+        try:
+            with parts.timed("embed"):
+                embedding = await runtime.get_memory_manager().generate_embedding(query)
+        except Exception as exc:  # noqa: BLE001 — no vector means no memory search, never a fallback
+            logger.warning("Context snapshot: embedding failed (%s)", type(exc).__name__)
+            embedding = None
     if not embedding:
         return ContextSnapshot(
             **base,
             explanation="The query could not be embedded locally, so memory was not searched.",
             timings_ms=timings(),
+            degraded=True,
         )
     try:
         await _memories(parts, tenant_id, query, embedding, ref, as_of, budget)
@@ -1485,6 +1507,7 @@ async def assemble_context(
             **base,
             explanation="Reading the records failed, so no context was assembled.",
             timings_ms=timings(),
+            degraded=True,
         )
     parts.exclude("over_budget", over)
     suff = check_sufficiency(query, kept, parts)
@@ -1502,6 +1525,7 @@ async def assemble_context(
         abstention_reason=parts.abstention_reason,
         relations=tuple(parts.relations),
         timings_ms=timings(),
+        query_embedding=tuple(embedding),
     )
 
 
@@ -1625,6 +1649,45 @@ async def _cosines(tenant_id: str, ids: list[uuid.UUID], vector: list[float]) ->
         return {}
 
 
+#: G's probe embeddings per embedder: memory manager -> (embedding model, vectors).
+#: The probes are fixed strings (no user content), so they are embedded once
+#: per process and embedder, not on every snapshot.
+_PROBE_CACHE: weakref.WeakKeyDictionary[Any, tuple[str, tuple[list[float], ...]]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def clear_probe_cache() -> None:
+    """Forget the cached probe embeddings (the eval calls it when it swaps the embedder)."""
+    _PROBE_CACHE.clear()
+
+
+async def probe_vectors() -> tuple[list[float], ...]:
+    """The embeddings of xp.HUB_PROBES, cached per memory manager and embedding model.
+
+    A probe that cannot be embedded is left out and nothing is cached, so a
+    later call tries again.
+    """
+    manager = runtime.get_memory_manager()
+    model = str(getattr(settings, "embedding_model", ""))
+    try:
+        cached = _PROBE_CACHE.get(manager)
+    except TypeError:  # not weak-referenceable: no cache
+        cached = None
+    if cached is not None and cached[0] == model:
+        return cached[1]
+    vectors = []
+    for probe in xp.HUB_PROBES:
+        vector = await manager.generate_embedding(probe)
+        if vector:
+            vectors.append(list(vector))
+    out = tuple(vectors)
+    if len(out) == len(xp.HUB_PROBES):
+        with contextlib.suppress(TypeError):
+            _PROBE_CACHE[manager] = (model, out)
+    return out
+
+
 async def _relevance(
     tenant_id: str,
     items: list[ContextItem],
@@ -1640,10 +1703,7 @@ async def _relevance(
     by_id = await _cosines(tenant_id, ids, embedding)
     if hub and by_id:
         probes: dict[str, list[float]] = {}
-        for probe in xp.HUB_PROBES:
-            vector = await runtime.get_memory_manager().generate_embedding(probe)
-            if not vector:
-                continue
+        for vector in await probe_vectors():
             for mid, value in (await _cosines(tenant_id, ids, vector)).items():
                 probes.setdefault(mid, []).append(value)
         by_id = xp.hub_adjusted(by_id, probes, t=t)
@@ -1849,17 +1909,19 @@ async def shadow_precision(
     mode_name: str,
     default: ContextSnapshot | None,
     *,
-    timeout: float,
+    timeout: float = SHADOW_PRECISION_TIMEOUT_S,
 ) -> dict[str, Any]:
     """The turn's snapshot under precision mode *mode_name*, compared with *default*.
 
     Shadow only (settings.context_precision_shadow, inside
     context_snapshot_shadow's personal and local gate): kept in the turn
     trace as ``context_precision``, never in the prompt. Built for the same
-    question and at the same reference time as *default*, time-boxed to
-    *timeout* (what is left of the turn's shadow time box), and it never
-    raises: a failure, a timeout, an unknown mode or a missing default
-    snapshot is logged (no content) and recorded as ``{"error": <type>}``.
+    question, with the same query embedding and at the same reference time
+    as *default*, time-boxed to *timeout* (its own box,
+    SHADOW_PRECISION_TIMEOUT_S), and it never raises: a failure, a timeout,
+    an unknown mode, or a missing or degraded default snapshot (nothing to
+    compare with: ``no_baseline``) is logged (no content) and recorded as
+    ``{"error": <type>}``.
     Either way it carries ``mode`` (a known mode name, else "other") and ``ms``.
     """
     started = time.monotonic()
@@ -1869,7 +1931,7 @@ async def shadow_precision(
         picked = xp.mode(known)
         if picked is None:
             raise ValueError("no precision mode")
-        if default is None:
+        if default is None or default.degraded:
             out = {"error": NO_BASELINE}
         else:
             if timeout <= 0:
@@ -1877,7 +1939,12 @@ async def shadow_precision(
             ref = datetime.fromisoformat(default.reference_time) if default.reference_time else None
             with tenant_scope(tenant_id):
                 moded = await asyncio.wait_for(
-                    assemble_context(search_text(message, history), now=ref, mode=picked.name),
+                    assemble_context(
+                        search_text(message, history),
+                        now=ref,
+                        mode=picked.name,
+                        query_embedding=default.query_embedding,
+                    ),
                     timeout,
                 )
             out = precision_comparison(default, moded, picked.name)

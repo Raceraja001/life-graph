@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import pydantic
 import pytest
 
+from life_graph import runtime
 from life_graph.config import Settings, settings
 from life_graph.config.memory import PRECISION_MODES
 from life_graph.services.memory import changes, snapshot
@@ -283,7 +284,7 @@ def fake_assemble(monkeypatch):
 
 
 async def test_shadow_precision_builds_the_mode_at_the_default_reference_time(fake_assemble):
-    default = _snap([_item("a"), _item("b")])
+    default = dataclasses.replace(_snap([_item("a"), _item("b")]), query_embedding=(0.1, 0.2))
     out = await snapshot.shadow_precision(
         "t1", "personal: SECRET-QUERY?", None, "precision", default, timeout=1.0
     )
@@ -292,6 +293,8 @@ async def test_shadow_precision_builds_the_mode_at_the_default_reference_time(fa
     ((_, kw),) = fake_assemble.calls
     assert kw["mode"] == "precision"
     assert kw["now"].isoformat() == default.reference_time
+    # The default snapshot's query embedding is reused, not made again.
+    assert kw["query_embedding"] == (0.1, 0.2)
     assert "SECRET" not in json.dumps(out)
 
 
@@ -333,7 +336,7 @@ async def test_shadow_trace_adds_the_comparison_only_when_asked(monkeypatch):
         return _snap([_item("a")]), {"items": []}
 
     async def shadow_precision(tenant_id, message, history, mode_name, default, *, timeout):
-        assert default is not None and 0 < timeout <= snapshot.SHADOW_TIMEOUT_S
+        assert default is not None and timeout == snapshot.SHADOW_PRECISION_TIMEOUT_S
         return {"mode": mode_name, "ms": 0}
 
     monkeypatch.setattr(snapshot, "shadow_snapshot", shadow_snapshot)
@@ -388,3 +391,126 @@ async def test_kernel_precision_shadow_compares_the_configured_mode(
     # The default snapshot (the one change detection compares) is built without a mode.
     assert [kw.get("mode", "") for kw in kernel_built] == ["", expected]
     assert result["response"] == "ok"
+
+
+# ── Review follow-ups: degraded baselines, own time box, embedding reuse, probe cache ──
+
+
+async def test_a_degraded_default_snapshot_is_no_baseline(fake_assemble):
+    degraded = dataclasses.replace(_snap([]), degraded=True)
+    out = await snapshot.shadow_precision("t1", "q", None, "recall", degraded, timeout=1.0)
+    assert out["error"] == snapshot.NO_BASELINE and fake_assemble.calls == []
+
+
+async def test_failed_snapshots_say_degraded_and_a_real_one_does_not(wired, monkeypatch):
+    class _NoVector:
+        async def generate_embedding(self, text_):
+            return None
+
+    ok = await assemble_context("salary", now=NOW)
+    assert ok.degraded is False and ok.query_embedding == (0.1, 0.2)
+    empty = await assemble_context("   ", now=NOW)
+    assert empty.degraded is True
+
+    async def broken(*a, **kw):
+        raise RuntimeError("read")
+
+    monkeypatch.setattr(snapshot, "_decisions", broken)
+    failed_read = await assemble_context("salary", now=NOW)
+    assert failed_read.degraded is True and failed_read.items == ()
+    monkeypatch.setattr(runtime, "get_memory_manager", lambda: _NoVector())
+    no_vector = await assemble_context("salary", now=NOW)
+    assert no_vector.degraded is True
+    # Neither field is part of the serialised forms (the pinned hashes hold).
+    for snap in (ok, no_vector):
+        assert "degraded" not in snap.to_dict() and "query_embedding" not in snap.to_dict()
+        assert "degraded" not in snap.compact() and "query_embedding" not in snap.compact()
+
+
+async def test_a_given_query_embedding_is_not_made_again(wired, monkeypatch):
+    calls: list[str] = []
+
+    class _Counting:
+        async def generate_embedding(self, text_):
+            calls.append(text_)
+            return [0.1, 0.2]
+
+    monkeypatch.setattr(runtime, "get_memory_manager", lambda: _Counting())
+    snap = await assemble_context("salary", now=NOW, query_embedding=(0.1, 0.2))
+    assert calls == [] and "embed" not in dict(snap.timings_ms)
+    assert snap.degraded is False
+
+
+async def test_compare_and_precision_each_get_their_own_box(monkeypatch):
+    """A slow default snapshot no longer starves the comparison; the total stays bounded."""
+    monkeypatch.setattr(snapshot, "SHADOW_TIMEOUT_S", 0.3)
+    monkeypatch.setattr(snapshot, "SHADOW_PRECISION_TIMEOUT_S", 0.3)
+    state = {"precision_sleep": 0.15}
+
+    async def shadow_snapshot(tenant_id, message, history=None, **kw):
+        await asyncio.sleep(0.25)  # most of the first box
+        return _snap([_item("a"), _item("b")]), {"items": []}
+
+    async def shadow_changes(tenant_id, snap, task_id, *, timeout):
+        assert 0 < timeout <= 0.3
+        await asyncio.sleep(0.01)
+        return {"changes": [], "ms": 10}
+
+    async def fake_assemble(query, **kw):
+        await asyncio.sleep(state["precision_sleep"])
+        return _snap([_item("a")])
+
+    monkeypatch.setattr(snapshot, "shadow_snapshot", shadow_snapshot)
+    monkeypatch.setattr(changes, "shadow_changes", shadow_changes)
+    monkeypatch.setattr(snapshot, "assemble_context", fake_assemble)
+
+    started = asyncio.get_running_loop().time()
+    out = await changes.shadow_trace("t1", "q", compare=True, precision="recall")
+    elapsed = asyncio.get_running_loop().time() - started
+    assert out["context_changes"]["changes"] == []
+    # Under the old shared box only ~0.04 s was left: this would have timed out.
+    assert out["context_precision"]["counts"]["dropped"] == 1
+    assert elapsed < 0.3 + 0.3 + 0.2
+
+    state["precision_sleep"] = 5.0
+    started = asyncio.get_running_loop().time()
+    slow = await changes.shadow_trace("t1", "q", compare=True, precision="recall")
+    elapsed = asyncio.get_running_loop().time() - started
+    assert slow["context_precision"]["error"] == "TimeoutError"
+    assert "changes" in slow["context_changes"]
+    assert elapsed < 0.3 + 0.3 + 0.2
+
+
+async def test_hub_probes_are_embedded_once_per_embedder(
+    xwired,  # noqa: F811 — the fixture
+    monkeypatch,
+):
+    probes: list[str] = []
+
+    class _Counting:
+        async def generate_embedding(self, text_):
+            if text_ in xp.HUB_PROBES:
+                probes.append(text_)
+                return [0.3, 0.4]
+            return [0.1, 0.2]
+
+    one = _Counting()
+    monkeypatch.setattr(runtime, "get_memory_manager", lambda: one)
+    snapshot.clear_probe_cache()
+    hits = [base._mem(f"hit {n}", id=ident._id(n)) for n in range(1, 6)]
+    xwired["found"] = hits
+    xwired["cosines"] = {str(h.id): 0.7 - n / 100 for n, h in enumerate(hits)}
+    xwired["probe_cosines"] = {str(h.id): 0.1 for h in hits}
+    first = await assemble_context("q", now=NOW, mode="precision")
+    second = await assemble_context("q", now=NOW, mode="precision")
+    assert len(probes) == len(xp.HUB_PROBES)
+    assert _without_note(first) == _without_note(second)
+    other = _Counting()  # another embedder: its own probe vectors
+    monkeypatch.setattr(runtime, "get_memory_manager", lambda: other)
+    await assemble_context("q", now=NOW, mode="precision")
+    assert len(probes) == 2 * len(xp.HUB_PROBES)
+    snapshot.clear_probe_cache()
+    await assemble_context("q", now=NOW, mode="precision")
+    assert len(probes) == 3 * len(xp.HUB_PROBES)
+    await assemble_context("q", now=NOW, mode="recall")  # no hub penalty: no probes
+    assert len(probes) == 3 * len(xp.HUB_PROBES)

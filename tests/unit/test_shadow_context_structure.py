@@ -404,6 +404,7 @@ def test_precision_comparison_counts():
     assert pr["items_default"] == {"n": 2, "p50": 15.0, "p95": 19.5, "max": 20.0}
     assert pr["items_mode"]["p50"] == 6.5
     assert pr["dropped"] == 18 and pr["dropped_share"] == 0.6
+    assert pr["timeout_rate"] == 0.25
     assert pr["added_per_turn"]["max"] == 1.0
     assert pr["ms"]["n"] == 4 and pr["ms"]["max"] == 900.0
 
@@ -419,3 +420,4 @@ def test_precision_section_leaks_nothing(leak):
 def test_no_comparison_reports_zero():
     pr = _summary()["precision"]
     assert pr["turns_traced"] == 0 and pr["dropped_share"] is None
+    assert pr["timeout_rate"] is None

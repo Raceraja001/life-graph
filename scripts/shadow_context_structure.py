@@ -11,7 +11,8 @@ typed links, decisions, pending contradiction approvals). With
 comparison at ``...->'context_precision'`` (snapshot.shadow_precision): the
 script reports turns compared, items per turn in the default snapshot and
 under the mode (p50/p95), the share of the default's items the mode dropped,
-the items it added, errors and ms.
+the items it added, the share of comparisons that timed out (a high one
+biases the sample towards fast turns), errors and ms.
 
     PYTHONPATH=. python scripts/shadow_context_structure.py --tenant raja
         [--since 7 | 14d | 2026-11-20] [--json]
@@ -461,6 +462,7 @@ def summarise(
             "items_mode": spread([t.get("precision_mode_items") for t in prec_ok]),
             "dropped": dropped,
             "dropped_share": rate(dropped, default_items),
+            "timeout_rate": rate(prec_errors.get("TimeoutError", 0), len(prec)),
             "added_per_turn": spread([t.get("precision_added") for t in prec_ok]),
             "ms": spread([t.get("precision_ms") for t in prec]),
         },
@@ -538,7 +540,8 @@ def render(s: Mapping[str, Any]) -> str:
         f"modes {_kv(pr['modes'])}, errors {_kv(pr['errors'])}",
         f"  items per turn, default: {_sp(pr['items_default'])}",
         f"  items per turn, mode:    {_sp(pr['items_mode'])}",
-        f"  dropped {pr['dropped']} of the default's items ({_pct(pr['dropped_share'])}); "
+        f"  dropped {pr['dropped']} of the default's items ({_pct(pr['dropped_share'])}), "
+        f"timed out {_pct(pr['timeout_rate'])} of traced turns; "
         f"added per turn: {_sp(pr['added_per_turn'])}",
         f"  ms: {_sp(pr['ms'])}",
         "",

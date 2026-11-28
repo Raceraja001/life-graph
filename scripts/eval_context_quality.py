@@ -1194,6 +1194,10 @@ async def run_arm(
         embed_ctx = arm.using_embedder(
             arm.ollama_embedder(texts, model="bge-m3", base_url=ollama_url), "bge-m3"
         )
+    # G's probe embeddings are cached per manager; this arm may embed differently.
+    from life_graph.services.memory.snapshot import clear_probe_cache
+
+    clear_probe_cache()
     with embed_ctx, arm.production_fakes(), model_guard(calls):
         main = await run_snapshot_questions(data, snap_qs, repeat, fx, snapshot_kw)
         per_q, snaps, latencies = main["per_question"], main["snapshots"], main["latencies"]
