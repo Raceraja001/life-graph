@@ -383,7 +383,7 @@ jobs:
       # near-instant, so this costs full price only when the Dockerfile or its
       # base image actually changes.
       - name: Build Postgres image (pgvector + Apache AGE)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.postgres
@@ -683,7 +683,7 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       - name: Build Postgres image (pgvector + Apache AGE)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.postgres
