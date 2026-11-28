@@ -24,7 +24,7 @@ from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_scoped
 from life_graph.models.db import Approval, Memory, Project
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
-from life_graph.services.memory import supersession
+from life_graph.services.memory import links, supersession
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -1270,18 +1270,30 @@ class ApprovalService:
         return applied
 
     async def on_memory_rejected(self, tenant_id: str, memory_id: str) -> int:
-        """The owner rejected a pending memory: close its contradiction items.
+        """The owner rejected a pending memory: close its contradiction items
+        and delete its links.
 
         Its supersedes were never applied (a pending memory supersedes
         nothing), so the old memories are already active; this only stops a
         moot review item lingering, and keeps a later approve of it from
         applying a supersede for a rejected memory. Returns how many closed.
+
+        Every link where the rejected memory is either end goes too, in this
+        tenant only (``links.delete_links_of_rejected_memory``, M8 ADR §5.3):
+        a memory the owner never accepted must not show up through graph
+        views, ``get_links`` or search expansion. Approving it again later
+        does not bring the links back.
         """
         rows = await self._pending_contradictions_for(tenant_id, memory_id)
         for appr in rows:
             appr.status = "rejected"
             appr.resolved_at = datetime.now(UTC)
             appr.resolution_note = "The new memory was rejected; the old one stays."
+        removed = await links.delete_links_of_rejected_memory(
+            self.session, uuid.UUID(str(memory_id)), tenant_id
+        )
+        if removed:
+            logger.info("Deleted %d links of rejected memory %s", removed, memory_id)
         await self.session.flush()
         return len(rows)
 
