@@ -100,7 +100,7 @@ supersede is shown as current, and that is what the arm measures.
 Precision experiments (services/memory/snapshot_experiments.py, eval-only):
 ``--experiments A,B,...`` (letters or names: A rank, B query_type, C links,
 D dedupe, E evidence, F budget, G hub, H undated, I goals, J overview,
-K domain) runs the snapshot questions with those
+K domain, L blockers) runs the snapshot questions with those
 options on. ``--xp-set NAME=VALUE`` sets one of the module's TUNABLE
 constants for the run (passed with each call, never set on the module),
 ``--mode recall|precision`` a production precision mode (MODES: its fixed set
@@ -1753,7 +1753,7 @@ def main() -> int:
         default="",
         help="Eval-only snapshot experiments, letters or names: A rank, B query_type, "
         "C links, D dedupe, E evidence, F budget, G hub, H undated, I goals, J overview, "
-        "K domain (services/memory/snapshot_experiments.py)",
+        "K domain, L blockers (services/memory/snapshot_experiments.py)",
     )
     parser.add_argument(
         "--xp-set",

@@ -109,6 +109,21 @@ docs/audits/2026-11-28-m8-context-precision-evaluation.md §5):
   memory tagged with that domain (O9's ``f_emi``, ``f_husband_income_new``).
   A hold, not a pull: only candidates the reads already found. Alone it
   changes nothing.
+* **L** ``blockers`` -- "what are my current priorities?" missed the record
+  that says the Billing migration is blocked (O1 ``w_blocker``): a blocker
+  shares no word with a priorities question. On a priorities, work-overview
+  or "what is stopping me" question (:func:`asks_for_blockers`), L reads this
+  tenant's blocker and dependency records (:func:`is_blocker_text`: "blocked",
+  "waiting on", "depends on", "stuck", a ``blocker``/``dependency`` tag; English,
+  Tanglish, Tamil) and adds the current, unresolved ones (reason
+  ``blocker_record``, at most :data:`BLOCKER_PULL`, the same checks as C's
+  pulls). A record is resolved when its own words say so ("shipped",
+  "unblocked", "no longer"), or when a newer record that says so is joined
+  to it by a typed link, or shares its blocker/dependency tag and at least
+  :data:`RESOLVE_OVERLAP` of its subject words (``w_dep``, resolved by
+  ``w_dep_done``): a resolved dependency shown as current would be wrong.
+  When the question names a subject of its own, only the blockers whose
+  words support it are added.
 
 H, I and the hold of K never bypass a safety check, and B keeps what H and
 I added (they passed their own gate).
@@ -163,6 +178,7 @@ UNDATED = "undated"
 GOALS = "goals"
 OVERVIEW = "overview"
 DOMAIN = "domain"
+BLOCKERS = "blockers"
 
 #: Option letter -> name, as the eval's ``--experiments`` takes them.
 OPTIONS = {
@@ -177,6 +193,7 @@ OPTIONS = {
     "I": GOALS,
     "J": OVERVIEW,
     "K": DOMAIN,
+    "L": BLOCKERS,
 }
 LETTERS = {name: letter for letter, name in OPTIONS.items()}
 NAMES = frozenset(OPTIONS.values())
@@ -191,8 +208,9 @@ NEIGHBOUR = "neighbour"
 #: The reasons H and I give what they add.
 UNDATED_INTENTION = "undated_intention"
 GOAL_RECORD = "goal_record"
+BLOCKER_RECORD = "blocker_record"
 #: Added by an option's own gate: B does not judge them again.
-PULLED_REASONS = frozenset({UNDATED_INTENTION, GOAL_RECORD})
+PULLED_REASONS = frozenset({UNDATED_INTENTION, GOAL_RECORD, BLOCKER_RECORD})
 
 #: A: scores this close (relative to the higher one) are a tie.
 TIE_TOLERANCE = 0.02
@@ -237,6 +255,8 @@ GOAL_PULL = 8
 OVERVIEW_MIN_KEEP = 8
 #: ... and cuts only below this share of the top similarity (fused: RELATIVE_FLOOR's role).
 OVERVIEW_FLOOR = 0.6
+#: L: most blocker records added.
+BLOCKER_PULL = 4
 #: Constants the eval may set for a run (``--xp-set NAME=VALUE``), recorded in its report.
 TUNABLE = (
     "TIE_TOLERANCE",
@@ -255,6 +275,7 @@ TUNABLE = (
     "GOAL_PULL",
     "OVERVIEW_MIN_KEEP",
     "OVERVIEW_FLOOR",
+    "BLOCKER_PULL",
 )
 
 
@@ -278,6 +299,7 @@ class Tunables:
     goal_pull: int = GOAL_PULL
     overview_min_keep: int = OVERVIEW_MIN_KEEP
     overview_floor: float = OVERVIEW_FLOOR
+    blocker_pull: int = BLOCKER_PULL
 
     def named(self) -> dict[str, float]:
         """NAME -> value, in :data:`TUNABLE` order (what the eval's report records)."""
@@ -973,6 +995,117 @@ def overview_tunables(t: Tunables) -> Tunables:
         cosine_floor=min(t.cosine_floor, t.overview_floor),
         relative_floor=min(t.relative_floor, t.overview_floor),
     )
+
+
+# ── L: blockers and dependencies ──────────────────────────────
+
+#: L: words of a question that asks what holds things up, or for priorities
+#: (a blocker is part of the answer). English, Tanglish, Tamil; matched like
+#: KEYWORDS (an ASCII word itself, a Tamil word as a prefix).
+BLOCKER_ASK = _phrases(
+    "priority|priorities|focus|stopping|stopping me|holding me back|held up|blocked|blocking"
+    "|blocker|blockers|stuck|waiting on|waiting for|bottleneck|bottlenecks|obstacle|obstacles"
+    "|in my way",
+    "thadai|thadangal|mudiyala|nikkudhu|nikkuthu|kaathirukken|kaathiruken|stuck aayiduchu",
+    "தடை|தடங்கல|முன்னுரிமை|காத்திருக்க|நிற்கிற|நின்றுவிட",
+)
+#: L: words and tags of a record that is a blocker or a dependency.
+BLOCKER_TEXT = _phrases(
+    "blocked|blocking|blocker|blockers|stuck|held up|on hold|waiting on|waiting for|depends on"
+    "|depend on|dependent on|dependency|dependencies|still has not|still hasnt",
+    "thadai|nikkudhu|nikkuthu|kaathirukku|kaathirukkudhu|depend aagudhu",
+    "தடை|தடங்கல|காத்திருக்க|சார்ந்து|நின்றுவிட",
+)
+BLOCKER_TAGS = frozenset(
+    {"blocker", "blockers", "blocked", "dependency", "dependencies", "waiting", "தடை"}
+)
+#: L: words that say a blocker or a dependency is over.
+RESOLVED_TEXT = _phrases(
+    "resolved|unblocked|shipped|finished|fixed|delivered|completed|done|no longer|not blocked"
+    "|can use|is available|now available|got access|received access|cleared|sorted",
+    "mudinjiduchu|mudinjudhu|ready aayiduchu|kedachiduchu|kidaichiduchu|sari aayiduchu",
+    "முடிந்துவிட|முடிந்தது|தீர்ந்த|கிடைத்துவிட|சரியாகிவிட",
+)
+#: L: a newer record of the same kind resolves a blocker when they share at
+#: least this many subject words, and half of the blocker's (and the newer
+#: one says it is over).
+RESOLVE_OVERLAP = 3
+
+
+def _phrase_in(text_: str, phrases: tuple[tuple[str, ...], ...]) -> bool:
+    words = tokens(text_)
+    return any(_has_phrase(words, p) for p in phrases)
+
+
+def asks_for_blockers(query: str) -> bool:
+    """Whether *query* asks for priorities, what holds things up, or a work overview."""
+    if _phrase_in(query, BLOCKER_ASK):
+        return True
+    return is_overview(query) and "work" in query_domains(query)
+
+
+def _blocker_ask_words() -> frozenset[str]:
+    return frozenset(w for p in BLOCKER_ASK if len(p) == 1 for w in p)
+
+
+def blocker_subject(query: str) -> bool:
+    """Whether *query* names a subject beyond the blocker words ("blocked on PayFlow").
+
+    Its terms' words (sufficiency.query_terms) that are no keyword, no blocker
+    word and no year. Without one, every current blocker answers it.
+    """
+    asked = _blocker_ask_words()
+    return any(
+        not _is_keyword(w) and w not in asked and not _YEAR.match(w)
+        for term in sufficiency.query_terms(query)
+        for w in term.words
+    )
+
+
+def _tag_set(tags: Iterable[str] | None) -> set[str]:
+    return {str(t).strip().lower() for t in (tags or []) if isinstance(t, str)}
+
+
+def is_resolved_text(text_: str) -> bool:
+    """Whether *text_* says a blocker or a dependency is over."""
+    return _phrase_in(text_, RESOLVED_TEXT)
+
+
+def is_blocker_text(tags: Iterable[str] | None, text_: str) -> bool:
+    """A blocker or dependency record that does not itself say it is over."""
+    if is_resolved_text(text_):
+        return False
+    return bool(_tag_set(tags) & BLOCKER_TAGS) or _phrase_in(text_, BLOCKER_TEXT)
+
+
+def subject_words(text_: str) -> frozenset[str]:
+    """*text_*'s content words: no stop or frame words, no numbers, no blocker words."""
+    skip = {w for g in (BLOCKER_TEXT, RESOLVED_TEXT) for p in g for w in p}
+    return frozenset(
+        w
+        for w in tokens(text_)
+        if w not in sufficiency.NON_CONTENT
+        and w not in skip
+        and not any(ch.isdigit() for ch in w)
+        and len(w) > 2
+    )
+
+
+def resolves(newer_text: str, newer_tags: Iterable[str] | None, blocker: Any) -> bool:
+    """Whether a newer record (*newer_text*, *newer_tags*) resolves *blocker*, unlinked.
+
+    It says it is over, it carries one of the blocker's blocker/dependency
+    tags, and they share at least RESOLVE_OVERLAP subject words and at least
+    half of the blocker's own.
+    """
+    if not is_resolved_text(newer_text):
+        return False
+    shared_tags = _tag_set(newer_tags) & _tag_set(getattr(blocker, "tags", None)) & BLOCKER_TAGS
+    if not shared_tags:
+        return False
+    own = subject_words(str(getattr(blocker, "content", "") or ""))
+    overlap = subject_words(newer_text) & own
+    return len(overlap) >= RESOLVE_OVERLAP and len(overlap) * 2 >= len(own)
 
 
 __all__ = [

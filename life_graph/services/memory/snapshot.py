@@ -228,6 +228,7 @@ REASON_SCORE = {
     xp.LINKED_EVIDENCE: 0.35,
     # Only the eval-only structural recall options give these (H, I).
     xp.GOAL_RECORD: 0.30,
+    xp.BLOCKER_RECORD: 0.30,
     xp.UNDATED_INTENTION: 0.22,
 }
 
@@ -1887,6 +1888,135 @@ async def _pull_goals(
     return out
 
 
+#: L's read: constant patterns (never the question's words) for blocker and
+#: dependency records; xp.is_blocker_text decides in Python.
+_BLOCKER_LIKE = (
+    "%block%",
+    "%waiting%",
+    "%depend%",
+    "%stuck%",
+    "%held up%",
+    "%on hold%",
+    "%still has not%",
+    "%thadai%",
+    "%kaathiru%",
+    "%nikku%",
+    "%தடை%",
+    "%தடங்கல%",
+    "%காத்திரு%",
+    "%சார்ந்து%",
+)
+
+
+async def _blocker_memories(tenant_id: str, limit: int) -> list[Any]:
+    """Experiment L: this tenant's active memories that may be blockers, newest first."""
+    stmt = (
+        select(Memory)
+        .options(defer(Memory.embedding))
+        .where(Memory.tenant_id == tenant_id, Memory.status == "active")
+        .where(Memory.superseded_by.is_(None))
+        .where(
+            or_(
+                Memory.tags.overlap(sorted(xp.BLOCKER_TAGS)),
+                *(Memory.content.ilike(p) for p in _BLOCKER_LIKE),
+            )
+        )
+        .order_by(Memory.created_at.desc(), Memory.id)
+        .limit(int(limit))
+    )
+    async with async_session() as s:
+        return list((await s.execute(stmt)).scalars().all())
+
+
+def _newer(a: Any, b: Any) -> bool:
+    """Whether *a* was recorded after *b*."""
+    ta, tb = retrieval.recorded_time_of(a), retrieval.recorded_time_of(b)
+    return ta is not None and tb is not None and ta > tb
+
+
+def _blocker_joins(touching: list[tuple[Any, ...]], ids: set[str]) -> dict[str, set[str]]:
+    """Blocker id -> the memory ids a typed link (not CONTRADICTS) joins it to."""
+    joined: dict[str, set[str]] = {}
+    for source, target, link_type, *_ in touching:
+        a, b = str(source), str(target)
+        if str(link_type) == CONTRADICTS or a == b:
+            continue
+        if a in ids:
+            joined.setdefault(a, set()).add(b)
+        if b in ids:
+            joined.setdefault(b, set()).add(a)
+    return joined
+
+
+def blocker_resolved(blocker: Any, pool: dict[str, Any], joined: dict[str, set[str]]) -> bool:
+    """Experiment L: whether a newer record in *pool* says *blocker* is over.
+
+    Joined to it by a typed link and saying it is over, or (unlinked) sharing
+    its blocker/dependency tag and subject words (snapshot_experiments.resolves).
+    """
+    linked = joined.get(str(blocker.id), set())
+    for r in pool.values():
+        if str(r.id) == str(blocker.id) or not _newer(r, blocker):
+            continue
+        text_ = str(r.content or "")
+        if str(r.id) in linked and xp.is_resolved_text(text_):
+            return True
+        if xp.resolves(text_, getattr(r, "tags", None), blocker):
+            return True
+    return False
+
+
+async def _pull_blockers(
+    parts: _Parts,
+    tenant_id: str,
+    query: str,
+    items: list[ContextItem],
+    ref: datetime,
+    budget: Budget,
+    t: xp.Tunables,
+) -> list[ContextItem]:
+    """Experiment L: current, unresolved blocker and dependency records (see the module doc).
+
+    The same checks as C's pulls (linked_memory_ok) for a blocker and for any
+    record that resolves one (:func:`blocker_resolved`).
+    """
+    have = {i.source_ref.key() for i in items}
+    recorded_ref = datetime.now(UTC)
+    rows = [
+        m
+        for m in await _blocker_memories(tenant_id, int(t.blocker_pull) * 5)
+        if linked_memory_ok(m, tenant_id, ref, recorded_ref)
+    ]
+    blockers = [
+        m for m in rows if xp.is_blocker_text(getattr(m, "tags", None), str(m.content or ""))
+    ]
+    if not blockers:
+        return []
+    joined = _blocker_joins(
+        await _links_touching(tenant_id, [m.id for m in blockers]), {str(m.id) for m in blockers}
+    )
+    pool = {str(m.id): m for m in rows}
+    missing = {x for ends in joined.values() for x in ends if x not in pool and _is_uuid(x)}
+    for m in await _memories_by_id(tenant_id, [uuid.UUID(x) for x in sorted(missing)]):
+        if linked_memory_ok(m, tenant_id, ref, recorded_ref):
+            pool[str(m.id)] = m
+    whole = not xp.blocker_subject(query)
+    out: list[ContextItem] = []
+    for m in blockers:
+        if len(out) >= int(t.blocker_pull):
+            break
+        if f"memory:{m.id}" in have or blocker_resolved(m, pool, joined):
+            continue
+        support = memory_support_text(m)
+        if not (whole or xp.supports(query, support)):
+            continue
+        retrieval._marked([m], xp.BLOCKER_RECORD)
+        item = memory_item(m, ref, budget)
+        parts.add(item, support, m)
+        out.append(item)
+    return out
+
+
 async def _experiment_cut(
     parts: _Parts,
     tenant_id: str,
@@ -1928,6 +2058,8 @@ async def _experiment_cut(
                 )
             if xp.GOALS in chosen:
                 items += await _pull_goals(parts, tenant_id, query, items, types, ref, budget, t)
+        if xp.BLOCKERS in chosen and as_of is None and xp.asks_for_blockers(query):
+            items += await _pull_blockers(parts, tenant_id, query, items, ref, budget, t)
         rows = await _typed_links(tenant_id, _memory_ids(items))
         _, linked_conflicts = links_to_context(rows, items)
         protected: set[str] = set()
