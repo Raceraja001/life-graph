@@ -864,3 +864,50 @@ All three passed health, UI, services, 0 log errors, the dev edition and the res
 - If it is clean, the next flag is `ingest_typed_links`.
 
 **For the owner:** the Tamil and Tanglish word lists in `life_graph/extraction/world_time.py` (#433) are data, meant for you to review.
+
+### D36. Ingestion gap fixes released; `ingest_world_end` on (2026-11-28)
+
+**Owner:** "complete these too", meaning the four gaps found by the ingest eval (#443/#445).
+
+**1. Fixes, each with its own eval cases; zero-tolerance counts stay 0:**
+
+| PR | Gap | `eval_ingestion_structure` before → after | Flag |
+|---|---|---|---|
+| #447 | Tamil/Tanglish capture decisions | detection recall 0.31 → 1.0 (13/13), precision 1.0 | none: makes candidates only, SELF tier, owner confirms |
+| #448 | one attribute under two slot keys | supersession recall 0.71 → 0.79, tier accuracy 0.81 → 0.87 | `ingest_slot_pairing` (needs `ingest_supersession_tiers`) |
+| #449 | detector saw only "X is A → B" | recall 0.56 → 1.0 on 71 cases; 0 false contradictions | runs only with `ingest_supersession_tiers` |
+| #450 | extracted end dates stored unchecked | world-end precision 0.40 → 1.0, recall 0.06 → 1.0; "end set where unknown" 3 → 0 | `ingest_world_end` |
+
+**2. Ingest arm on prod's model** (`qwen2.5-coder-14b` on :11435, every flag on):
+- forbidden-as-current 29 → 23;
+- memory states 37 → 38 of 55;
+- supersession still 3/5, pending contradictions still 0/2.
+
+What remains is mostly the model's output:
+- a mistranslated Tamil message;
+- "Divya is my manager now" returned hedged;
+- slotless facts;
+- another person's pay filed under the owner's slot;
+- EMI and car loan sharing `money.emi`.
+
+**3. Releases.**
+- The owner's side released `prod-20261128-0558` (#437 cockpit migration, alembic 064 → 067, all features off) and `prod-20261128-0826` (#446).
+- This entry's release is `prod-20261128-0857` (rollback `f51416b5`): #447–#450, no migration, no package change.
+- Checks: health and UI 200; 0 log errors; alembic 067; decisions `candidate:11` unchanged; snapshot about 120 ms warm; dev 200; restore drill passed.
+- The eval test DB `life_graph_dev_test` was migrated 062 → 067. `dev.sh` does not migrate it.
+
+**4. `ingest_world_end` on** (09:00 UTC; backup `~/life-graph-backups/env-ingest-world-end-20261128-0900`).
+
+Decided ahead of typed links. With the flag off, the save path stores the model's `valid_until` unchecked: precision 0.40, and 3 ends set where the wording names none. With it on, an end is kept only when a rule reads it from the fact's own words.
+
+- The API restarted at 09:00:29 with the flag set; health 200; 0 errors.
+- Samples:
+  - "on leave until 20 December" → ends 2026-12-21 00:00 IST;
+  - "March end varaikum…" → ends 2027-04-01;
+  - "might stay until March" → none;
+  - "I live in Chennai" → none.
+- On: `ingest_world_time`, `ingest_world_end`, and the existing `driver_pr_description` / `driver_code_context`.
+- Off: every other ingestion flag and every #437 feature.
+- Rollback: delete the line and run `./dev.sh restart`. Rows carry `valid_until_by = "rules"` and `properties.world_time.end`.
+
+**5. Measure around 2026-12-05** with `scripts/shadow_context_structure.py --tenant raja --since 7`: starts, ends, and zero-tolerance spot checks. Next flag after that: `ingest_typed_links`.
