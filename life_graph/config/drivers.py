@@ -186,6 +186,17 @@ class DriverSettings(BaseModel):
     # local agent model; never a paid fallback. Code only leaves the machine.
     change_review_model: str = ""
     driver_pr_agent_bin: str = "pr-agent"  # the PR-Agent CLI backing the reviewer above
+    # Two-model review panel on risky diffs (services/dev/review_panel.py):
+    # "off" = never runs; "shadow" = runs in the background on risky landing
+    # diffs and only records its verdict; "enforce" = an objection or a
+    # not-reviewed verdict sends the task to a person (never approves).
+    driver_review_panel_mode: Literal["off", "shadow", "enforce"] = "off"
+    # Comma-separated local model ids; a non-local id is refused (not called).
+    driver_review_panel_models: str = "ollama_chat/qwen3:14b,ollama_chat/qwen3-coder:30b"
+    # Per-member time limit; a member that runs out is "not reviewed".
+    driver_review_panel_timeout_seconds: float = Field(300.0, gt=0)
+    # A diff with more changed lines (added + removed) than this is risky.
+    driver_review_panel_min_lines: int = Field(150, ge=0)
     # Draft the PR description from the landed diff (one model call per landed
     # task, best-effort -- falls back to the instruction + agent summary).
     driver_pr_description_enabled: bool = True

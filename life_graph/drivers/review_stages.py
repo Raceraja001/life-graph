@@ -13,6 +13,11 @@ docs/specs/agent-drivers.md, "Autonomy policy" (2026-11-27, owner decision D2):
   **never approves** anything: the single approval path is untouched;
 * a review stage can only object; an objection goes back to the author while
   review-fix rounds last, then to a person, exactly like today's dissent.
+
+The two-model review panel (services/dev/review_panel.py, amendment
+2026-11-28) hooks in after the risk report: off by default; in shadow mode it
+only records; in enforce mode anything but a unanimous approval holds the
+task for a person (``hold_auto``), and it never approves.
 """
 
 from __future__ import annotations
@@ -24,12 +29,13 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from life_graph.autonomy.kill_switch import autonomy_stopped
+from life_graph.config import settings
 from life_graph.core.budget import BudgetCategory
 from life_graph.core.events import EventType
 from life_graph.drivers.base import DriverResult
 from life_graph.drivers.verify_chain import runs_on_local_model
 from life_graph.models.db import AgentTask
-from life_graph.services.dev import task_events
+from life_graph.services.dev import review_panel, task_events
 from life_graph.services.dev.autonomy_policy import NEUTRAL, EffectivePolicy, load_effective
 from life_graph.services.dev.review_stages import latest_per_stage, reviewer_for, stage_record
 from life_graph.services.dev.risk_report import build_report, summary
@@ -310,6 +316,8 @@ class AutonomyRoundsMixin:
         that came back empty while files changed is recorded as incomplete,
         which such a condition refuses (never "clean").
         """
+        diff_text: str | None = None
+        report: dict[str, Any] | None = None
         try:
             diff_text = await self._worktree_diff(run.workdir)
             ctx = run.packet.project_context or {}
@@ -321,9 +329,103 @@ class AutonomyRoundsMixin:
             )
         except Exception:
             logger.warning("Risk report failed for task %s", run.task_id, exc_info=True)
+        else:
+            run.autonomy["risk"] = summary(report)
+            await self._persist_task_props(run, {RISK_REPORT_KEY: report})
+        await self._review_panel(run, diff_text, report)
+
+    # ── Review panel (two local models, risky diffs) ──────────
+
+    async def _review_panel(
+        self, run: _DispatchRun, diff_text: str | None, report: dict[str, Any] | None
+    ) -> None:
+        """Step 6b': the two-model review panel on a risky diff (review_panel.py).
+
+        ``driver_review_panel_mode``: ``off`` does nothing; ``shadow`` starts
+        the panel in the background and returns at once -- it records its
+        verdict and gates nothing; ``enforce`` waits for it (each member has
+        its timeout) and sends the task to a person -- no auto-open, no
+        auto-merge -- on anything but a unanimous approval. An approval never
+        approves anything. Never raises.
+        """
+        mode = settings.driver_review_panel_mode
+        if mode not in ("shadow", "enforce"):
             return
-        run.autonomy["risk"] = summary(report)
-        await self._persist_task_props(run, {RISK_REPORT_KEY: report})
+        try:
+            ctx = run.packet.project_context or {}
+            risky = review_panel.risky_reasons(
+                report,
+                diff_text,
+                protected_globs=[str(p) for p in ctx.get("protected_paths") or []],
+            )
+            if not risky:
+                await self._store_panel(run, review_panel.record(mode, None, skipped="not risky"))
+                return
+            if await autonomy_stopped(run.tenant_id):
+                if mode == "shadow":
+                    paused = review_panel.record(mode, None, risky=risky, skipped="kill switch")
+                    await self._store_panel(run, paused)
+                    return
+                stopped = review_panel.aggregate(
+                    [
+                        review_panel.MemberVerdict(m, review_panel.NOT_REVIEWED, "kill switch")
+                        for m in review_panel.panel_models()
+                    ]
+                )
+                await self._panel_done(run, mode, risky, stopped)
+                return
+            if mode == "shadow":
+                if review_panel.in_flight() >= review_panel.MAX_SHADOW_IN_FLIGHT:
+                    busy = review_panel.record(mode, None, risky=risky, skipped="panel busy")
+                    await self._store_panel(run, busy)
+                    return
+                review_panel.spawn(self._shadow_panel(run, run.instruction, diff_text, risky))
+                return
+            verdict = await review_panel.run_panel(run.instruction, diff_text)
+            await self._panel_done(run, mode, risky, verdict)
+        except Exception:
+            logger.warning("Review panel failed for task %s", run.task_id, exc_info=True)
+            if mode == "enforce":
+                failed = review_panel.PanelVerdict(review_panel.NOT_REVIEWED, "the panel failed")
+                await self._panel_done(run, mode, ["panel error"], failed)
+
+    async def _shadow_panel(
+        self, run: _DispatchRun, instruction: str, diff_text: str | None, risky: list[str]
+    ) -> None:
+        """The background half of shadow mode: review, then record. Never raises."""
+        try:
+            verdict = await review_panel.run_panel(instruction, diff_text)
+            await self._panel_done(run, "shadow", risky, verdict)
+        except Exception:
+            logger.warning("Shadow review panel failed for task %s", run.task_id, exc_info=True)
+
+    async def _panel_done(
+        self, run: _DispatchRun, mode: str, risky: list[str], verdict: review_panel.PanelVerdict
+    ) -> None:
+        """Record the verdict; in ``enforce``, hold the task for a person unless all approved."""
+        gated = mode == "enforce" and verdict.needs_person
+        rec = review_panel.record(mode, verdict, risky=risky, gated=gated)
+        if mode == "enforce":
+            # Only enforce touches the run: a shadow verdict may arrive after
+            # the approval was filed, and must not change it either way.
+            run.autonomy["review_panel"] = {
+                "verdict": verdict.verdict,
+                "members": [{"model": m.model, "verdict": m.verdict} for m in verdict.members],
+            }
+            if gated:
+                run.hold_auto = True
+        await self._store_panel(run, rec)
+        task_events.emit(
+            run.tenant_id, run.task_id, "review_panel",
+            f"review panel ({mode}): {verdict.verdict}"
+            + (" -- a person decides" if gated else ""),
+            data={"mode": mode, "verdict": verdict.verdict, "gated": gated,
+                  "members": [m.as_dict() for m in verdict.members], "risky": risky},
+            source="review_panel",
+        )  # fmt: skip
+
+    async def _store_panel(self, run: _DispatchRun, rec: dict[str, Any]) -> None:
+        await self._persist_task_props(run, {review_panel.PANEL_KEY: rec})
 
     @staticmethod
     def _autonomy_payload(run: _DispatchRun) -> dict[str, Any] | None:

@@ -572,6 +572,46 @@ owner's auto-approval conditions can only **narrow** `change_policy.auto_gate`.
   chain): fails on `block` findings in added lines (tracked diff + untracked files). Not in the
   default chain or the always-on checks, so existing dispatches are unchanged.
 
+### Story 11: Review panel on risky diffs (2026-11-28, shadow first)
+
+> Added 2026-11-28, step 6 of the router/council decision (race-app
+> `docs/research/2026-11-28-router-council/04-decision.md`). Code: `services/dev/review_panel.py`,
+> hook `AutonomyRoundsMixin._review_panel` in `drivers/review_stages.py` (runs right after the
+> risk report, before the landing commit). The idea (independent proposers, no vote) is from
+> the Mixture-of-Agents study (togethercomputer/MoA, Apache-2.0); no code was ported.
+
+- Settings: `driver_review_panel_mode` = `off` (default) | `shadow` | `enforce`;
+  `driver_review_panel_models` (default `ollama_chat/qwen3:14b,ollama_chat/qwen3-coder:30b`);
+  `driver_review_panel_timeout_seconds` (300, per member); `driver_review_panel_min_lines` (150).
+- GIVEN mode is not `off` WHEN a change lands THEN the panel runs only if the diff is **risky**:
+  the risk report has a warn or block finding, or is missing/incomplete; the diff touches a
+  protected path (`change_policy.protected_hits`, defaults plus the project's globs); or it changes
+  more than `driver_review_panel_min_lines` lines (added + removed). Otherwise
+  `properties.review_panel` is `{"verdict": "skipped", "reason": "not risky"}`.
+- Each member reviews the real diff **in parallel and blind to the others**, prompted with the
+  task instruction and the diff only (no memories, preferences or procedures), focused on
+  correctness, security and scope, and answers `objection` | `approve` | `not_reviewed` with a
+  reason. Each call runs under `only_models([model])` (no failover). Only `ollama/` and
+  `ollama_chat/` ids run: any other id is **refused** (never called) and counts as
+  `not_reviewed`. A timeout, error or unreadable answer is `not_reviewed`, never a pass.
+- Combine (deterministic, no chairman, no majority): **any objection → `objection`; else any
+  not-reviewed → `not_reviewed`; only a unanimous approval → `approve`.** An empty panel is
+  `not_reviewed`.
+- GIVEN `shadow` THEN the panel starts in the background and the dispatch does not wait for it;
+  its verdict is stored on the task (`properties.review_panel`: mode, verdict, reason, risky
+  reasons, members with model/verdict/reason/duration, `gated: false`) and emitted as a
+  `review_panel` task event. It changes nothing on the run or the approval. At most
+  `MAX_SHADOW_IN_FLIGHT` (2) at once; more are stored `skipped` / `panel busy`.
+- GIVEN `enforce` THEN the dispatch waits (bounded by the member timeout) and anything but a
+  unanimous approval sets `hold_auto`: the PR approval is filed for a person with no auto-open and
+  no auto-merge, and `payload.autonomy.review_panel = {verdict, members}`. A panel approval never
+  approves anything nor lifts an existing hold (invariant 1). A panel crash in enforce holds.
+- Kill switch paused: `shadow` stores `skipped` / `kill switch` (no model call); `enforce` stores
+  `not_reviewed` and holds.
+- The outcome log reads the verdict with `review_panel.panel_for_outcome(task.properties)`.
+- Not covered: the resumed "land only" path whose branch already landed (it files the approval
+  without Step 6b, so neither the risk report nor the panel run there).
+
 ### Data model
 
 ```sql
