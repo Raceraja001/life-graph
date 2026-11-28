@@ -382,7 +382,13 @@ class LadderMixin:
             "start_tier": escalation.tier_of(start_pos, size),
             "start_reason": (run.start_reason or "")[:300],
             "final_driver": getattr(run.driver, "name", None),
-            "final_model": _clip(self._current_model(run) if run.driver is not None else None, 120),
+            # The model the run reports (a CLI's own choice, e.g. claude-sonnet-…), else the
+            # ladder model it was routed to.
+            "final_model": _clip(
+                ((run.result.metadata or {}).get("model") if run.result is not None else None)
+                or (self._current_model(run) if run.driver is not None else None),
+                120,
+            ),
             "final_tier": escalation.tier_of(final_pos, size),
             "escalations": list(run.escalations),
             "reached_top": bool(run.reached_top),

@@ -109,10 +109,21 @@ def _norm_model(model: str | None) -> str | None:
 
 
 def run_model(driver_name: str, persona_model: str | None) -> str | None:
-    """The model a run on *driver_name* uses (the local driver's default included)."""
+    """The model a run on *driver_name* uses (the local driver's default included).
+
+    A persona's model is a LiteLLM model name: only the LiteLLM-backed drivers
+    (``local``, ``cloud``) run it. CLI drivers (claude_code, codex, gemini, opencode)
+    choose their own model, so a persona model never labels their rung.
+    """
+    if driver_name not in _LITELLM_DRIVERS:
+        return None
     if persona_model:
         return persona_model
     return settings.agent_llm_model if driver_name == "local" else None
+
+
+#: Drivers that run the persona's LiteLLM model themselves.
+_LITELLM_DRIVERS = frozenset({"local", "cloud"})
 
 
 def position(ladder: list[Rung], driver_name: str, model: str | None) -> int | None:
