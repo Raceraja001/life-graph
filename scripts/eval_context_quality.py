@@ -1493,9 +1493,33 @@ def _answer_table(ans: dict[str, Any], questions: list[dict]) -> str:
     return "\n".join(out)
 
 
+def _local_openai_available(url: str, model: str) -> str | None:
+    """None when *url* is a localhost OpenAI-compatible server that answers /v1/models.
+
+    Only loopback hosts: fixtures are recorded with a local model, never a
+    cloud one (the prod extraction server is llama.cpp on :11435).
+    """
+    from urllib.parse import urlparse
+
+    host = urlparse(url).hostname or ""
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        return f"--extract-url must be a localhost server, not {host or url!r}"
+    try:
+        with urllib.request.urlopen(f"{url}/v1/models", timeout=5) as resp:  # noqa: S310 — loopback only
+            json.loads(resp.read() or b"{}")
+    except Exception as exc:  # noqa: BLE001
+        return f"local server not reachable at {url} ({type(exc).__name__}); model {model}"
+    return None
+
+
 def _record(args: argparse.Namespace) -> int:
     """--record-fixtures: the local model's answers for the ingest arm's messages."""
-    why = ollama_chat_available(args.ollama_url, args.extract_model)
+    if args.extract_url:
+        url, where = args.extract_url.rstrip("/"), f"local server {args.extract_url}"
+        why = _local_openai_available(url, args.extract_model)
+    else:
+        url, where = args.ollama_url, "local Ollama"
+        why = ollama_chat_available(url, args.extract_model)
     if why:
         print(f"cannot record: {why}", file=sys.stderr)
         return 1
@@ -1503,7 +1527,7 @@ def _record(args: argparse.Namespace) -> int:
     calls: dict[str, int] = {}
     with model_guard(calls, allow_local_chat=True):
         out = asyncio.run(
-            ingest.record_fixtures(data, url=args.ollama_url, model=args.extract_model)
+            ingest.record_fixtures(data, url=url, model=args.extract_model, where=where)
         )
     print(json.dumps({**out, "cloud_model_calls": sum(calls.values())}, indent=2))
     return 1 if calls else 0
@@ -1529,6 +1553,12 @@ def main() -> int:
         help="Record the ingest arm's extractor output with the local model (no DB), then exit",
     )
     parser.add_argument("--extract-model", default="qwen3:14b", help="Model for --record-fixtures")
+    parser.add_argument(
+        "--extract-url",
+        default=None,
+        help="Record with this localhost OpenAI-compatible server instead of Ollama "
+        "(prod's extraction server: http://127.0.0.1:11435 with qwen2.5-coder-14b)",
+    )
     parser.add_argument(
         "--db-suffix",
         default=os.environ.get("LIFE_GRAPH_TEST_DATABASE_SUFFIX", "_test"),

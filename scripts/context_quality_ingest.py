@@ -339,7 +339,12 @@ def shift_of(fx: dict[str, Any], now: datetime) -> int:
 
 
 async def record_fixtures(
-    data: dict[str, Any], *, url: str, model: str, path: Path = FIXTURES_PATH
+    data: dict[str, Any],
+    *,
+    url: str,
+    model: str,
+    path: Path = FIXTURES_PATH,
+    where: str = "local Ollama",
 ) -> dict[str, Any]:
     """Run the local extraction model on every message and write ``raw`` and ``keys``.
 
@@ -383,7 +388,7 @@ async def record_fixtures(
     finally:
         settings.lm_extraction_model, settings.lm_reasoning_effort = saved
     fx["recorded"] = {
-        "model": f"{model} on local Ollama (think off)",
+        "model": f"{model} on {where} (think off)",
         "anchor": anchor.date().isoformat(),
         "flags": list(FLAGS),
         "how": "python scripts/eval_context_quality.py --record-fixtures",
