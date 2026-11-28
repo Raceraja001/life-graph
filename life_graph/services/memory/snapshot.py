@@ -137,7 +137,11 @@ The budget (:class:`Budget`, default 40 items / 6000 characters of content,
 Precision experiments (services/memory/snapshot_experiments.py) are for the
 M8 eval only. They run only when a caller passes ``experiments`` (the eval's
 ``--experiments``); nothing else does, and with none the snapshot is exactly
-the one described here.
+the one described here. Production code can reach only the fixed sets of
+``snapshot_experiments.MODES`` through ``mode`` (settings
+``context_precision_mode`` for the API, off by default, and
+``context_precision_shadow``, which compares a mode with the default
+snapshot in the turn trace: :func:`shadow_precision`).
 
 What Stage 1 does not do: projects, tasks, connectors, feedback, prompts.
 The kernel only builds a snapshot in shadow mode
@@ -161,6 +165,7 @@ import logging
 import time
 import unicodedata
 import uuid
+import weakref
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -169,6 +174,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import defer
 
 from life_graph import runtime
+from life_graph.config import settings
 from life_graph.core import evidence as ev
 from life_graph.core.tenant import get_current_tenant_id, tenant_scope
 from life_graph.core.trust import is_excluded_from_agents
@@ -243,6 +249,10 @@ EXCLUSION_POOL = 20
 POOL_STATUSES = ("active", "pending", "superseded")
 #: Shadow mode's time box (kernel/process_manager.py).
 SHADOW_TIMEOUT_S = 1.0
+#: The precision-mode shadow comparison's own time box (shadow_precision):
+#: separate from SHADOW_TIMEOUT_S so a slow default snapshot does not starve
+#: it and bias the sample towards fast turns.
+SHADOW_PRECISION_TIMEOUT_S = 1.0
 #: The clock stage timings read (a test replaces it; the event loop keeps its own).
 _clock = time.monotonic
 #: The stages ``timings_ms`` reports, in this order.
@@ -437,6 +447,13 @@ class ContextSnapshot:
     relations: tuple[ContextRelation, ...] = ()
     #: (stage, milliseconds) in TIMING_STAGES order; not part of equality.
     timings_ms: tuple[tuple[str, float], ...] = field(default=(), compare=False)
+    #: True when no view of the records could be built (empty query, the
+    #: embedding failed, a read failed). Not in to_dict, compact or equality:
+    #: callers that compare snapshots (shadow_precision) read it.
+    degraded: bool = field(default=False, compare=False)
+    #: The query's local embedding, so a second snapshot of the same turn does
+    #: not embed it again (shadow_precision). Never serialised, not in equality.
+    query_embedding: tuple[float, ...] | None = field(default=None, compare=False, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1392,6 +1409,9 @@ async def assemble_context(
     budget: Budget = DEFAULT_BUDGET,
     now: datetime | None = None,
     experiments: frozenset[str] = frozenset(),
+    tunables: xp.Tunables | None = None,
+    mode: str = "",
+    query_embedding: list[float] | tuple[float, ...] | None = None,
 ) -> ContextSnapshot:
     """A bounded, read-only snapshot of what bears on *query* for the current tenant.
 
@@ -1401,10 +1421,26 @@ async def assemble_context(
 
     *experiments* is for the M8 eval only (scripts/eval_context_quality.py
     ``--experiments``): option names or letters of
-    services/memory/snapshot_experiments.py. Empty, the default, is the normal
-    snapshot; no setting, API or kernel path passes it.
+    services/memory/snapshot_experiments.py, with *tunables* (the eval's
+    ``--xp-set``; default: the module's constants). Empty, the default, is the
+    normal snapshot; no setting, API or kernel path passes it.
+
+    *mode* is a precision mode (snapshot_experiments.MODES: "recall",
+    "precision"): a fixed experiment set with its own tunables, the only form
+    production code uses (settings.context_precision_mode). "" (the default)
+    is the normal snapshot. A mode cannot be combined with *experiments* or
+    *tunables*; an unknown one is a ValueError.
+
+    *query_embedding* is *query*'s embedding when the caller already has it
+    (a second snapshot of the same turn); the embed stage is then skipped.
     """
     chosen = xp.parse(experiments)
+    picked = xp.mode(mode)
+    if picked is not None:
+        if chosen or tunables is not None:
+            raise ValueError("a precision mode cannot be combined with experiments or tunables")
+        chosen, tunables = picked.experiments, picked.tunables
+    tuned = tunables or xp.DEFAULT_TUNABLES
     started = _clock()
     parts = _Parts()
     ref = retrieval._ensure_utc(as_of or now or datetime.now(UTC))
@@ -1417,23 +1453,28 @@ async def assemble_context(
     }
     tenant_id = get_current_tenant_id()
     if not query.strip():
-        return ContextSnapshot(**base, explanation="Empty query: nothing was searched.")
+        return ContextSnapshot(
+            **base, explanation="Empty query: nothing was searched.", degraded=True
+        )
 
     def timings() -> tuple[tuple[str, float], ...]:
         parts.timings["total"] = _ms_since(started)
         return parts.timings_tuple()
 
-    try:
-        with parts.timed("embed"):
-            embedding = await runtime.get_memory_manager().generate_embedding(query)
-    except Exception as exc:  # noqa: BLE001 — no vector means no memory search, never a fallback
-        logger.warning("Context snapshot: embedding failed (%s)", type(exc).__name__)
-        embedding = None
+    embedding: list[float] | None = list(query_embedding) if query_embedding else None
+    if embedding is None:
+        try:
+            with parts.timed("embed"):
+                embedding = await runtime.get_memory_manager().generate_embedding(query)
+        except Exception as exc:  # noqa: BLE001 — no vector means no memory search, never a fallback
+            logger.warning("Context snapshot: embedding failed (%s)", type(exc).__name__)
+            embedding = None
     if not embedding:
         return ContextSnapshot(
             **base,
             explanation="The query could not be embedded locally, so memory was not searched.",
             timings_ms=timings(),
+            degraded=True,
         )
     try:
         await _memories(parts, tenant_id, query, embedding, ref, as_of, budget)
@@ -1443,7 +1484,16 @@ async def assemble_context(
             await _intentions(parts, tenant_id, query, ref, as_of, budget)
         if chosen:
             kept, used, over = await _experiment_cut(
-                parts, tenant_id, query, embedding, ref, as_of, budget, chosen
+                parts,
+                tenant_id,
+                query,
+                embedding,
+                ref,
+                as_of,
+                budget,
+                chosen,
+                tuned,
+                mode=picked.name if picked is not None else "",
             )
         else:
             kept, used, over = apply_budget(parts.items, budget)
@@ -1457,6 +1507,7 @@ async def assemble_context(
             **base,
             explanation="Reading the records failed, so no context was assembled.",
             timings_ms=timings(),
+            degraded=True,
         )
     parts.exclude("over_budget", over)
     suff = check_sufficiency(query, kept, parts)
@@ -1474,6 +1525,7 @@ async def assemble_context(
         abstention_reason=parts.abstention_reason,
         relations=tuple(parts.relations),
         timings_ms=timings(),
+        query_embedding=tuple(embedding),
     )
 
 
@@ -1539,6 +1591,7 @@ async def _pull_linked(
     touching: list[tuple[Any, ...]],
     ref: datetime,
     budget: Budget,
+    t: xp.Tunables = xp.DEFAULT_TUNABLES,
 ) -> list[ContextItem]:
     """Experiment C: the memories a typed link joins to a top hit, strongest link first."""
     have = {i.source_ref.id for i in items if i.source_ref.kind == "memory"}
@@ -1547,7 +1600,7 @@ async def _pull_linked(
         for end in (str(source), str(target)):
             if end not in have and _is_uuid(end):
                 strength[end] = max(strength.get(end, 0.0), float(value or 0.0))
-    want = sorted(strength, key=lambda x: (-strength[x], x))[: xp.LINK_PULL]
+    want = sorted(strength, key=lambda x: (-strength[x], x))[: int(t.link_pull)]
     recorded_ref = datetime.now(UTC)
     out: list[ContextItem] = []
     for m in await _memories_by_id(tenant_id, [uuid.UUID(x) for x in want]):
@@ -1596,8 +1649,51 @@ async def _cosines(tenant_id: str, ids: list[uuid.UUID], vector: list[float]) ->
         return {}
 
 
+#: G's probe embeddings per embedder: memory manager -> (embedding model, vectors).
+#: The probes are fixed strings (no user content), so they are embedded once
+#: per process and embedder, not on every snapshot.
+_PROBE_CACHE: weakref.WeakKeyDictionary[Any, tuple[str, tuple[list[float], ...]]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def clear_probe_cache() -> None:
+    """Forget the cached probe embeddings (the eval calls it when it swaps the embedder)."""
+    _PROBE_CACHE.clear()
+
+
+async def probe_vectors() -> tuple[list[float], ...]:
+    """The embeddings of xp.HUB_PROBES, cached per memory manager and embedding model.
+
+    A probe that cannot be embedded is left out and nothing is cached, so a
+    later call tries again.
+    """
+    manager = runtime.get_memory_manager()
+    model = str(getattr(settings, "embedding_model", ""))
+    try:
+        cached = _PROBE_CACHE.get(manager)
+    except TypeError:  # not weak-referenceable: no cache
+        cached = None
+    if cached is not None and cached[0] == model:
+        return cached[1]
+    vectors = []
+    for probe in xp.HUB_PROBES:
+        vector = await manager.generate_embedding(probe)
+        if vector:
+            vectors.append(list(vector))
+    out = tuple(vectors)
+    if len(out) == len(xp.HUB_PROBES):
+        with contextlib.suppress(TypeError):
+            _PROBE_CACHE[manager] = (model, out)
+    return out
+
+
 async def _relevance(
-    tenant_id: str, items: list[ContextItem], embedding: list[float], hub: bool
+    tenant_id: str,
+    items: list[ContextItem],
+    embedding: list[float],
+    hub: bool,
+    t: xp.Tunables = xp.DEFAULT_TUNABLES,
 ) -> dict[str, float]:
     """Experiment F (and G): item key -> cosine to the question, hub-adjusted under G.
 
@@ -1607,13 +1703,10 @@ async def _relevance(
     by_id = await _cosines(tenant_id, ids, embedding)
     if hub and by_id:
         probes: dict[str, list[float]] = {}
-        for probe in xp.HUB_PROBES:
-            vector = await runtime.get_memory_manager().generate_embedding(probe)
-            if not vector:
-                continue
+        for vector in await probe_vectors():
             for mid, value in (await _cosines(tenant_id, ids, vector)).items():
                 probes.setdefault(mid, []).append(value)
-        by_id = xp.hub_adjusted(by_id, probes)
+        by_id = xp.hub_adjusted(by_id, probes, t=t)
     return {f"memory:{mid}": value for mid, value in by_id.items()}
 
 
@@ -1626,6 +1719,7 @@ def _experiment_filters(
     protected: set[str],
     links: dict[str, set[str]],
     relevance: dict[str, float] | None = None,
+    t: xp.Tunables = xp.DEFAULT_TUNABLES,
 ) -> list[ContextItem]:
     """B, C (the drop half), D and F in that order; each left-out item is counted."""
     if xp.QUERY_TYPE in chosen:
@@ -1635,16 +1729,16 @@ def _experiment_filters(
         )
         parts.exclude("experiment_query_type", len(out))
     if xp.LINKS in chosen:
-        items, out = xp.drop_unlinked_neighbours(items, links, protected)
+        items, out = xp.drop_unlinked_neighbours(items, links, protected, t=t)
         parts.exclude("experiment_links", len(out))
     if xp.DEDUPE in chosen:
         ordered = xp.ranked(
-            items, order_key, rank=xp.RANK in chosen, evidence=xp.EVIDENCE in chosen
+            items, order_key, rank=xp.RANK in chosen, evidence=xp.EVIDENCE in chosen, t=t
         )
-        items, out = xp.dedupe(ordered, protected)
+        items, out = xp.dedupe(ordered, protected, t=t)
         parts.exclude("experiment_dedupe", len(out))
     if xp.BUDGET in chosen:
-        items, out = xp.adaptive_cut(items, protected, relevance)
+        items, out = xp.adaptive_cut(items, protected, relevance, t=t)
         parts.exclude("experiment_budget", len(out))
     return items
 
@@ -1658,8 +1752,14 @@ async def _experiment_cut(
     as_of: datetime | None,
     budget: Budget,
     chosen: frozenset[str],
+    t: xp.Tunables = xp.DEFAULT_TUNABLES,
+    *,
+    mode: str = "",
 ) -> tuple[list[ContextItem], int, int]:
-    """The candidates cut and ordered by the eval-only experiments *chosen*.
+    """The candidates cut and ordered by the experiments *chosen*, with *t*'s values.
+
+    *mode* names the precision mode they came from ("" for the eval's own
+    choice); it only changes the explanation's note.
 
     Then the same hard budget. Typed links are read once over all candidates:
     a CONTRADICTS link among them is a conflict whether or not both sides
@@ -1667,14 +1767,14 @@ async def _experiment_cut(
     """
     with parts.timed("experiments"):
         items = list(parts.items)
-        seeds = xp.link_seeds(items, order_key)
+        seeds = xp.link_seeds(items, order_key, t.link_seeds)
         touching: list[tuple[Any, ...]] = []
         if xp.LINKS in chosen:
             touching = await _links_touching(tenant_id, _memory_ids(seeds))
             # Not for an as_of question: a link says nothing about when its
             # end was true, so the pull would need the history reads retrieve does.
             if as_of is None:
-                items += await _pull_linked(parts, tenant_id, items, touching, ref, budget)
+                items += await _pull_linked(parts, tenant_id, items, touching, ref, budget, t)
         rows = await _typed_links(tenant_id, _memory_ids(items))
         _, linked_conflicts = links_to_context(rows, items)
         protected: set[str] = set()
@@ -1683,16 +1783,19 @@ async def _experiment_cut(
         links = xp.linked_to(touching, {i.source_ref.id for i in seeds})
         relevance = None
         if xp.BUDGET in chosen:
-            relevance = await _relevance(tenant_id, items, embedding, xp.HUB in chosen)
+            relevance = await _relevance(tenant_id, items, embedding, xp.HUB in chosen, t)
             if not relevance:
                 parts.notes.append("Experiment F had no cosine; it cut on the fused search score.")
-        items = _experiment_filters(parts, query, items, chosen, as_of, protected, links, relevance)
+        items = _experiment_filters(
+            parts, query, items, chosen, as_of, protected, links, relevance, t
+        )
         order = xp.ranked(
             items,
             order_key,
             rank=xp.RANK in chosen,
             evidence=xp.EVIDENCE in chosen,
             confidence=_confidences(parts),
+            t=t,
         )
     position = {i.source_ref.key(): n for n, i in enumerate(order)}
     kept, used, over = apply_budget(order, budget, key=lambda i: position[i.source_ref.key()])
@@ -1700,7 +1803,10 @@ async def _experiment_cut(
         relations, _ = links_to_context(rows, kept)
         parts.relations += relations
         parts.conflicts += linked_conflicts
-    parts.notes.append(f"Eval-only experiments on: {', '.join(xp.letters(chosen))}.")
+    if mode:
+        parts.notes.append(f"Precision mode {mode}: {', '.join(xp.letters(chosen))}.")
+    else:
+        parts.notes.append(f"Eval-only experiments on: {', '.join(xp.letters(chosen))}.")
     return kept, used, over
 
 
@@ -1750,6 +1856,106 @@ async def shadow_compact(
     return (await shadow_snapshot(tenant_id, message, history, timeout=timeout))[1]
 
 
+# ── Precision-mode shadow comparison (settings.context_precision_shadow) ──
+
+#: Format of the trace's ``context_precision`` record (:func:`precision_comparison`).
+PRECISION_COMPARE_FORMAT = 1
+#: The error when the turn's default snapshot failed: nothing to compare with.
+NO_BASELINE = "no_baseline"
+
+
+def precision_comparison(
+    default: ContextSnapshot, moded: ContextSnapshot, mode_name: str
+) -> dict[str, Any]:
+    """The trace record comparing a precision-mode snapshot with the default one.
+
+    References, labels and counts only, the same item form as
+    :meth:`ContextSnapshot.compact` (``ref``, labels, ``fp``, ``rec``, ``due``):
+    no content, no query, no missing terms, no explanation. ``kept`` and
+    ``dropped`` are the default snapshot's refs in its order, split by whether
+    the mode kept them; ``added`` the mode's refs the default did not have
+    (typed-link pulls), in the mode's order.
+    """
+    base_refs = [i.source_ref.key() for i in default.items]
+    mode_refs = [i.source_ref.key() for i in moded.items]
+    in_mode, in_base = set(mode_refs), set(base_refs)
+    kept = [r for r in base_refs if r in in_mode]
+    dropped = [r for r in base_refs if r not in in_mode]
+    added = [r for r in mode_refs if r not in in_base]
+    return {
+        "v": PRECISION_COMPARE_FORMAT,
+        "mode": mode_name,
+        "experiments": xp.letters(xp.MODES[mode_name].experiments),
+        "items": moded.compact()["items"],
+        "counts": {
+            "default": len(base_refs),
+            "mode": len(mode_refs),
+            "kept": len(kept),
+            "dropped": len(dropped),
+            "added": len(added),
+        },
+        "kept": kept,
+        "dropped": dropped,
+        "added": added,
+        "exclusions": dict(moded.exclusions),
+        "timings_ms": dict(moded.timings_ms),
+    }
+
+
+async def shadow_precision(
+    tenant_id: str,
+    message: str,
+    history: list[dict[str, Any]] | None,
+    mode_name: str,
+    default: ContextSnapshot | None,
+    *,
+    timeout: float = SHADOW_PRECISION_TIMEOUT_S,
+) -> dict[str, Any]:
+    """The turn's snapshot under precision mode *mode_name*, compared with *default*.
+
+    Shadow only (settings.context_precision_shadow, inside
+    context_snapshot_shadow's personal and local gate): kept in the turn
+    trace as ``context_precision``, never in the prompt. Built for the same
+    question, with the same query embedding and at the same reference time
+    as *default*, time-boxed to *timeout* (its own box,
+    SHADOW_PRECISION_TIMEOUT_S), and it never raises: a failure, a timeout,
+    an unknown mode, or a missing or degraded default snapshot (nothing to
+    compare with: ``no_baseline``) is logged (no content) and recorded as
+    ``{"error": <type>}``.
+    Either way it carries ``mode`` (a known mode name, else "other") and ``ms``.
+    """
+    started = time.monotonic()
+    known = (mode_name or "").strip().lower()
+    out: dict[str, Any]
+    try:
+        picked = xp.mode(known)
+        if picked is None:
+            raise ValueError("no precision mode")
+        if default is None or default.degraded:
+            out = {"error": NO_BASELINE}
+        else:
+            if timeout <= 0:
+                raise TimeoutError
+            ref = datetime.fromisoformat(default.reference_time) if default.reference_time else None
+            with tenant_scope(tenant_id):
+                moded = await asyncio.wait_for(
+                    assemble_context(
+                        search_text(message, history),
+                        now=ref,
+                        mode=picked.name,
+                        query_embedding=default.query_embedding,
+                    ),
+                    timeout,
+                )
+            out = precision_comparison(default, moded, picked.name)
+    except Exception as exc:  # noqa: BLE001 — shadow mode must never cost the turn
+        logger.warning("Context precision (shadow) failed: %s", type(exc).__name__)
+        out = {"error": type(exc).__name__}
+    out.setdefault("mode", known if known in xp.MODES else "other")
+    out["ms"] = round((time.monotonic() - started) * 1000)
+    return out
+
+
 __all__ = [
     "Budget",
     "ContextConflict",
@@ -1760,7 +1966,9 @@ __all__ = [
     "assemble_context",
     "fingerprint",
     "normalise_text",
+    "precision_comparison",
     "shadow_compact",
+    "shadow_precision",
     "shadow_snapshot",
     "without_timings",
 ]

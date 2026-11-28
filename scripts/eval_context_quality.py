@@ -101,7 +101,10 @@ Precision experiments (services/memory/snapshot_experiments.py, eval-only):
 ``--experiments A,B,...`` (letters or names: A rank, B query_type, C links,
 D dedupe, E evidence, F budget, G hub) runs the snapshot questions with those
 options on. ``--xp-set NAME=VALUE`` sets one of the module's TUNABLE
-constants for the run, ``--max-items N`` a tighter hard budget, and
+constants for the run (passed with each call, never set on the module),
+``--mode recall|precision`` a production precision mode (MODES: its fixed set
+and values; --experiments and --xp-set add to it), ``--max-items N`` a
+tighter hard budget, and
 ``--split tune|test`` only half of the questions, by a stable hash of the
 question id (tune on one half, report on the other). All four are recorded
 in the report JSON (``run``); with none of them the run and the report are
@@ -1191,6 +1194,10 @@ async def run_arm(
         embed_ctx = arm.using_embedder(
             arm.ollama_embedder(texts, model="bge-m3", base_url=ollama_url), "bge-m3"
         )
+    # G's probe embeddings are cached per manager; this arm may embed differently.
+    from life_graph.services.memory.snapshot import clear_probe_cache
+
+    clear_probe_cache()
     with embed_ctx, arm.production_fakes(), model_guard(calls):
         main = await run_snapshot_questions(data, snap_qs, repeat, fx, snapshot_kw)
         per_q, snaps, latencies = main["per_question"], main["snapshots"], main["latencies"]
@@ -1261,18 +1268,18 @@ def _xp() -> Any:
 def experiment_run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     """(the run's record for the report, assemble_context keywords) from the flags.
 
-    Both empty without --experiments / --xp-set / --max-items / --split.
-    Sets the --xp-set constants on the experiments module for this process.
+    Both empty without --mode / --experiments / --xp-set / --max-items / --split.
+    The --xp-set values travel with each call (``tunables``); nothing is set
+    on the experiments module. ``--mode`` alone runs the production code path
+    itself (``assemble_context(mode=...)``); with --experiments or --xp-set
+    too, the mode's set and values are the start and the flags add to them.
     """
     xp = _xp()
     record: dict[str, Any] = {}
     kw: dict[str, Any] = {}
+    picked = xp.mode(getattr(args, "mode", "") or "")
     chosen = xp.parse(args.experiments)
-    if chosen:
-        record["experiments"] = xp.letters(chosen)
-        record["experiment_names"] = sorted(chosen)
-        kw["experiments"] = chosen
-    settings_: dict[str, float] = {}
+    raw: dict[str, str] = {}
     for item in args.xp_set:
         name, _, value = item.partition("=")
         name = name.strip().upper()
@@ -1280,13 +1287,28 @@ def experiment_run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
             raise SystemExit(
                 f"--xp-set {item!r}: use NAME=VALUE, NAME one of {', '.join(xp.TUNABLE)}"
             )
-        cast = type(getattr(xp, name))
-        setattr(xp, name, cast(float(value)) if cast is int else cast(value))
-        settings_[name] = getattr(xp, name)
+        raw[name] = value
+    try:
+        tunables = (picked.tunables if picked else xp.DEFAULT_TUNABLES).with_values(raw)
+    except ValueError as exc:
+        raise SystemExit(f"--xp-set: {exc}") from exc
+    named = tunables.named()
+    settings_ = {n: named[n] for n in raw}
+    if picked is not None:
+        record["mode"] = picked.name
+        if not chosen and not raw:
+            kw["mode"] = picked.name
+        chosen = chosen | picked.experiments
+    if chosen:
+        record["experiments"] = xp.letters(chosen)
+        record["experiment_names"] = sorted(chosen)
+        if "mode" not in kw:
+            kw["experiments"] = chosen
+            kw["tunables"] = tunables
     if settings_:
         record["xp_set"] = settings_
     if chosen or settings_:
-        record["constants"] = {n: getattr(xp, n) for n in xp.TUNABLE}
+        record["constants"] = named
     if args.max_items:
         from life_graph.services.memory.snapshot import DEFAULT_BUDGET, Budget
 
@@ -1716,6 +1738,13 @@ def main() -> int:
         help='Suffix for the database name (default "_test"; "" uses the configured DB)',
     )
     parser.add_argument(
+        "--mode",
+        choices=("recall", "precision"),
+        default="",
+        help="A production precision mode (snapshot_experiments.MODES): its fixed experiment "
+        "set and values; --experiments/--xp-set add to it",
+    )
+    parser.add_argument(
         "--experiments",
         default="",
         help="Eval-only snapshot experiments, letters or names: A rank, B query_type, "
@@ -1735,10 +1764,10 @@ def main() -> int:
         "--split", choices=SPLITS, default=None, help="Only one half of the questions (stable hash)"
     )
     args = parser.parse_args()
-    tried = args.experiments or args.xp_set or args.max_items or args.split
+    tried = args.mode or args.experiments or args.xp_set or args.max_items or args.split
     if tried and (args.write_report or args.write_baseline):
         parser.error(
-            "--experiments/--xp-set/--max-items/--split cannot write the committed report "
+            "--mode/--experiments/--xp-set/--max-items/--split cannot write the committed report "
             "or baseline; use --output"
         )
     _point_at_test_database(args.db_suffix)
