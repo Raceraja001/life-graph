@@ -127,6 +127,28 @@ class DriverSettings(BaseModel):
     # Arena (Phase 4b): the owner races one instruction on several drivers or
     # accounts and picks the winner. Off: POST /kernel/drivers/arena is 409.
     driver_arena_enabled: bool = False
+    # Escalation ladder (docs/specs/agent-drivers.md, "Escalation ladder,
+    # starting floor, outcome log (2026-11-28)"): a bounce after failed
+    # verification moves one rung UP instead of re-running the same driver.
+    # Rungs are "driver[:model]", weakest first; empty = the default
+    # local:qwen3:14b -> local:qwen3-coder:30b -> claude_code, minus rungs whose
+    # driver isn't registered. A pin_required driver (cloud) is never a rung.
+    # On by default: local rungs are free, a metered (api-billed) rung is
+    # skipped unless driver_escalation_allow_metered, and the top rung is capped
+    # below -- so no new dollar spend; a blocked climb bounces as before.
+    driver_escalation_enabled: bool = True
+    driver_escalation_ladder: str = ""
+    driver_escalation_allow_metered: bool = False
+    # Of a tenant's dispatches today (UTC), the share the ladder or the floor
+    # may send to the top rung; the first driver_escalation_top_daily_min a day
+    # are always allowed. Protects the one subscription from parking.
+    driver_escalation_top_share: float = Field(0.25, ge=0.0, le=1.0)
+    driver_escalation_top_daily_min: int = Field(2, ge=0)
+    # Starting floor: a task touching a protected path, or whose project +
+    # instruction failed within driver_start_floor_failure_days, starts at the
+    # top rung (persona pins win; the top-rung cap applies).
+    driver_start_floor_enabled: bool = True
+    driver_start_floor_failure_days: int = Field(14, ge=1, le=365)
     # A plan approves itself only for a project with auto_approve_plans set,
     # at most this many tasks, and every other rule in services/dev/plan_policy.py.
     auto_plan_max_tasks: int = 3

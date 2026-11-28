@@ -28,6 +28,7 @@ import hashlib
 import logging
 import re
 import tempfile
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -55,6 +56,7 @@ from life_graph.drivers.execution_guard import (
     ExecutionCheckpointTracker,
     verify_independent_completion,
 )
+from life_graph.drivers.ladder_steps import LadderMixin, _review_entry
 from life_graph.drivers.plan_spec import (  # noqa: F401  (re-exported)
     _PLAN_ONLY_PREFIX,
     _PLAN_READ_TOOLS,
@@ -385,10 +387,34 @@ class _DispatchRun:
     driver_pin: str | None = None
     account_pin: str | None = None
     hold_auto: bool = False
+    # Escalation ladder, starting floor, outcome log (2026-11-28,
+    # drivers/escalation.py, services/dev/outcome_log.py): when the dispatch
+    # began; where it started and why; whether a pin forbids climbing; each
+    # climb (or refused climb); whether the ladder/floor put it on the top
+    # rung; the persona's own model (a driver-only rung restores it); the
+    # default second-opinion verdict; and whether the outcome row was written.
+    started_at: float = field(default_factory=time.monotonic)
+    start_driver: str | None = None
+    start_model: str | None = None
+    start_reason: str = "selection"
+    floor_trigger: str | None = None
+    failed_before: bool = False
+    pinned: bool = False
+    pin_allows_escalation: bool = True
+    escalations: list[dict] = field(default_factory=list)
+    reached_top: bool = False
+    persona_model: str | None = None
+    second_opinion: dict | None = None
+    outcome_logged: bool = False
 
 
 class TaskDispatcher(
-    DriverStatsMixin, ApprovalFilingMixin, AutonomyRoundsMixin, RunHealthMixin, ContinueRunMixin
+    DriverStatsMixin,
+    ApprovalFilingMixin,
+    AutonomyRoundsMixin,
+    RunHealthMixin,
+    ContinueRunMixin,
+    LadderMixin,
 ):
     """Selects driver, enforces limits, runs verification, manages one-bounce.
 
@@ -549,14 +575,18 @@ class TaskDispatcher(
                     project_id=run.project_uuid,
                 )
             )
+            # Step 3a: the deterministic starting floor (persona pins win).
+            await self._apply_start_floor(run)
             task_events.emit(
                 tenant_id, task_id, "driver", f"driver {run.driver.name}",
-                data={"driver": run.driver.name, "persona": persona_name}, source="dispatcher",
+                data={"driver": run.driver.name, "persona": persona_name,
+                      "start_reason": run.start_reason}, source="dispatcher",
             )  # fmt: skip
 
             # Step 3b: Governor budget gate — refuse before spending, not after.
             denied = await self._budget_gate(run)
             if denied is not None:
+                run.result = denied
                 return denied
 
             # Emit dispatch event
@@ -600,8 +630,12 @@ class TaskDispatcher(
             if owns_session:
                 await session.rollback()
             logger.error("Dispatch failed for task %s: %s", task_id, e, exc_info=True)
+            await self._log_outcome(run, error=e)
             raise
         finally:
+            # Every other terminal path (a budget denial) is logged here; a
+            # finished dispatch already was, by _finish_dispatch.
+            await self._log_outcome(run)
             # Kept for continue_task when that is on (driver_continue_enabled)
             # and the run left a session to resume; removed otherwise.
             if run.worktree is not None and not await self._retain_for_continuation(run):
@@ -1378,12 +1412,11 @@ class TaskDispatcher(
         rounds (they fix checks; they are not retries). 0 rounds = exactly
         the one bounce, as before.
         """
-        driver = run.driver
         await self._emit(
             EventType.VERIFICATION_FAILED,
             {
                 "task_id": run.task_id,
-                "driver": driver.name,
+                "driver": run.driver.name,
                 "failures": [asdict(r) for r in v_results if not r.passed],
             },
         )
@@ -1395,11 +1428,14 @@ class TaskDispatcher(
         while True:
             attempt = run.next_attempt
             run.next_attempt += 1
+            # The escalation ladder: this bounce/round runs one rung up when
+            # one is allowed, else on the same driver as before.
+            await self._climb(run, attempt, failures)
             # Bounce: re-dispatch with failure context
             bounce_result = await self._bounce_task(
                 tenant_id=run.tenant_id,
                 task_id=run.task_id,
-                driver=driver,
+                driver=run.driver,
                 packet=run.packet,
                 workdir=run.workdir,
                 failure_report=failures,
@@ -1467,8 +1503,9 @@ class TaskDispatcher(
             metadata=metadata,
         )
         await self._create_approval_entry(
-            run.tenant_id, run.task_id, driver.name, report, run.session, attempts=1 + rounds_run
-        )
+            run.tenant_id, run.task_id, run.driver.name, report, run.session,
+            attempts=1 + rounds_run,
+        )  # fmt: skip
 
     async def _file_plan_spec(self, run: _DispatchRun) -> None:
         """Step 6, a plan passed: file its spec for human review.
@@ -1525,7 +1562,37 @@ class TaskDispatcher(
             return
         diff_text = await diff_against_head(run.workdir)
         verdict = await self._reviewer.review(run.task_type, run.instruction, diff_text)
-        if not (verdict.ran and not verdict.approved):
+        run.second_opinion = _review_entry("second_opinion", verdict)
+        status = run.second_opinion["verdict"]
+        if status in ("approved", "skipped"):
+            # services/dev/second_opinion.ReviewVerdict.may_auto_land: only an
+            # approval, or a review that is off / had nothing to read, lands.
+            return
+        result = run.result
+        if status == "not_reviewed":
+            # Fail-closed (decision step 1): a review that was due and produced
+            # no verdict is not an approval. A person decides; it is not a
+            # dissent, so no SECOND_OPINION_DISSENT event.
+            reason = verdict.concern or "no verdict"
+            await self._create_dissent_approval_entry(
+                run.tenant_id,
+                run.task_id,
+                driver.name,
+                f"Second opinion did not run: {reason}",
+                run.session,
+            )
+            run.result = DriverResult(
+                success=False,
+                output=result.output,
+                error=f"Second opinion did not run: {reason}",
+                cost_usd=result.cost_usd,
+                duration_ms=result.duration_ms,
+                metadata={
+                    "needs_human": True,
+                    "second_opinion_status": "not_reviewed",
+                    "second_opinion_reason": verdict.concern,
+                },
+            )
             return
         await self._emit(
             EventType.SECOND_OPINION_DISSENT,
@@ -1542,7 +1609,6 @@ class TaskDispatcher(
             verdict.concern,
             run.session,
         )
-        result = run.result
         run.result = DriverResult(
             success=False,
             output=result.output,
@@ -1764,6 +1830,7 @@ class TaskDispatcher(
                 "outcome": (result.metadata or {}).get("outcome"),
             },
         )
+        await self._log_outcome(run)
 
     async def _select_driver(
         self,
