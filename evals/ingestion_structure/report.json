@@ -1,8 +1,8 @@
 {
   "benchmark": "life_graph_ingestion_structure_v1",
-  "cases_sha256": "9383814b9bab565fc3100e9664acdd3d65b72ccb7cd54d628e343ad937f0a65e",
-  "cases": 204,
-  "tamil_or_tanglish_share": 0.309,
+  "cases_sha256": "a9d254f81f04c3ed28f55963491fca5926db7a18c63dc492d17eb3c05d3c922e",
+  "cases": 222,
+  "tamil_or_tanglish_share": 0.365,
   "zero_tolerance": {
     "world_time_set_where_unknown": 0,
     "world_time_future_given_start": 0,
@@ -69,22 +69,18 @@
     "misses": []
   },
   "decisions": {
-    "capture_cases": 14,
+    "capture_cases": 32,
     "moves_cases": 18,
     "detection_precision": 1.0,
-    "detection_recall": 0.5714,
+    "detection_recall": 1.0,
     "lifecycle_accuracy": 1.0,
     "denominators": {
-      "detection_precision": 4,
-      "detection_recall": 7,
+      "detection_precision": 13,
+      "detection_recall": 13,
       "lifecycle_accuracy": 18
     },
     "confirmed_without_owner": [],
     "outside": [],
-    "misses": [
-      "cap-tamil: 0 candidates (gold 1)",
-      "cap-tanglish: 0 candidates (gold 1)",
-      "cap-tanglish-venaam: 0 candidates (gold 1)"
-    ]
+    "misses": []
   }
 }
