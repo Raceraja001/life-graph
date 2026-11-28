@@ -353,15 +353,15 @@ MODES: MappingProxyType[str, Mode] = MappingProxyType(
             name="recall",
             experiments=frozenset({QUERY_TYPE, LINKS, BUDGET}) | _STRUCTURAL,
             tunables=Tunables(cosine_floor=0.70),
-            measured="B+C+F+H+I+J+K+L, COSINE_FLOOR 0.70; without L: tune P 0.400 "
-            "R 1.000, test P 0.547 R 0.961 (owner's ten R 1.00 / 0.94); with L: not yet run",
+            measured="B+C+F+H+I+J+K+L, COSINE_FLOOR 0.70 (bge-m3, 2026-11-28): tune P 0.400 "
+            "R 1.000, test P 0.549 R 0.980, all 45 P 0.473 R 0.990 (owner's ten 0.71 / 0.98)",
         ),
         "precision": Mode(
             name="precision",
             experiments=frozenset({QUERY_TYPE, LINKS, BUDGET, HUB}) | _STRUCTURAL,
             tunables=Tunables(cosine_floor=0.75),
-            measured="B+C+F+G+H+I+J+K+L, COSINE_FLOOR 0.75; without L: tune P 0.490 "
-            "R 0.957, test P 0.605 R 0.961; with L: not yet run",
+            measured="B+C+F+G+H+I+J+K+L, COSINE_FLOOR 0.75 (bge-m3, 2026-11-28): tune P 0.490 "
+            "R 0.957, test P 0.607 R 0.980, all 45 P 0.551 R 0.969 (owner's ten 0.75 / 0.95)",
         ),
     }
 )
