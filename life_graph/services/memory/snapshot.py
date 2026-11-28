@@ -226,6 +226,9 @@ REASON_SCORE = {
     retrieval.COLD_TIER: 0.10,
     # Only the eval-only links experiment (C) gives this reason.
     xp.LINKED_EVIDENCE: 0.35,
+    # Only the eval-only structural recall options give these (H, I).
+    xp.GOAL_RECORD: 0.30,
+    xp.UNDATED_INTENTION: 0.22,
 }
 
 #: Freshness classes: (upper bound in days, name), checked in order.
@@ -1738,9 +1741,150 @@ def _experiment_filters(
         items, out = xp.dedupe(ordered, protected, t=t)
         parts.exclude("experiment_dedupe", len(out))
     if xp.BUDGET in chosen:
-        items, out = xp.adaptive_cut(items, protected, relevance, t=t)
+        cut_t, held = t, set()
+        if chosen & {xp.OVERVIEW, xp.DOMAIN} and xp.is_overview(query):
+            if xp.OVERVIEW in chosen:
+                cut_t = xp.overview_tunables(t)
+            if xp.DOMAIN in chosen:
+                held = _domain_held(parts, items, query)
+        items, out = xp.adaptive_cut(items, protected | held, relevance, t=cut_t)
         parts.exclude("experiment_budget", len(out))
     return items
+
+
+def _domain_held(parts: _Parts, items: list[ContextItem], query: str) -> set[str]:
+    """Experiment K: the memory items tagged with a domain the question names."""
+    tags = xp.domain_tags(xp.query_domains(query))
+    if not tags:
+        return set()
+    held: set[str] = set()
+    for item in items:
+        row = parts.rows.get(item.source_ref.key())
+        own = {
+            str(x).strip().lower() for x in (getattr(row, "tags", None) or []) if isinstance(x, str)
+        }
+        if item.source_ref.kind == "memory" and own & tags:
+            held.add(item.source_ref.key())
+    return held
+
+
+async def _undated_intentions(tenant_id: str, ref: datetime, limit: int) -> list[Any]:
+    """Experiment H: this tenant's open intentions with no due time, newest first.
+
+    Open (pending, nudged), not expired at *ref*, no trigger time and no
+    expiry. The promise's ``due_by`` is JSON: :func:`undated_open` drops those
+    (and checks the rest again) in Python.
+    """
+    stmt = (
+        select(Intention)
+        .options(defer(Intention.embedding))
+        .where(Intention.tenant_id == tenant_id)
+        .where(Intention.status.in_(OPEN_INTENTION_STATUSES))
+        .where(Intention.trigger_time.is_(None), Intention.expires_at.is_(None))
+        .order_by(Intention.created_at.desc(), Intention.id)
+        .limit(int(limit))
+    )
+    async with async_session() as s:
+        return list((await s.execute(stmt)).scalars().all())
+
+
+def undated_open(i: Any, tenant_id: str) -> bool:
+    """Experiment H's checks, whatever the read returned: this tenant's, open, no due time."""
+    return (
+        str(getattr(i, "tenant_id", tenant_id)) == str(tenant_id)
+        and str(getattr(i, "status", "")) in OPEN_INTENTION_STATUSES
+        and intention_due(i) is None
+    )
+
+
+async def _pull_undated(
+    parts: _Parts,
+    tenant_id: str,
+    query: str,
+    embedding: list[float],
+    items: list[ContextItem],
+    types: frozenset[str],
+    ref: datetime,
+    budget: Budget,
+    t: xp.Tunables,
+) -> list[ContextItem]:
+    """Experiment H: undated open intentions the question asks for, by kind, words or meaning."""
+    have = {i.source_ref.key() for i in items}
+    whole = xp.asks_for(query, types, xp.COMMITMENT) and not xp.asks_for_due(query)
+    out: list[ContextItem] = []
+    for i in await _undated_intentions(tenant_id, ref, t.side_pull):
+        if f"intention:{i.id}" in have or not undated_open(i, tenant_id):
+            continue
+        item = intention_item(i, ref, budget, xp.UNDATED_INTENTION)
+        support = intention_support_text(i, item)
+        keep = whole or xp.supports(query, support)
+        if not keep:
+            vector = await runtime.get_memory_manager().generate_embedding(
+                str(getattr(i, "content", "") or "")
+            )
+            similarity = xp.cosine(embedding, vector)
+            keep = similarity is not None and similarity >= t.intention_floor
+        if keep:
+            parts.add(item, support)
+            out.append(item)
+    return out
+
+
+async def _goal_memories(tenant_id: str, limit: int) -> list[Any]:
+    """Experiment I: this tenant's active memories that may be goals, newest first."""
+    stmt = (
+        select(Memory)
+        .options(defer(Memory.embedding))
+        .where(Memory.tenant_id == tenant_id, Memory.status == "active")
+        .where(Memory.superseded_by.is_(None))
+        .where(
+            or_(
+                Memory.tags.overlap(sorted(xp.GOAL_TAGS)),
+                Memory.properties["fact_type"].astext == xp.GOAL_FACT_TYPE,
+            )
+        )
+        .order_by(Memory.created_at.desc(), Memory.id)
+        .limit(int(limit))
+    )
+    async with async_session() as s:
+        return list((await s.execute(stmt)).scalars().all())
+
+
+async def _pull_goals(
+    parts: _Parts,
+    tenant_id: str,
+    query: str,
+    items: list[ContextItem],
+    types: frozenset[str],
+    ref: datetime,
+    budget: Budget,
+    t: xp.Tunables,
+) -> list[ContextItem]:
+    """Experiment I: goal records the question asks for as a whole, or whose words support it.
+
+    The same checks as C's pulls (linked_memory_ok): this tenant's, active,
+    not hostile, not replaced, valid now.
+    """
+    have = {i.source_ref.key() for i in items}
+    whole = xp.asks_for(query, types, xp.GOAL)
+    recorded_ref = datetime.now(UTC)
+    out: list[ContextItem] = []
+    for m in await _goal_memories(tenant_id, int(t.goal_pull) * 3):
+        if len(out) >= int(t.goal_pull):
+            break
+        if f"memory:{m.id}" in have or not linked_memory_ok(m, tenant_id, ref, recorded_ref):
+            continue
+        fact_type = _props(m).get("fact_type")
+        if not xp.is_goal_memory(getattr(m, "tags", None), fact_type, str(m.content or "")):
+            continue
+        support = memory_support_text(m)
+        if not (whole or xp.supports(query, support)):
+            continue
+        retrieval._marked([m], xp.GOAL_RECORD)
+        item = memory_item(m, ref, budget)
+        parts.add(item, support, m)
+        out.append(item)
+    return out
 
 
 async def _experiment_cut(
@@ -1775,6 +1919,15 @@ async def _experiment_cut(
             # end was true, so the pull would need the history reads retrieve does.
             if as_of is None:
                 items += await _pull_linked(parts, tenant_id, items, touching, ref, budget, t)
+        if chosen & {xp.UNDATED, xp.GOALS} and as_of is None:
+            # Not for an as_of question either: these reads know only what is open now.
+            types = xp.classify(query)
+            if xp.UNDATED in chosen:
+                items += await _pull_undated(
+                    parts, tenant_id, query, embedding, items, types, ref, budget, t
+                )
+            if xp.GOALS in chosen:
+                items += await _pull_goals(parts, tenant_id, query, items, types, ref, budget, t)
         rows = await _typed_links(tenant_id, _memory_ids(items))
         _, linked_conflicts = links_to_context(rows, items)
         protected: set[str] = set()
