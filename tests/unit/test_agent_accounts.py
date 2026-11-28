@@ -93,13 +93,13 @@ def test_names_and_properties_are_validated():
 
 
 def test_identity_is_masked_and_hashed_never_kept_raw():
-    assert identity.mask("Rajasekar@Gmail.com") == "ra***@g***.com"
+    assert identity.mask("Someone@Example.com") == "so***@e***.com"
     assert identity.mask("acme-org") == "ac***"
     key = b"k" * 32
-    one = identity.identity_hash("t1", "codex", " rajasekar@gmail.com", key)
-    assert one == identity.identity_hash("t1", "codex", "RAJASEKAR@gmail.com ", key)
-    assert one != identity.identity_hash("t2", "codex", "rajasekar@gmail.com", key)
-    assert one != identity.identity_hash("t1", "codex", "rajasekar@gmail.com", b"x" * 32)
+    one = identity.identity_hash("t1", "codex", " someone@example.com", key)
+    assert one == identity.identity_hash("t1", "codex", "SOMEONE@example.com ", key)
+    assert one != identity.identity_hash("t2", "codex", "someone@example.com", key)
+    assert one != identity.identity_hash("t1", "codex", "someone@example.com", b"x" * 32)
     assert "rajasekar" not in one and len(one) == 64
 
 
@@ -259,13 +259,13 @@ def test_to_dict_never_carries_a_secret_a_ref_a_path_or_the_hash():
         secret_ref=secret_ref,
         secret_set_at=NOW,
         home_dir="/very/private/home",
-        identity_masked="ra***@g***.com",
+        identity_masked="so***@e***.com",
         identity_hash="f" * 64,
     )
     data = service.to_dict(row, now=NOW)
     flat = repr(data)
     assert data["has_secret"] is True and data["has_home"] is True
-    assert data["identity"] == "ra***@g***.com"
+    assert data["identity"] == "so***@e***.com"
     for leak in (str(secret_ref), "/very/private/home", "f" * 64, "secret_ref", "home_dir"):
         assert leak not in flat
     row.cooldown_until = NOW + timedelta(minutes=3)

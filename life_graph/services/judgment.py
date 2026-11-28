@@ -18,9 +18,10 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
-from life_graph.core.errors import NotFoundError
+from life_graph.core.errors import InvalidInputError, NotFoundError
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.models.db import Decision, Prediction
+from life_graph.models.schemas import DECISION_STATUSES
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -419,7 +420,9 @@ class JudgmentService:
             reasoning: Why this decision was made.
             options: List of option dicts [{label, pros, cons}].
             chosen_option: The selected option label.
-            status: Initial status (candidate or decided).
+            status: Initial status, one of ``DECISION_STATUSES``. This method
+                does not check who is calling: the HTTP route keeps the owner
+                statuses for an owner-verified caller only.
             source: Origin (conversation, explicit, challenge).
             domain_tags: Tags for the decision domain.
             importance: Importance score [0, 1].
@@ -428,7 +431,12 @@ class JudgmentService:
 
         Returns:
             The persisted ``Decision``.
+
+        Raises:
+            InvalidInputError: ``status`` is not a known decision status.
         """
+        if status not in DECISION_STATUSES:
+            raise InvalidInputError(f"Unknown decision status: {status!r}")
         now = datetime.now(UTC)
         decision = Decision(
             id=uuid.uuid4(),
@@ -522,11 +530,24 @@ class JudgmentService:
     ) -> None:
         """Mark old decision as superseded by a new one.
 
+        Fails closed: the replacement must be a different decision that
+        exists in the same tenant. Otherwise nothing is written, so a caller
+        cannot point the owner's decision at another tenant's row or at
+        nothing at all.
+
         Args:
             tenant_id: Tenant scope.
             old_id: The decision being superseded.
             new_id: The replacement decision.
+
+        Raises:
+            InvalidInputError: ``new_id`` is ``old_id``.
+            NotFoundError: ``new_id`` is not a decision of this tenant.
         """
+        if new_id == old_id:
+            raise InvalidInputError("A decision cannot supersede itself")
+        if await self.get_decision(tenant_id, new_id) is None:
+            raise NotFoundError("Replacement decision not found")
         result = await self.session.execute(
             select(Decision).where(
                 Decision.tenant_id == tenant_id,

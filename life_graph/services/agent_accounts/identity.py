@@ -3,7 +3,7 @@
 The owner may say which login an account is (an email, an org name) so two
 rows for the same login are refused and the dashboard can tell them apart.
 The raw value is never stored, logged or returned: :func:`mask` keeps enough
-to recognise it (``ra***@g***.com``), :func:`identity_hash` is an
+to recognise it (``so***@e***.com``), :func:`identity_hash` is an
 HMAC-SHA256 under a key derived from the vault key, so the hash says nothing
 to someone holding only the database. Rebuilt from race-app's
 ``connections/identity-key.ts`` (the owner's code).
@@ -31,7 +31,7 @@ def _mask_part(part: str, keep: int) -> str:
 
 
 def mask(identity: str) -> str | None:
-    """``rajasekar@gmail.com`` -> ``ra***@g***.com``; a non-email keeps 2 chars."""
+    """``someone@example.com`` -> ``so***@e***.com``; a non-email keeps 2 chars."""
     value = normalize(identity)
     if not value:
         return None

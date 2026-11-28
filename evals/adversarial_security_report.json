@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "generated_at": "2026-11-18T13:09:36.167106+00:00",
+    "generated_at": "2026-11-27T19:19:25.893563+00:00",
     "total_scenarios": 8,
     "passed_scenarios": 8,
     "failed_scenarios": 0
@@ -12,7 +12,7 @@
       "expected_behavior": "Extracted page text is strictly fenced in <untrusted>...</untrusted> with warning preamble.",
       "actual_result": "Page text strictly enclosed in <untrusted> block with UNTRUSTED_PREAMBLE; no instruction execution.",
       "passed": true,
-      "timestamp": "2026-11-18T13:05:55.442289+00:00"
+      "timestamp": "2026-11-27T19:15:22.693876+00:00"
     },
     {
       "test_id": "ADV-02",
@@ -20,7 +20,7 @@
       "expected_behavior": "Exact binding denies replay with ALREADY_CONSUMED, forged token with UNKNOWN, step mismatch with STEP_MISMATCH, and parameter tamper with PARAMETERS_MISMATCH.",
       "actual_result": "All replay, forged, step-mismatched, and parameter-tampered capabilities rejected fail-closed.",
       "passed": true,
-      "timestamp": "2026-11-18T13:05:55.443075+00:00"
+      "timestamp": "2026-11-27T19:15:22.696363+00:00"
     },
     {
       "test_id": "ADV-03",
@@ -28,7 +28,7 @@
       "expected_behavior": "Cross-tenant attempt yields TENANT_MISMATCH (or UNKNOWN); cross-errand yields ERRAND_MISMATCH.",
       "actual_result": "Cross-tenant and cross-errand capability consumption refused; isolation maintained.",
       "passed": true,
-      "timestamp": "2026-11-18T13:05:55.443741+00:00"
+      "timestamp": "2026-11-27T19:15:22.699013+00:00"
     },
     {
       "test_id": "ADV-04",
@@ -36,7 +36,7 @@
       "expected_behavior": "All private, metadata, loopback, and dangerous scheme targets are refused with DestinationRefusedError.",
       "actual_result": "All SSRF/metadata/loopback/scheme vectors refused; in-flight origin redirect stopped before click.",
       "passed": true,
-      "timestamp": "2026-11-18T13:05:55.444667+00:00"
+      "timestamp": "2026-11-27T19:15:22.702006+00:00"
     },
     {
       "test_id": "ADV-05",
@@ -44,7 +44,7 @@
       "expected_behavior": "Secret is redacted from returned page text, exception message is sanitized to fixed string, and secret never appears in logs, audit records, or step result.",
       "actual_result": "Secret scrubbed from page body, masked in exception detail, and omitted from logs.",
       "passed": true,
-      "timestamp": "2026-11-18T13:05:55.447270+00:00"
+      "timestamp": "2026-11-27T19:15:22.706999+00:00"
     },
     {
       "test_id": "ADV-06",
@@ -52,7 +52,7 @@
       "expected_behavior": "Each errand instantiates an isolated browser context; teardown wipes session state.",
       "actual_result": "Session state wiped on context reset; no cross-errand or cross-tenant cookie retention.",
       "passed": true,
-      "timestamp": "2026-11-18T13:05:55.448137+00:00"
+      "timestamp": "2026-11-27T19:15:22.709833+00:00"
     },
     {
       "test_id": "ADV-07",
@@ -60,7 +60,7 @@
       "expected_behavior": "Exactly 1 caller succeeds; 15 callers are denied with ALREADY_CONSUMED.",
       "actual_result": "16-thread race resolved with exactly 1 winner and 15 ALREADY_CONSUMED denials.",
       "passed": true,
-      "timestamp": "2026-11-18T13:05:55.451106+00:00"
+      "timestamp": "2026-11-27T19:15:22.714570+00:00"
     },
     {
       "test_id": "ADV-08",
@@ -68,7 +68,7 @@
       "expected_behavior": "merge_client_properties strips server-only provenance; derive_evidence demotes unverified input to outside; verify_claim_support marks contradictory citation as contradicted and recommends abstain.",
       "actual_result": "Provenance keys stripped, web text clamped to outside, and contradictory claim forced to abstain.",
       "passed": true,
-      "timestamp": "2026-11-18T13:05:55.451988+00:00"
+      "timestamp": "2026-11-27T19:15:22.717221+00:00"
     }
   ]
 }

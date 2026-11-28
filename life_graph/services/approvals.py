@@ -25,6 +25,7 @@ from life_graph.models.db import Approval, Memory, Project
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
 from life_graph.services.dev import teams
 from life_graph.services.dev.autonomy_policy import with_policy_note
+from life_graph.services.memory import supersession
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -1159,18 +1160,19 @@ class ApprovalService:
         winner.importance = max(a.importance or 0.5, b.importance or 0.5)
         winner.tags = sorted(set((winner.tags or []) + (loser.tags or [])))
         winner.properties = {**(loser.properties or {}), **(winner.properties or {})}
-        loser.status = "superseded"
-        loser.superseded_by = winner.id
-        # A duplicate, not an earlier value: the cold tier must not show it as
-        # "later replaced" (services/memory/tiers.py). superseded_at: from now
-        # the winner holds the belief (retrieval.is_known_at). No valid_until:
-        # the merged words were never untrue, only said twice.
-        loser.properties = {
-            **(loser.properties or {}),
-            "merged_into": str(winner.id),
-            "superseded_at": datetime.now(UTC).isoformat(),
-        }
-        winner.supersedes = loser.id
+        # A duplicate, not an earlier value: merged_into tells the cold tier not
+        # to show it as "later replaced" (services/memory/tiers.py). The helper
+        # stamps superseded_at: from now the winner holds the belief
+        # (retrieval.is_known_at). No valid_until: the merged words were never
+        # untrue, only said twice.
+        supersession.apply(
+            tenant_id,
+            loser,
+            winner,
+            why="merge approved",
+            new_statuses=("active",),
+            note={"merged_into": str(winner.id)},
+        )
 
     async def _apply_archive(self, tenant_id: str, appr: Approval, approve: bool) -> None:
         """Archive a decayed memory (approve) or leave it alone (reject).
@@ -1261,18 +1263,7 @@ class ApprovalService:
             new = await self.session.get(Memory, uuid.UUID(str(new_id))) if new_id else None
         except (ValueError, TypeError):
             return
-        if old is None or old.tenant_id != tenant_id:
-            return
-        if old.status == "superseded" and (new is None or old.superseded_by == new.id):
-            old.status = "active"
-            old.superseded_by = None
-            # Undone on every timeline: without this the restored fact still
-            # read as replaced to a question "as of now" (retrieval.is_known_at).
-            old.properties = {
-                k: v for k, v in (old.properties or {}).items() if k != "superseded_at"
-            }
-            if new is not None and new.supersedes == old.id:
-                new.supersedes = None
+        supersession.undo(tenant_id, old, new)
 
     async def _apply_deferred_supersede(
         self, tenant_id: str, appr: Approval, *, activate_new: bool
@@ -1290,23 +1281,17 @@ class ApprovalService:
             new = await self.session.get(Memory, uuid.UUID(str(payload.get("memory_id_new"))))
         except (ValueError, TypeError):
             return False
-        if old is None or new is None:
+        # Refused unless both are this tenant's, the old one is active and the
+        # new one pending or active (services/memory/supersession.py).
+        if not supersession.apply(
+            tenant_id,
+            old,
+            new,
+            why="contradiction approved",
+            new_statuses=supersession.PENDING_OR_ACTIVE,
+            activate_new=activate_new,
+        ):
             return False
-        if old.tenant_id != tenant_id or new.tenant_id != tenant_id:
-            return False
-        if old.status != "active" or new.status not in ("pending", "active"):
-            return False
-        if activate_new:
-            new.status = "active"
-        old.status = "superseded"
-        old.superseded_by = new.id
-        # When it stopped being the current belief (retrieval.is_known_at).
-        # Reassigned, never mutated: see the payload note below.
-        old.properties = {
-            **(old.properties or {}),
-            "superseded_at": datetime.now(UTC).isoformat(),
-        }
-        new.supersedes = old.id
         # Reassign: in-place mutation of a JSONB dict is not change-tracked.
         appr.payload = {**payload, "applied": True}
         return True

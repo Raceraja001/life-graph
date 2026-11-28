@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from life_graph.config import settings
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.core.said_at import late, said_at
+from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
 from life_graph.services import claude_code_sessions, saved_by_tool
 from life_graph.storage.database import async_session
 
@@ -250,7 +251,9 @@ class CaptureProcessors:
                     yield_count += await self._store_memories(facts, capture_evt, tenant_id)
 
                 # ── 2. Decision candidate detection ─────────────────
-                decisions = self._detect_decisions(content)
+                # Only the owner's own words (SELF tier): "we decided to ..."
+                # in forwarded mail or a shared page is someone else's choice.
+                decisions = self._detect_decisions(content) if self._is_self(capture_evt) else []
                 for decision_text in decisions:
                     yield_count += 1
                     await self._bus.emit(
@@ -298,6 +301,18 @@ class CaptureProcessors:
 
         except Exception:
             logger.error("CaptureProcessor failed for %s", capture_event_id, exc_info=True)
+
+    @staticmethod
+    def _is_self(capture_evt: Any) -> bool:
+        """True when the capture is the owner's own words (SELF trust tier).
+
+        Uses the stored tier when there is one, else the surface's tier, the
+        same way ``_find_commitment`` does. An unknown surface is not SELF."""
+        tier = coerce_tier(
+            getattr(capture_evt, "trust_tier", None),
+            default=classify_surface(getattr(capture_evt, "surface", None)),
+        )
+        return tier == TrustTier.SELF
 
     async def _find_commitment(
         self, session: Any, content: str, capture_evt: Any, tenant_id: str | None

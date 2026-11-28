@@ -105,3 +105,23 @@ async def test_a_late_value_still_replaces_an_older_one(monkeypatch):
     assert was.status == "superseded" and str(was.superseded_by) == str(newer.id)
     assert now_.status == "active"
     assert abs((now_.created_at - said).total_seconds()) < 1
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_late_memory_has_no_world_time_of_its_own(monkeypatch):
+    # valid_from moves with created_at (ADR m8-ingestion §10.1): left at the
+    # arrival time, the snapshot read it as a real world time.
+    from life_graph.services.memory.snapshot import Budget, memory_item
+
+    tag = uuid.uuid4().hex[:6]
+    said = datetime.now(UTC) - timedelta(days=12)
+    stored = await _ingest(
+        monkeypatch, _fact(f"The owner drives a blue scooter ({tag}).", None), said=said
+    )
+
+    row = await _row(stored.id)
+    assert abs((row.valid_from - said).total_seconds()) < 1
+    assert abs((row.valid_from - row.created_at).total_seconds()) < 1
+    item = memory_item(row, datetime.now(UTC), Budget())
+    assert item.world_time_known is False
