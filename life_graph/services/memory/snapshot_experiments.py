@@ -9,11 +9,13 @@ options try ways to cut that noise. They exist to be measured, not shipped.
 How they are switched on
 ========================
 
-Only through ``assemble_context(..., experiments=frozenset({...}))``. There is
-no setting, no environment variable and no API parameter: the kernel, the API
-and shadow mode never pass it, so production snapshots never change. The eval
-passes it from ``--experiments A,B,...`` and records it in its report. With
-no experiment the snapshot is byte-identical to before
+For the eval, through ``assemble_context(..., experiments=frozenset({...}),
+tunables=...)``: the eval passes them from ``--experiments A,B,...`` and
+``--xp-set`` and records them in its report. Nothing else passes
+``experiments``. Production code can reach only the fixed sets of
+:data:`MODES`, through ``assemble_context(..., mode=...)`` and the default-off
+``context_precision_mode`` / ``context_precision_shadow`` settings. With no
+experiment and no mode the snapshot is byte-identical to before
 (tests/unit/test_context_snapshot_default_identity.py).
 
 What never changes, whatever is on
@@ -77,12 +79,35 @@ The options
 
 The constants are first guesses, not tuned values; the eval can set them
 for a run (:data:`TUNABLE`) and should tune on its ``--split tune`` half.
+
+Tunables are values, not globals
+================================
+
+The module constants are only the defaults of :class:`Tunables`. A run's
+values travel with the call (``assemble_context(..., tunables=...)``); nothing
+writes the module's globals at run time, so two snapshots built at once
+with different values never see each other's.
+
+Precision modes
+===============
+
+:data:`MODES` names two fixed configurations, each a frozen experiment set
+and its tunables, measured on the 45-question M8 set (bge-m3, 2026-11-28,
+docs/audits/2026-11-28-m8-context-precision-evaluation.md). They are the
+only way production code reaches these options: the
+``context_precision_mode`` setting (config/memory.py, default "", off) picks
+one for ``GET /api/v1/context/snapshot``, and ``context_precision_shadow``
+compares one with the default snapshot in the turn trace. "" is today's
+snapshot exactly.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import unicodedata
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from life_graph.core import evidence as ev
@@ -167,6 +192,90 @@ TUNABLE = (
     "COSINE_GAP",
     "HUB_WEIGHT",
 )
+
+
+@dataclass(frozen=True)
+class Tunables:
+    """One run's values of the :data:`TUNABLE` constants; the defaults are the constants."""
+
+    tie_tolerance: float = TIE_TOLERANCE
+    link_seeds: int = LINK_SEEDS
+    link_pull: int = LINK_PULL
+    link_floor: float = LINK_FLOOR
+    duplicate_similarity: float = DUPLICATE_SIMILARITY
+    min_keep: int = MIN_KEEP
+    relative_floor: float = RELATIVE_FLOOR
+    elbow_gap: float = ELBOW_GAP
+    cosine_floor: float = COSINE_FLOOR
+    cosine_gap: float = COSINE_GAP
+    hub_weight: float = HUB_WEIGHT
+
+    def named(self) -> dict[str, float]:
+        """NAME -> value, in :data:`TUNABLE` order (what the eval's report records)."""
+        return {name: getattr(self, name.lower()) for name in TUNABLE}
+
+    def with_values(self, values: dict[str, Any]) -> Tunables:
+        """A copy with *values* (NAME -> value, any case) set, cast to each field's type.
+
+        An int field takes "4" or "4.0"; an unknown name is a ValueError.
+        """
+        changes: dict[str, Any] = {}
+        for raw, value in values.items():
+            name = str(raw).strip().upper()
+            if name not in TUNABLE:
+                raise ValueError(f"unknown tunable {raw!r} (known: {', '.join(TUNABLE)})")
+            field_ = name.lower()
+            cast = type(getattr(self, field_))
+            changes[field_] = cast(float(value)) if cast is int else cast(value)
+        return dataclasses.replace(self, **changes)
+
+
+DEFAULT_TUNABLES = Tunables()
+
+
+@dataclass(frozen=True)
+class Mode:
+    """A named, frozen experiment set and its tunables (a precision mode)."""
+
+    name: str
+    experiments: frozenset[str]
+    tunables: Tunables
+    #: What the M8 eval measured for it (bge-m3, all 45 questions / held-out test split).
+    measured: str
+
+
+#: The precision modes (config/memory.py ``context_precision_mode``). Frozen:
+#: changing one is a change of production behaviour and needs a new eval run.
+#: Numbers: docs/audits/2026-11-28-m8-context-precision-evaluation.md §4,
+#: runs f_recall_* / f_prec_* (baseline P 0.250 R 0.938 on all 45).
+MODES: MappingProxyType[str, Mode] = MappingProxyType(
+    {
+        "recall": Mode(
+            name="recall",
+            experiments=frozenset({QUERY_TYPE, LINKS, BUDGET}),
+            tunables=Tunables(cosine_floor=0.70),
+            measured="B+C+F, COSINE_FLOOR 0.70: all 45 P 0.467 R 0.928; test split R 0.882",
+        ),
+        "precision": Mode(
+            name="precision",
+            experiments=frozenset({QUERY_TYPE, LINKS, BUDGET, HUB}),
+            tunables=Tunables(cosine_floor=0.75),
+            measured="B+C+F+G, COSINE_FLOOR 0.75: all 45 P 0.545 R 0.876",
+        ),
+    }
+)
+#: The values ``context_precision_mode`` takes: "" (off, today's snapshot) or a mode.
+MODE_NAMES = ("", *MODES)
+
+
+def mode(name: str) -> Mode | None:
+    """The mode called *name*; None for "" (off); ValueError for an unknown one."""
+    key = (name or "").strip().lower()
+    if not key:
+        return None
+    if key not in MODES:
+        raise ValueError(f"unknown precision mode {name!r} (known: {', '.join(MODES)})")
+    return MODES[key]
 
 
 def parse(spec: str | Iterable[str] | None) -> frozenset[str]:
@@ -417,13 +526,17 @@ def linked_to(rows: list[tuple[Any, ...]], seed_ids: set[str]) -> dict[str, set[
 
 
 def drop_unlinked_neighbours(
-    items: list[Any], links: dict[str, set[str]], protected: set[str]
+    items: list[Any],
+    links: dict[str, set[str]],
+    protected: set[str],
+    *,
+    t: Tunables = DEFAULT_TUNABLES,
 ) -> tuple[list[Any], list[Any]]:
     """(kept, left out): learned neighbours below LINK_FLOOR with no typed link to a seed."""
     kept: list[Any] = []
     out: list[Any] = []
     for item in items:
-        weak = item.reason == NEIGHBOUR and item.score < LINK_FLOOR
+        weak = item.reason == NEIGHBOUR and item.score < t.link_floor
         unlinked = item.source_ref.id not in links
         if weak and unlinked and item.source_ref.key() not in protected:
             out.append(item)
@@ -444,7 +557,7 @@ def _shape(text_: str) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
     return words, numbers, words & _NEGATIONS
 
 
-def near_duplicate(a: Any, b: Any) -> bool:
+def near_duplicate(a: Any, b: Any, *, t: Tunables = DEFAULT_TUNABLES) -> bool:
     """Same kind, slot, origin and evidence; same numbers and negations; high overlap."""
     if (a.source_ref.kind, a.dimension, a.origin, a.evidence) != (
         b.source_ref.kind,
@@ -457,15 +570,19 @@ def near_duplicate(a: Any, b: Any) -> bool:
     wb, nb, xb = _shape(b.content)
     if na != nb or xa != xb or not wa or not wb:
         return False
-    return len(wa & wb) / len(wa | wb) >= DUPLICATE_SIMILARITY
+    return len(wa & wb) / len(wa | wb) >= t.duplicate_similarity
 
 
-def dedupe(items: list[Any], protected: set[str]) -> tuple[list[Any], list[Any]]:
+def dedupe(
+    items: list[Any], protected: set[str], *, t: Tunables = DEFAULT_TUNABLES
+) -> tuple[list[Any], list[Any]]:
     """(kept, left out): each near-duplicate after the first (in the given order) goes."""
     kept: list[Any] = []
     out: list[Any] = []
     for item in items:
-        if item.source_ref.key() not in protected and any(near_duplicate(k, item) for k in kept):
+        if item.source_ref.key() not in protected and any(
+            near_duplicate(k, item, t=t) for k in kept
+        ):
             out.append(item)
         else:
             kept.append(item)
@@ -497,6 +614,7 @@ def ranked(
     rank: bool,
     evidence: bool,
     confidence: dict[str, float] | None = None,
+    t: Tunables = DEFAULT_TUNABLES,
 ) -> list[Any]:
     """*items* in snapshot order, ties (TIE_TOLERANCE) broken by A and/or E.
 
@@ -527,7 +645,7 @@ def ranked(
     tie: list[tuple[int, Any]] = []
     top = 0.0
     for pos, item in enumerate(base):
-        if tie and top - item.score > max(1e-9, abs(top) * TIE_TOLERANCE):
+        if tie and top - item.score > max(1e-9, abs(top) * t.tie_tolerance):
             out += [i for _, i in sorted(tie, key=tie_key)]
             tie = []
         if not tie:
@@ -541,7 +659,10 @@ def ranked(
 
 
 def hub_adjusted(
-    similarity: dict[str, float], probe_similarity: dict[str, list[float]]
+    similarity: dict[str, float],
+    probe_similarity: dict[str, list[float]],
+    *,
+    t: Tunables = DEFAULT_TUNABLES,
 ) -> dict[str, float]:
     """G: each similarity minus HUB_WEIGHT x its mean similarity to the probes.
 
@@ -552,7 +673,7 @@ def hub_adjusted(
     for key, value in similarity.items():
         probes = probe_similarity.get(key) or []
         mean = sum(probes) / len(probes) if probes else 0.0
-        out[key] = value - HUB_WEIGHT * mean
+        out[key] = value - t.hub_weight * mean
     return out
 
 
@@ -563,7 +684,11 @@ CUT_REASONS = frozenset({SEARCH_HIT, NEIGHBOUR})
 
 
 def adaptive_cut(
-    items: list[Any], protected: set[str], relevance: dict[str, float] | None = None
+    items: list[Any],
+    protected: set[str],
+    relevance: dict[str, float] | None = None,
+    *,
+    t: Tunables = DEFAULT_TUNABLES,
 ) -> tuple[list[Any], list[Any]]:
     """(kept, left out): the memory hits after the relevance drop-off (see module doc).
 
@@ -571,21 +696,21 @@ def adaptive_cut(
     under G). Without it, the search hits' fused rank score is used.
     """
     if relevance:
-        floor, gap = COSINE_FLOOR, COSINE_GAP
+        floor, gap = t.cosine_floor, t.cosine_gap
         scored = [
             (relevance[i.source_ref.key()], i)
             for i in items
             if i.reason in CUT_REASONS and i.source_ref.key() in relevance
         ]
     else:
-        floor, gap = RELATIVE_FLOOR, ELBOW_GAP
+        floor, gap = t.relative_floor, t.elbow_gap
         scored = [(i.score, i) for i in items if i.reason == SEARCH_HIT]
     hits = sorted(scored, key=lambda p: (-p[0], p[1].source_ref.kind, p[1].source_ref.id))
-    if len(hits) <= MIN_KEEP or hits[0][0] <= 0:
+    if len(hits) <= t.min_keep or hits[0][0] <= 0:
         return list(items), []
     top = hits[0][0]
     cut = len(hits)
-    for n in range(int(MIN_KEEP), len(hits)):
+    for n in range(int(t.min_keep), len(hits)):
         score, before = hits[n][0], hits[n - 1][0]
         if score < floor * top or before - score >= gap * top:
             cut = n
@@ -598,7 +723,10 @@ def adaptive_cut(
 
 
 __all__ = [
+    "DEFAULT_TUNABLES",
     "LINKED_EVIDENCE",
+    "MODES",
+    "MODE_NAMES",
     "NAMES",
     "OPTIONS",
     "QUERY_TYPES",
@@ -610,8 +738,11 @@ __all__ = [
     "letters",
     "link_seeds",
     "linked_to",
+    "mode",
     "near_duplicate",
     "parse",
     "query_type_filter",
     "ranked",
+    "Mode",
+    "Tunables",
 ]

@@ -346,3 +346,76 @@ def test_parse_since():
     assert scs.parse_since("2026-11-20", now) == datetime(2026, 11, 20, tzinfo=UTC)
     with pytest.raises(argparse.ArgumentTypeError):
         scs.parse_since("last week", now)
+
+
+# ── Precision-mode comparison (context_precision) ────────────
+
+
+def _prec(**kw):
+    row = _turn(has_changes=False, changes_ok=False)
+    row.update(
+        {
+            "has_precision": True,
+            "precision_ok": True,
+            "precision_error": None,
+            "precision_mode": "recall",
+            "precision_ms": 40.0,
+            "precision_default_items": 20,
+            "precision_mode_items": 8,
+            "precision_dropped": 13,
+            "precision_added": 1,
+        }
+    )
+    row.update(kw)
+    return row
+
+
+def _prec_raw():
+    return {
+        "turns": [
+            _turn(),  # no comparison on this turn
+            _prec(),
+            _prec(
+                precision_default_items=10,
+                precision_mode_items=5,
+                precision_dropped=5,
+                precision_added=0,
+                precision_ms=60.0,
+            ),
+            _prec(
+                precision_ok=False,
+                precision_error="TimeoutError",
+                precision_ms=900.0,
+                precision_default_items=None,
+                precision_mode_items=None,
+                precision_dropped=None,
+                precision_added=None,
+            ),
+            _prec(precision_ok=False, precision_error=SECRET, precision_mode=REF, precision_ms=3.0),
+        ]
+    }
+
+
+def test_precision_comparison_counts():
+    pr = scs.summarise(_prec_raw(), tenant="t_unit", since=SINCE)["precision"]
+    assert pr["turns_traced"] == 4 and pr["turns_compared"] == 2
+    assert pr["modes"] == {"other": 1, "recall": 3}
+    assert pr["errors"] == {"TimeoutError": 1, "other": 1}
+    assert pr["items_default"] == {"n": 2, "p50": 15.0, "p95": 19.5, "max": 20.0}
+    assert pr["items_mode"]["p50"] == 6.5
+    assert pr["dropped"] == 18 and pr["dropped_share"] == 0.6
+    assert pr["added_per_turn"]["max"] == 1.0
+    assert pr["ms"]["n"] == 4 and pr["ms"]["max"] == 900.0
+
+
+@pytest.mark.parametrize("leak", [REF, SECRET, "5b1c0d2e"])
+def test_precision_section_leaks_nothing(leak):
+    s = scs.summarise(_prec_raw(), tenant="t_unit", since=SINCE)
+    text_ = scs.render(s)
+    assert leak not in json.dumps(s, default=str) and leak not in text_
+    assert "== precision mode" in text_
+
+
+def test_no_comparison_reports_zero():
+    pr = _summary()["precision"]
+    assert pr["turns_traced"] == 0 and pr["dropped_share"] is None

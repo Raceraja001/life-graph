@@ -30,7 +30,7 @@ QUESTIONS = json.loads((ROOT / "evals" / "context_quality" / "questions.json").r
 
 
 def _args(**kw) -> argparse.Namespace:
-    base = {"experiments": "", "xp_set": [], "max_items": None, "split": None}
+    base = {"mode": "", "experiments": "", "xp_set": [], "max_items": None, "split": None}
     base.update(kw)
     return argparse.Namespace(**base)
 
@@ -39,17 +39,44 @@ def test_no_flags_change_nothing():
     assert ecq.experiment_run(_args()) == ({}, {})
 
 
-def test_experiments_are_recorded_with_their_constants(monkeypatch):
-    monkeypatch.setattr(xp, "COSINE_FLOOR", xp.COSINE_FLOOR)
+def test_experiments_are_recorded_with_their_constants():
     record, kw = ecq.experiment_run(
         _args(experiments="f,B", xp_set=["cosine_floor=0.75"], max_items=12, split="tune")
     )
     assert record["experiments"] == ["B", "F"]
     assert record["experiment_names"] == ["budget", "query_type"]
     assert record["xp_set"] == {"COSINE_FLOOR": 0.75}
-    assert record["constants"]["COSINE_FLOOR"] == 0.75 == xp.COSINE_FLOOR
+    assert record["constants"]["COSINE_FLOOR"] == 0.75
     assert record["max_items"] == 12 and record["split"] == "tune"
     assert kw["experiments"] == {"budget", "query_type"} and kw["budget"].max_items == 12
+    # The value travels with the call; the module's constant is untouched.
+    assert kw["tunables"].cosine_floor == 0.75 and xp.COSINE_FLOOR == 0.8
+    assert record["constants"] == {**xp.DEFAULT_TUNABLES.named(), "COSINE_FLOOR": 0.75}
+
+
+def test_xp_set_casts_like_before_and_an_int_takes_a_float_spelling():
+    record, kw = ecq.experiment_run(_args(experiments="F", xp_set=["MIN_KEEP=4.0"]))
+    assert record["xp_set"] == {"MIN_KEEP": 4} and isinstance(kw["tunables"].min_keep, int)
+    with pytest.raises(SystemExit):
+        ecq.experiment_run(_args(experiments="F", xp_set=["COSINE_FLOOR=abc"]))
+
+
+def test_mode_alone_runs_the_production_path():
+    record, kw = ecq.experiment_run(_args(mode="recall"))
+    assert kw == {"mode": "recall"}
+    assert record["mode"] == "recall" and record["experiments"] == ["B", "C", "F"]
+    assert record["constants"]["COSINE_FLOOR"] == 0.70
+    assert "xp_set" not in record
+
+
+def test_mode_plus_flags_starts_from_the_mode():
+    record, kw = ecq.experiment_run(
+        _args(mode="precision", experiments="A", xp_set=["COSINE_FLOOR=0.8"])
+    )
+    assert "mode" not in kw and record["mode"] == "precision"
+    assert kw["experiments"] == {"rank", "query_type", "links", "budget", "hub"}
+    assert kw["tunables"] == xp.MODES["precision"].tunables.with_values({"COSINE_FLOOR": 0.8})
+    assert record["xp_set"] == {"COSINE_FLOOR": 0.8}
 
 
 @pytest.mark.parametrize("bad", ["NOPE=1", "COSINE_FLOOR", "COSINE_FLOOR="])
