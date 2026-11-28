@@ -215,6 +215,7 @@ class PostgresMemoryStore:
         capture_event_id: uuid.UUID | str | None = None,
         importance_tier: str | None = None,
         valid_until: datetime | None = None,
+        valid_from: datetime | None = None,
     ) -> Memory:
         """Persist a new memory from a creation payload.
 
@@ -240,6 +241,11 @@ class PostgresMemoryStore:
 
         ``valid_until``: when the fact stops being true, if the text said so
         ("in Chennai until Friday"); retrieval leaves it out after that.
+
+        ``valid_from``: when the fact started being true, only when the rules
+        found it in the fact's own words (services/memory/world_time.py).
+        ``None`` keeps the column default, the insert time, which readers read
+        as "no world time of its own" (snapshot.world_time_known).
         """
         content_hash = hashlib.sha256(memory.content.strip().lower().encode()).hexdigest()
 
@@ -279,6 +285,8 @@ class PostgresMemoryStore:
             row.importance_tier = importance_tier
         if valid_until is not None:
             row.valid_until = valid_until
+        if valid_from is not None:
+            row.valid_from = valid_from
         if embedding:
             row.embedding = embedding
             row.embedding_model = current_embedding_model()

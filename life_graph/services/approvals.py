@@ -19,13 +19,14 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select, update
 
 from life_graph.autonomy.approvals.service import FEED_STATUS_FOR
+from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_scoped
 from life_graph.models.db import Approval, Memory, Project
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
 from life_graph.services.dev import teams
 from life_graph.services.dev.autonomy_policy import with_policy_note
-from life_graph.services.memory import supersession
+from life_graph.services.memory import links, supersession
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -1263,7 +1264,10 @@ class ApprovalService:
             new = await self.session.get(Memory, uuid.UUID(str(new_id))) if new_id else None
         except (ValueError, TypeError):
             return
-        supersession.undo(tenant_id, old, new)
+        if supersession.undo(tenant_id, old, new) and old is not None:
+            await supersession.undo_decision_mirror(
+                self.session, tenant_id, old_id=old.id, new_id=new.id if new else None
+            )
 
     async def _apply_deferred_supersede(
         self, tenant_id: str, appr: Approval, *, activate_new: bool
@@ -1273,7 +1277,10 @@ class ApprovalService:
         Only while the old memory is still active and the new one is pending
         or active (the owner may have rejected or changed either since).
         Marks the payload ``applied`` so a later reject of *appr* undoes it.
-        Returns whether the supersede happened.
+        With ``ingest_supersession_tiers`` on, the owner's Keep is also a
+        world change when the new fact has a known start: the old fact's
+        ``valid_until`` is set (supersession.apply), and a later reject clears
+        it again (supersession.undo). Returns whether the supersede happened.
         """
         payload = appr.payload or {}
         try:
@@ -1290,8 +1297,10 @@ class ApprovalService:
             why="contradiction approved",
             new_statuses=supersession.PENDING_OR_ACTIVE,
             activate_new=activate_new,
+            world_change=settings.ingest_supersession_tiers,
         ):
             return False
+        await supersession.mirror_decisions(self.session, tenant_id, old, new)
         # Reassign: in-place mutation of a JSONB dict is not change-tracked.
         appr.payload = {**payload, "applied": True}
         return True
@@ -1312,31 +1321,48 @@ class ApprovalService:
         """The owner approved a pending memory: apply its deferred supersedes.
 
         The contradiction approval stays pending, so the owner can still undo
-        the supersede by rejecting it (2026-10-22). Returns how many old
-        memories were superseded.
+        the supersede by rejecting it (2026-10-22). A low-tier "possible
+        update" (ADR M8 §5.2, ``payload.confidence = "low"``) is never applied
+        here: keeping the memory is not agreeing that it replaces the old one,
+        and that tier is never automatic. Returns how many old memories were
+        superseded.
         """
         applied = 0
         for appr in await self._pending_contradictions_for(tenant_id, memory_id):
             if (appr.payload or {}).get("applied") is not False:
                 continue  # already applied at ingest; nothing deferred
+            if (appr.payload or {}).get("confidence") == "low":
+                continue  # only the item's own approve applies a possible update
             if await self._apply_deferred_supersede(tenant_id, appr, activate_new=False):
                 applied += 1
         await self.session.flush()
         return applied
 
     async def on_memory_rejected(self, tenant_id: str, memory_id: str) -> int:
-        """The owner rejected a pending memory: close its contradiction items.
+        """The owner rejected a pending memory: close its contradiction items
+        and delete its links.
 
         Its supersedes were never applied (a pending memory supersedes
         nothing), so the old memories are already active; this only stops a
         moot review item lingering, and keeps a later approve of it from
         applying a supersede for a rejected memory. Returns how many closed.
+
+        Every link where the rejected memory is either end goes too, in this
+        tenant only (``links.delete_links_of_rejected_memory``, M8 ADR §5.3):
+        a memory the owner never accepted must not show up through graph
+        views, ``get_links`` or search expansion. Approving it again later
+        does not bring the links back.
         """
         rows = await self._pending_contradictions_for(tenant_id, memory_id)
         for appr in rows:
             appr.status = "rejected"
             appr.resolved_at = datetime.now(UTC)
             appr.resolution_note = "The new memory was rejected; the old one stays."
+        removed = await links.delete_links_of_rejected_memory(
+            self.session, uuid.UUID(str(memory_id)), tenant_id
+        )
+        if removed:
+            logger.info("Deleted %d links of rejected memory %s", removed, memory_id)
         await self.session.flush()
         return len(rows)
 

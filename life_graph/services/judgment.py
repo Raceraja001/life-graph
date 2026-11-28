@@ -22,6 +22,7 @@ from life_graph.core.errors import InvalidInputError, NotFoundError
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.models.db import Decision, Prediction
 from life_graph.models.schemas import DECISION_STATUSES
+from life_graph.services import decision_lifecycle
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -411,6 +412,8 @@ class JudgmentService:
         importance: float = 0.5,
         capture_event_id: uuid.UUID | None = None,
         review_at: datetime | None = None,
+        by: str | None = None,
+        owner: bool = False,
     ) -> Decision:
         """Create a tracked decision and emit DECISION_RECORDED.
 
@@ -428,6 +431,11 @@ class JudgmentService:
             importance: Importance score [0, 1].
             capture_event_id: Optional link to originating capture event.
             review_at: When to schedule a review.
+            by: Who created it, as the server saw the caller
+                (api/approval_identity.py). With it, a decision created in
+                any status but ``candidate`` starts its lifecycle trail
+                (services/decision_lifecycle.py) with that entry.
+            owner: ``by`` is the verified owner.
 
         Returns:
             The persisted ``Decision``.
@@ -452,6 +460,11 @@ class JudgmentService:
             capture_event_id=capture_event_id,
             review_at=review_at,
             decided_at=now if status == "decided" else None,
+            properties=(
+                decision_lifecycle.with_entry({}, None, status, by=by, owner=owner, at=now)
+                if by and status != decision_lifecycle.CANDIDATE
+                else {}
+            ),
         )
         self.session.add(decision)
         await self.session.flush()
@@ -527,47 +540,71 @@ class JudgmentService:
         tenant_id: str,
         old_id: uuid.UUID,
         new_id: uuid.UUID,
-    ) -> None:
-        """Mark old decision as superseded by a new one.
+        *,
+        by: str = "system",
+        owner: bool = False,
+        mirror: dict[str, Any] | None = None,
+    ) -> Decision:
+        """Mark old decision as superseded by a new one (ADR M8 §5.4).
 
         Fails closed: the replacement must be a different decision that
-        exists in the same tenant. Otherwise nothing is written, so a caller
-        cannot point the owner's decision at another tenant's row or at
-        nothing at all.
+        exists in the same tenant, the old one must be this tenant's, and the
+        move must be one the caller may make (services/decision_lifecycle.py
+        ``TRANSITIONS``): the owner supersedes a decided or reviewed
+        decision; the system supersedes only a candidate, and only as a
+        *mirror* of a memory supersede. A replacement whose own chain leads
+        back to the old decision is refused too. Otherwise nothing is
+        written. Sets ``superseded_at`` and appends to the lifecycle trail.
 
         Args:
             tenant_id: Tenant scope.
             old_id: The decision being superseded.
             new_id: The replacement decision.
+            by: Who is superseding, as the server saw it.
+            owner: ``by`` is the verified owner.
+            mirror: The memory supersede being mirrored (``memory_old``,
+                ``memory_new``), for the system's own move.
+
+        Returns:
+            The superseded decision.
 
         Raises:
             InvalidInputError: ``new_id`` is ``old_id``.
-            NotFoundError: ``new_id`` is not a decision of this tenant.
+            NotFoundError: either decision is not this tenant's.
+            ForbiddenError / ConflictError: the move is not allowed.
         """
-        if new_id == old_id:
-            raise InvalidInputError("A decision cannot supersede itself")
-        if await self.get_decision(tenant_id, new_id) is None:
-            raise NotFoundError("Replacement decision not found")
-        result = await self.session.execute(
-            select(Decision).where(
-                Decision.tenant_id == tenant_id,
-                Decision.id == old_id,
-            )
+        old = await decision_lifecycle.supersede(
+            self.session, tenant_id, old_id, new_id, by=by, owner=owner, mirror=mirror
         )
-        old = result.scalars().first()
-        if old:
-            old.status = "superseded"
-            old.superseded_by = new_id
+        if self.event_bus:
+            await self.event_bus.emit(
+                EventType.DECISION_SUPERSEDED,
+                {
+                    "old_decision_id": str(old_id),
+                    "new_decision_id": str(new_id),
+                    "tenant_id": tenant_id,
+                },
+            )
+        return old
 
-            if self.event_bus:
-                await self.event_bus.emit(
-                    EventType.DECISION_SUPERSEDED,
-                    {
-                        "old_decision_id": str(old_id),
-                        "new_decision_id": str(new_id),
-                        "tenant_id": tenant_id,
-                    },
-                )
+    async def move_decision(
+        self,
+        tenant_id: str,
+        decision_id: uuid.UUID,
+        to: str,
+        *,
+        by: str,
+        owner: bool,
+    ) -> Decision:
+        """Confirm (``decided``), discard or review one decision (ADR M8 §5.4).
+
+        Only the moves in services/decision_lifecycle.py ``TRANSITIONS``, and
+        the owner's moves only with ``owner`` True. Appends to the lifecycle
+        trail. Raises NotFoundError, ForbiddenError or ConflictError.
+        """
+        return await decision_lifecycle.move(
+            self.session, tenant_id, decision_id, to, by=by, owner=owner
+        )
 
     # ── Predictions ───────────────────────────────────────────
 
@@ -869,7 +906,7 @@ class _DecisionCandidateListener:
         try:
             async with async_session() as session:
                 svc = JudgmentService(session, self._bus)
-                await svc.create_decision(
+                decision = await svc.create_decision(
                     tenant_id=tenant_id,
                     title=title,
                     reasoning=reasoning,
@@ -878,6 +915,11 @@ class _DecisionCandidateListener:
                     domain_tags=[BIG_DECISION_TAG] if is_big else None,
                     importance=BIG_DECISION_IMPORTANCE if is_big else 0.5,
                     capture_event_id=(uuid.UUID(capture_event_id) if capture_event_id else None),
+                )
+                # With settings.decision_lifecycle: tie it to the decision
+                # memory saved from the same message (ADR M8 §5.4).
+                await decision_lifecycle.link_capture_memory(
+                    session, tenant_id, decision, decision.capture_event_id
                 )
                 await session.commit()
                 logger.info(

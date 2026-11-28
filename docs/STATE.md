@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-28 04:08 UTC` from `race/migration` @ `c9de2370`
+Generated `2026-11-28 04:52 UTC` from `race/migration` @ `33302ce5`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-28 04:08 UTC` from `race/migration` @ `c9de2370`
 
 | | |
 |---|---|
-| HTTP operations | **440** across 378 paths, 49 tags |
+| HTTP operations | **444** across 382 paths, 49 tags |
 | Database tables | **100** |
-| Migrations | **66** (head: `066_dev_task_groups_pr_watches`) |
+| Migrations | **67** (head: `066_dev_task_groups_pr_watches`) |
 | Event types | **96** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **38** |
-| Config settings | **359** (prefix `LIFE_GRAPH_`) |
-| Test functions | **6631** in 693 files |
+| Config settings | **363** (prefix `LIFE_GRAPH_`) |
+| Test functions | **6773** in 703 files |
 | Dashboard pages | **23** |
-| Python | 585 files, 169,328 lines |
+| Python | 588 files, 171,224 lines |
 
 ---
 
 ## HTTP API
 
-440 operations, grouped by OpenAPI tag.
+444 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -287,6 +287,29 @@ Generated `2026-11-28 04:08 UTC` from `race/migration` @ `c9de2370`
 | DELETE | `/api/v1/admin/webhooks/{webhook_id}` | Delete a webhook |
 | POST | `/api/v1/admin/webhooks/{webhook_id}/test` | Test a webhook |
 
+### `judgment-engine` — 18
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/judgment/calibration` | Get calibration data |
+| GET | `/api/v1/judgment/calibration/curve` | Get calibration curve data |
+| POST | `/api/v1/judgment/calibration/recompute` | Recompute calibration snapshots now |
+| POST | `/api/v1/judgment/challenge` | Create adversarial challenge |
+| POST | `/api/v1/judgment/challenge/{challenge_id}/resolve` | Resolve a challenge |
+| GET | `/api/v1/judgment/decisions` | List decisions |
+| POST | `/api/v1/judgment/decisions` | Create a decision |
+| GET | `/api/v1/judgment/decisions/{decision_id}` | Get decision with predictions |
+| POST | `/api/v1/judgment/decisions/{decision_id}/confirm` | Confirm a candidate decision (owner) |
+| POST | `/api/v1/judgment/decisions/{decision_id}/discard` | Discard a candidate decision (owner) |
+| POST | `/api/v1/judgment/decisions/{decision_id}/review` | Mark a decision reviewed (owner) |
+| POST | `/api/v1/judgment/decisions/{decision_id}/supersede` | Supersede a decision (owner) |
+| GET | `/api/v1/judgment/predictions` | List predictions |
+| POST | `/api/v1/judgment/predictions` | Create a prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/accept` | Accept a suggested prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/dismiss` | Dismiss a suggested prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/resolve` | Resolve a prediction |
+| GET | `/api/v1/judgment/stats` | Judgment dashboard stats |
+
 ### `connectors` — 15
 
 | Method | Path | Summary |
@@ -325,25 +348,6 @@ Generated `2026-11-28 04:08 UTC` from `race/migration` @ `c9de2370`
 | GET | `/api/v1/kernel/agent-accounts/{account_id}/limits` | The account's plan-limit windows |
 | DELETE | `/api/v1/kernel/agent-accounts/{account_id}/secret` | Revoke the API key (owner) |
 | PUT | `/api/v1/kernel/agent-accounts/{account_id}/secret` | Set the API key — write-only, into the vault (owner) |
-
-### `judgment-engine` — 14
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/judgment/calibration` | Get calibration data |
-| GET | `/api/v1/judgment/calibration/curve` | Get calibration curve data |
-| POST | `/api/v1/judgment/calibration/recompute` | Recompute calibration snapshots now |
-| POST | `/api/v1/judgment/challenge` | Create adversarial challenge |
-| POST | `/api/v1/judgment/challenge/{challenge_id}/resolve` | Resolve a challenge |
-| GET | `/api/v1/judgment/decisions` | List decisions |
-| POST | `/api/v1/judgment/decisions` | Create a decision |
-| GET | `/api/v1/judgment/decisions/{decision_id}` | Get decision with predictions |
-| GET | `/api/v1/judgment/predictions` | List predictions |
-| POST | `/api/v1/judgment/predictions` | Create a prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/accept` | Accept a suggested prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/dismiss` | Dismiss a suggested prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/resolve` | Resolve a prediction |
-| GET | `/api/v1/judgment/stats` | Judgment dashboard stats |
 
 ### `watchers` — 14
 
@@ -776,7 +780,7 @@ Generated `2026-11-28 04:08 UTC` from `race/migration` @ `c9de2370`
 | `life_graph.capture_events` | 12 | ✓ | `—` |
 | `life_graph.challenges` | 9 | ✓ | `—` |
 | `life_graph.corrections` | 10 | ✓ | `—` |
-| `life_graph.decisions` | 19 | ✓ | `—` |
+| `life_graph.decisions` | 20 | ✓ | `—` |
 | `life_graph.driver_stats` | 10 | ✓ | `—` |
 | `life_graph.interview_questions` | 12 | ✓ | `—` |
 | `life_graph.predictions` | 15 | ✓ | `—` |
@@ -1103,9 +1107,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-66 revisions, head `066_dev_task_groups_pr_watches`.
+67 revisions, head `066_dev_task_groups_pr_watches`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies` · `064_agent_accounts` · `065_dev_automation` · `066_dev_task_groups_pr_watches`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events` · `061_approval_queue_requested_by` · `062_telegram_capture_idempotency` · `063_autonomy_policies` · `063_decision_superseded_at` · `064_agent_accounts` · `065_dev_automation` · `066_dev_task_groups_pr_watches`
 
 ---
 
@@ -1115,16 +1119,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 534 | 5573 |
-| `tests/integration/` | 158 | 1046 |
+| `tests/unit/` | 539 | 5694 |
+| `tests/integration/` | 163 | 1067 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **693** | **6631** |
+| **total** | **703** | **6773** |
 
 ---
 
 ## Configuration
 
-359 settings, all overridable by environment variable.
+363 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1189,6 +1193,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_MEMORY_FORM_FILL` | `True` |
 | `LIFE_GRAPH_CONTEXT_SNAPSHOT_SHADOW` | `False` |
 | `LIFE_GRAPH_CONTEXT_CHANGE_SHADOW` | `False` |
+| `LIFE_GRAPH_INGEST_TYPED_LINKS` | `False` |
+| `LIFE_GRAPH_DECISION_LIFECYCLE` | `False` |
+| `LIFE_GRAPH_INGEST_SUPERSESSION_TIERS` | `False` |
+| `LIFE_GRAPH_INGEST_WORLD_TIME` | `False` |
 | `LIFE_GRAPH_PROFILE_CARD_MAX_ITEMS` | `40` |
 | `LIFE_GRAPH_DECAY_DEFAULT_LAMBDA` | `0.1` |
 | `LIFE_GRAPH_DEDUP_ENABLED` | `True` |

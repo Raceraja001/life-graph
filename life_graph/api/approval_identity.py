@@ -23,11 +23,15 @@ owner alone.
 from __future__ import annotations
 
 import hashlib
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, Request
 
 from life_graph.api.auth import extract_api_key, ingress_for
 from life_graph.config import settings
+
+if TYPE_CHECKING:
+    from life_graph.core.trust import Ingress
 
 OWNER_REQUIRED = "Approving or rejecting needs the owner: an owner API key or a paired phone."
 SELF_APPROVAL = (
@@ -56,7 +60,11 @@ def resolver(request: Request, _body: object | None = None) -> str:
     fingerprint of the service key used. Nothing from the body is read; the
     second argument exists only so older call sites keep working.
     """
-    ingress = ingress_for(request)
+    return label_of(ingress_for(request), request)
+
+
+def label_of(ingress: Ingress, request: Request) -> str:
+    """:func:`resolver`'s label for an ``ingress`` already worked out."""
     if ingress.device_id:
         return f"phone:{ingress.device_id}"
     if ingress.actor == "owner:api_key":

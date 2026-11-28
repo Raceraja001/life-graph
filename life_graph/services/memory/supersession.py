@@ -16,13 +16,37 @@ A supersede writes, on rows of ONE tenant only:
   (a merge adds ``merged_into``);
 - new: ``supersedes = old.id``, and ``status = 'active'`` when asked to.
 
-It does NOT write ``valid_until``: a supersede ends our belief, not (by
-itself) the old fact's truth in the world. Ending the world time on a real
-world change is ADR step 5; the ``world_change`` parameter is its seam and
-must stay ``False`` until then.
+By default it does NOT write ``valid_until``: a supersede ends our belief,
+not (by itself) the old fact's truth in the world. With ``world_change=True``
+(ADR step 5, behind the ``ingest_supersession_tiers`` flag) it also ends the
+old fact's world time, but only on a real world change: the new fact has a
+known world start of its own (:func:`world_start`) and is not a correction.
+Then ``old.valid_until`` = that start, and ``properties.valid_until_by =
+"supersession"`` says who set it, so an undo clears only that one.
+
+The rule is "a correction keeps no ``valid_until``; only a known new start
+ends the old fact". Two owner acts also set ``valid_until`` and are left as
+they are: ``/deny`` (storage/postgres.py ``deny``) and the stale-belief
+answers in services/identity.py set it to *now*. There the owner says in so
+many words that the fact is no longer true, so the end is the owner's own,
+not inferred here. They carry no ``valid_until_by``, so no supersession undo
+ever clears them, and :func:`apply` never overwrites a ``valid_until`` that
+is already set.
 
 It writes no approval and emits no event. Each caller still files its own
 contradiction approval, as before.
+
+Decisions follow (ADR M8 §5.4, only with ``settings.decision_lifecycle``):
+after an applied supersede the caller awaits :func:`mirror_decisions`, and
+after an undo :func:`undo_decision_mirror` (:func:`restore_replaced_by` does
+it itself). A *candidate* decision linked to the old memory is then
+superseded by the new memory's decision, and the undo takes it back. With
+the setting off both return at once and read nothing.
+
+The confidence tiers of ADR §5.2 (high, medium, low, none) are decided by
+:func:`slot_tier` and :func:`possible_updates`; the low tier's daily cap is
+:func:`file_possible_update`. The save path (core/memory_manager.py) uses them
+only with the flag on.
 
 Callers keep their own rules through parameters: which old and new statuses
 are allowed (``old_statuses`` / ``new_statuses``), whether the new memory is
@@ -35,15 +59,20 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
-from life_graph.models.db import Memory
+from life_graph.connectors.tools import user_tz
+from life_graph.core.trust import TrustTier
+from life_graph.models.db import Approval, Memory
+from life_graph.services import decision_lifecycle
+from life_graph.services.contradiction import differs_in_detail, differs_in_scope
+from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +80,20 @@ logger = logging.getLogger(__name__)
 
 # Statuses a new memory may have for the approvals' deferred supersede.
 PENDING_OR_ACTIVE = ("pending", "active")
+
+#: Who set a ``valid_until`` written here (``properties.valid_until_by``).
+#: Undo clears a ``valid_until`` only when it carries this mark.
+VALID_UNTIL_BY = "supersession"
+#: Text other people wrote (core/trust.py). It never supersedes the owner's
+#: own facts and never makes a low-tier review item (ADR §5.2 "None").
+OUTSIDE_TIERS = frozenset({TrustTier.EXTERNAL.value, TrustTier.HOSTILE_POSSIBLE.value})
+#: How sure the extractor must be for a same-slot change to apply at once.
+HIGH_TIER_MIN_CONFIDENCE = 0.9
+#: Most low-tier "possible update" items a tenant gets per day. More are
+#: counted on the day's last item (``payload.not_queued``), not queued: on
+#: 2026-10-22 the review queue jammed at 3,668.
+LOW_TIER_DAILY_CAP = 5
+LOW_TIER_TITLE = "Possible update to review"
 
 
 def _as_uuid(value: Any) -> uuid.UUID | None:
@@ -117,16 +160,18 @@ def apply(
     that it replaces the old one is agreeing to it). ``note`` adds keys to
     *old*'s properties, such as a merge's ``merged_into``.
 
-    ``why`` is only logged. ``world_change`` is ADR M8 step 5's seam (end the
-    old fact's world time at the new one's start); it is not built yet.
+    ``why`` is only logged. ``world_change=True`` also ends *old*'s world time
+    at *new*'s start when that is a real world change (:func:`world_end`):
+    ``old.valid_until`` is set and marked ``valid_until_by = "supersession"``.
+    A correction, a new fact with no world time of its own, or an old fact
+    that already has a ``valid_until`` gets none.
     """
-    if world_change:
-        raise NotImplementedError("Ending the world time on a supersede is ADR M8 step 5.")
     refused = _refusal(tenant_id, old, new, old_statuses, new_statuses)
     if refused is not None or old is None or new is None:
         logger.debug("Supersede refused (%s): %s", refused, why)
         return False
     stamp = now or datetime.now(UTC)
+    end = world_end(old, new) if world_change else None
     if activate_new:
         new.status = "active"
     old.status = "superseded"
@@ -138,10 +183,221 @@ def apply(
         **(old.properties or {}),
         **(note or {}),
         "superseded_at": stamp.isoformat(),
+        **({"valid_until_by": VALID_UNTIL_BY} if end is not None else {}),
     }
+    if end is not None:
+        old.valid_until = end
     new.supersedes = old.id
     logger.debug("Superseded %s -> %s: %s", str(old.id)[:8], str(new.id)[:8], why)
     return True
+
+
+def _aware(value: Any) -> datetime | None:
+    """*value* as an aware datetime (a naive one is UTC), or None."""
+    if not isinstance(value, datetime):
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def world_start(new: Any) -> datetime | None:
+    """When *new*'s fact started being true in the world, if it says so.
+
+    Known when the row carries ``properties.world_time`` (set by the world-time
+    rules, ADR §5.1) or its ``valid_from`` is earlier than its recorded time
+    (``created_at``), to the second: ``valid_from`` = recorded is how "no world
+    time" is spelled (snapshot.world_time_known). A correction ("actually it
+    is Anna Nagar") has no start here: the old value was never true, so it
+    must not get an end.
+    """
+    props = getattr(new, "properties", None) or {}
+    if props.get("correction"):
+        return None
+    start = _aware(getattr(new, "valid_from", None))
+    if start is None:
+        return None
+    if props.get("world_time"):
+        return start
+    recorded = _aware(getattr(new, "created_at", None))
+    if recorded is not None and int(start.timestamp()) < int(recorded.timestamp()):
+        return start
+    return None
+
+
+def world_end(old: Any, new: Any, *, old_valid_from: datetime | None = None) -> datetime | None:
+    """The ``valid_until`` a world change gives *old*, or None for no end.
+
+    None when *new* has no known start (:func:`world_start`), when *old*
+    already has a ``valid_until`` (the extractor's "until Friday", the
+    owner's ``/deny``: never overwritten), or when the start is not after
+    *old*'s own start (an end before the beginning is not a change).
+    ``old_valid_from`` overrides *old*'s column when the caller is moving it.
+    """
+    start = world_start(new)
+    if start is None or getattr(old, "valid_until", None) is not None:
+        return None
+    began = _aware(old_valid_from) or _aware(getattr(old, "valid_from", None))
+    if began is not None and start <= began:
+        return None
+    return start
+
+
+def slot_tier(
+    *,
+    new_active: bool,
+    trust_tier: str | None,
+    confidence: float,
+    polarity: str = "affirm",
+    certainty: str = "firm",
+) -> str:
+    """ADR §5.2 tier of a same-slot (S1) change: ``"high"`` or ``"medium"``.
+
+    High (applied at once, undoable) only when the new fact is the owner's
+    own (trust tier ``self``), already active, firm, affirmed and at
+    confidence 0.9 or more. Anything else waits for the owner (medium). The
+    caller has already dropped old values said after the new one
+    (memory_manager ``_older_and_newer``) and only finds active old values.
+    """
+    if (
+        new_active
+        and trust_tier == TrustTier.SELF.value
+        and confidence >= HIGH_TIER_MIN_CONFIDENCE
+        and polarity != "negate"
+        and certainty != "hedged"
+    ):
+        return "high"
+    return "medium"
+
+
+def same_subject(subject: str | None, old_properties: Mapping[str, Any] | None) -> bool:
+    """Whether a new fact about *subject* and an old memory are about one person.
+
+    S2 of ADR §5.2: a detector hit is a supersession only between facts with
+    the same ``subject`` ("owner" when unset, as the save path stores it).
+    """
+    theirs = (old_properties or {}).get("subject") or "owner"
+    return (subject or "owner") == theirs
+
+
+def possible_updates(
+    *,
+    content: str,
+    subject: str | None,
+    changes_over_time: bool,
+    slot: str | None,
+    trust_tier: str | None,
+    context: Mapping[str, Any] | None,
+    candidates: Iterable[tuple[Any, float]],
+    taken: set[str],
+    low: float,
+    high: float,
+) -> list[tuple[str, str]]:
+    """Low-tier pairs (ADR §5.2): old memories the new fact may update.
+
+    Each must hold: an active old memory not already a slot or detector pair
+    (*taken*), the same subject and scope, ``changes_over_time`` on both, a
+    similarity in ``[low, high)`` (the contradiction threshold up to the
+    dedup threshold), different details, and not two different slots. Never
+    from outside text (:data:`OUTSIDE_TIERS`). Returns (old id, reason): they
+    become review items only, never a supersede.
+    """
+    if trust_tier in OUTSIDE_TIERS or not changes_over_time:
+        return []
+    found: list[tuple[str, str]] = []
+    for memory, score in candidates:
+        props = getattr(memory, "properties", None) or {}
+        if str(memory.id) in taken or getattr(memory, "status", None) != "active":
+            continue
+        if not props.get("changes_over_time") or not (low <= score < high):
+            continue
+        if slot and props.get("slot"):
+            continue  # both have slots: the same one is S1, different ones differ
+        if not same_subject(subject, props) or differs_in_scope(context, props):
+            continue
+        old_text = getattr(memory, "content", "") or ""
+        if not differs_in_detail(content, old_text):
+            continue
+        preview = " ".join(old_text.split())[:120]
+        found.append((str(memory.id), f"Possible update (was: {preview})"))
+    return found
+
+
+def _day_start(now: datetime) -> datetime:
+    """Midnight of *now*'s day in the owner's timezone."""
+    tz = user_tz()
+    return datetime.combine(now.astimezone(tz).date(), time.min, tzinfo=tz)
+
+
+async def file_possible_update(
+    tenant_id: str, old_id: str, new_id: str, reason: str, *, now: datetime | None = None
+) -> bool:
+    """Queue one low-tier "possible update" review item, within the daily cap.
+
+    A contradiction approval with ``applied: false`` and ``payload.confidence
+    = "low"``: nothing changes unless the owner approves it. At most
+    :data:`LOW_TIER_DAILY_CAP` per tenant per day (owner's timezone); past
+    that the item is counted on the day's last one (``payload.not_queued``)
+    instead. Returns whether an item was queued. Never raises: a failure here
+    costs the review item, never the memory.
+    """
+    stamp = now or datetime.now(UTC)
+    ref = f"{old_id}|{new_id}"
+    try:
+        async with async_session() as session:
+            mine = (
+                Approval.tenant_id == tenant_id,
+                Approval.kind == "contradiction",
+                Approval.source == "judgment",
+            )
+            seen = await session.execute(
+                select(Approval.id).where(*mine, Approval.source_ref == ref)
+            )
+            if seen.first():
+                return False
+            today = (
+                *mine,
+                Approval.payload["confidence"].astext == "low",
+                Approval.created_at >= _day_start(stamp),
+            )
+            count = (
+                await session.execute(select(func.count(Approval.id)).where(*today))
+            ).scalar_one()
+            if count >= LOW_TIER_DAILY_CAP:
+                last = (
+                    await session.execute(
+                        select(Approval)
+                        .where(*today)
+                        .order_by(Approval.created_at.desc())
+                        .limit(1)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if last is not None:
+                    payload = last.payload or {}
+                    last.payload = {**payload, "not_queued": int(payload.get("not_queued", 0)) + 1}
+                    await session.commit()
+                logger.info("Low-tier review item over the daily cap: counted, not queued")
+                return False
+            session.add(
+                Approval(
+                    tenant_id=tenant_id,
+                    kind="contradiction",
+                    source="judgment",
+                    source_ref=ref,
+                    title=LOW_TIER_TITLE,
+                    detail=reason,
+                    payload={
+                        "memory_id_old": str(old_id),
+                        "memory_id_new": str(new_id),
+                        "applied": False,
+                        "confidence": "low",
+                    },
+                )
+            )
+            await session.commit()
+            return True
+    except Exception:  # noqa: BLE001 — a review item never costs the memory
+        logger.warning("Failed to queue a low-tier review item", exc_info=True)
+        return False
 
 
 def _refusal(
@@ -172,7 +428,9 @@ def undo(tenant_id: str, old: Memory | None, new: Memory | None) -> bool:
     and by *new* when *new* is given (a later edit is never overwritten).
     *old* becomes active again, loses ``superseded_by`` and
     ``properties.superseded_at``, and *new* loses ``supersedes`` when it
-    points at *old*. Returns whether anything was restored.
+    points at *old*. A ``valid_until`` goes too, but only one :func:`apply`
+    set (``valid_until_by = "supersession"``): an end the owner or the
+    extractor gave stays. Returns whether anything was restored.
     """
     if old is None or old.tenant_id != tenant_id:
         return False
@@ -186,10 +444,45 @@ def undo(tenant_id: str, old: Memory | None, new: Memory | None) -> bool:
     old.superseded_by = None
     # Undone on every timeline: without this the restored fact still read as
     # replaced to a question "as of now" (retrieval.is_known_at).
-    old.properties = {k: v for k, v in (old.properties or {}).items() if k != "superseded_at"}
+    props = old.properties or {}
+    if props.get("valid_until_by") == VALID_UNTIL_BY:
+        old.valid_until = None
+    old.properties = {
+        k: v
+        for k, v in props.items()
+        if k != "superseded_at"
+        and not (k == "valid_until_by" and props.get("valid_until_by") == VALID_UNTIL_BY)
+    }
     if new is not None and new.supersedes == old.id:
         new.supersedes = None
     return True
+
+
+async def mirror_decisions(
+    session: AsyncSession, tenant_id: str, old: Memory | None, new: Memory | None
+) -> bool:
+    """After :func:`apply` of *old* by *new*: the linked candidate decision follows.
+
+    services/decision_lifecycle.py ``mirror_memory_supersede``; does nothing
+    unless ``settings.decision_lifecycle``. Same session, so the decision
+    moves in the memory supersede's own transaction.
+    """
+    if old is None or new is None:
+        return False
+    return await decision_lifecycle.mirror_memory_supersede(session, tenant_id, old.id, new.id)
+
+
+async def undo_decision_mirror(
+    session: AsyncSession, tenant_id: str, *, old_id: Any = None, new_id: Any = None
+) -> int:
+    """After :func:`undo`: the decisions that mirrored that supersede move back.
+
+    services/decision_lifecycle.py ``undo_memory_mirror``; does nothing unless
+    ``settings.decision_lifecycle``.
+    """
+    return await decision_lifecycle.undo_memory_mirror(
+        session, tenant_id, old_memory_id=old_id, new_memory_id=new_id
+    )
 
 
 async def restore_replaced_by(session: AsyncSession, tenant_id: str, new_id: Any) -> None:
@@ -199,16 +492,25 @@ async def restore_replaced_by(session: AsyncSession, tenant_id: str, new_id: Any
     the memory page's drop): what it replaced is current again. A
     near-duplicate merged into it (``merged_into``) is not an earlier value
     and stays folded away. *new_id*'s own ``supersedes`` is left as it is.
+    A ``valid_until`` that :func:`apply` set (``valid_until_by =
+    "supersession"``) is cleared with its mark; any other stays.
     Runs in the caller's transaction; the caller commits.
     """
     await session.execute(
         text(
             # superseded_at goes too: an undo restores the old value as
             # current belief on every timeline (retrieval.is_known_at).
+            # Every SET expression reads the row as it was, so the CASEs see
+            # the mark before it is removed.
             "UPDATE memories SET status = 'active', superseded_by = NULL, updated_at = NOW(),"
-            " properties = COALESCE(properties, '{}'::jsonb) - 'superseded_at'"
+            " valid_until = CASE WHEN properties->>'valid_until_by' = :by"
+            " THEN NULL ELSE valid_until END,"
+            " properties = (COALESCE(properties, '{}'::jsonb) - 'superseded_at')"
+            " - CASE WHEN properties->>'valid_until_by' = :by"
+            " THEN 'valid_until_by' ELSE '' END"
             " WHERE tenant_id = :t AND superseded_by = :id AND status = 'superseded'"
             " AND NOT (COALESCE(properties, '{}'::jsonb) ? 'merged_into')"
         ),
-        {"id": new_id, "t": tenant_id},
+        {"id": new_id, "t": tenant_id, "by": VALID_UNTIL_BY},
     )
+    await undo_decision_mirror(session, tenant_id, new_id=new_id)

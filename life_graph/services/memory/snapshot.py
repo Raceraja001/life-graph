@@ -168,6 +168,7 @@ from life_graph.core import evidence as ev
 from life_graph.core.tenant import get_current_tenant_id, tenant_scope
 from life_graph.core.trust import is_excluded_from_agents
 from life_graph.models.db import Approval, Decision, Intention, Memory, MemoryLink
+from life_graph.services import decision_lifecycle
 from life_graph.services.memory import retrieval, sufficiency
 from life_graph.services.memory.context import search_text
 from life_graph.storage.database import async_session
@@ -636,7 +637,10 @@ def decision_item(d: Any, ref: datetime, budget: Budget, reason: str = DECISION)
         source_ref=SourceRef("decision", str(d.id)),
         dimension=DECISION,
         origin=IMPORTED if explicit else MODEL_PROPOSED,
-        confirmed=False,
+        # Confirmed only when decided/reviewed AND the lifecycle trail shows
+        # the owner made it decided (ADR M8 §5.4); a bare "decided" status is
+        # not enough, since a caller could set it before the owner gate.
+        confirmed=decision_lifecycle.owner_confirmed(d),
         evidence=ev.OUTSIDE if explicit else ev.INFERRED,
         label=DECISION_LABEL.get(status, status),
         status=status,

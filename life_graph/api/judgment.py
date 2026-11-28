@@ -12,10 +12,12 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from life_graph.api.approval_identity import label_of
 from life_graph.api.auth import ingress_for
 from life_graph.api.responses import success_response
 from life_graph.core.errors import DomainError
@@ -28,6 +30,7 @@ from life_graph.models.schemas import (
     ChallengeResponse,
     DecisionCreate,
     DecisionResponse,
+    DecisionSupersede,
     JudgmentStatsResponse,
     PredictionAcceptRequest,
     PredictionCreate,
@@ -114,7 +117,9 @@ async def create_decision(
     """
     stored_status = body.status
     meta = None
-    if body.status in OWNER_DECISION_STATUSES and not ingress_for(request).is_owner:
+    ingress = ingress_for(request)
+    is_owner = ingress.is_owner
+    if body.status in OWNER_DECISION_STATUSES and not is_owner:
         stored_status = "candidate"
         meta = {
             "status_downgraded": True,
@@ -136,8 +141,100 @@ async def create_decision(
         importance=body.importance,
         capture_event_id=body.capture_event_id,
         review_at=body.review_at,
+        # The owner's own decided/discarded/... starts the lifecycle trail.
+        by=label_of(ingress, request) if is_owner else None,
+        owner=is_owner,
     )
     return success_response(data=DecisionResponse.model_validate(decision), meta=meta)
+
+
+def _owner(request: Request, what: str) -> str:
+    """403 unless the caller is the owner; else who they are, for the trail.
+
+    Always on, whatever ``approvals_require_owner`` says (that setting makes
+    ``require_owner`` a no-op): moving a decision states the owner's intent.
+    """
+    ingress = ingress_for(request)
+    if not ingress.is_owner:
+        raise HTTPException(
+            status_code=403,
+            detail=f"{what} needs the owner: an owner API key or a paired phone.",
+        )
+    return label_of(ingress, request)
+
+
+async def _move(
+    svc: JudgmentService, request: Request, tenant_id: str, decision_id: UUID, to: str, what: str
+) -> dict[str, Any]:
+    by = _owner(request, what)
+    decision = await svc.move_decision(tenant_id, decision_id, to, by=by, owner=True)
+    return success_response(data=DecisionResponse.model_validate(decision))
+
+
+@router.post("/decisions/{decision_id}/confirm", summary="Confirm a candidate decision (owner)")
+async def confirm_decision(
+    decision_id: UUID,
+    request: Request,
+    svc: JudgmentService = Depends(_get_judgment_service),
+    tenant_id: str = Depends(get_current_tenant_id),
+) -> dict[str, Any]:
+    """The owner confirms a candidate: it becomes ``decided``.
+
+    Owner only (403 otherwise), 404 for another tenant's decision, 409 when
+    the decision is not a candidate. The move is recorded in
+    ``properties.lifecycle`` (docs/design/adr-m8-ingestion-structure.md §5.4).
+    """
+    return await _move(svc, request, tenant_id, decision_id, "decided", "Confirming a decision")
+
+
+@router.post("/decisions/{decision_id}/discard", summary="Discard a candidate decision (owner)")
+async def discard_decision(
+    decision_id: UUID,
+    request: Request,
+    svc: JudgmentService = Depends(_get_judgment_service),
+    tenant_id: str = Depends(get_current_tenant_id),
+) -> dict[str, Any]:
+    """The owner says a candidate is not a decision: it becomes ``discarded``.
+
+    Owner only; 404 / 409 as for confirm. The system never discards.
+    """
+    return await _move(svc, request, tenant_id, decision_id, "discarded", "Discarding a decision")
+
+
+@router.post("/decisions/{decision_id}/review", summary="Mark a decision reviewed (owner)")
+async def review_decision(
+    decision_id: UUID,
+    request: Request,
+    svc: JudgmentService = Depends(_get_judgment_service),
+    tenant_id: str = Depends(get_current_tenant_id),
+) -> dict[str, Any]:
+    """The owner looked back at a decided decision: it becomes ``reviewed``.
+
+    Owner only; 404 / 409 as for confirm. Sets ``reviewed_at``.
+    """
+    return await _move(svc, request, tenant_id, decision_id, "reviewed", "Reviewing a decision")
+
+
+@router.post("/decisions/{decision_id}/supersede", summary="Supersede a decision (owner)")
+async def supersede_decision(
+    decision_id: UUID,
+    body: DecisionSupersede,
+    request: Request,
+    svc: JudgmentService = Depends(_get_judgment_service),
+    tenant_id: str = Depends(get_current_tenant_id),
+) -> dict[str, Any]:
+    """The owner replaces a decided or reviewed decision with another one.
+
+    Owner only. 404 when either decision is not this tenant's, 400 for a
+    self-supersede, 409 for a candidate (confirm or discard it instead), an
+    already superseded or discarded decision, or a loop. Sets
+    ``superseded_at``.
+    """
+    by = _owner(request, "Superseding a decision")
+    decision = await svc.supersede_decision(
+        tenant_id, decision_id, body.replaced_by, by=by, owner=True
+    )
+    return success_response(data=DecisionResponse.model_validate(decision))
 
 
 @router.get(

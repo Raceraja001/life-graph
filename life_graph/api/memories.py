@@ -31,7 +31,7 @@ from life_graph.core.memory_manager import MemoryManager
 from life_graph.core.trust import classify_ingress
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryResponse, MemoryUpdate
-from life_graph.services.memory import transitions
+from life_graph.services.memory import transitions, world_time
 from life_graph.services.memory.recall import RecallEngine
 from life_graph.storage.postgres import PostgresMemoryStore
 
@@ -63,7 +63,20 @@ async def _store_verbatim(
         return existing
 
     embedding = await manager.generate_embedding(body.content)
-    return await store.store(body, embedding=embedding, trust_tier=tier, extraction_tier="manual")
+    # When it started, from its own words (ADR m8-ingestion §5.1); off or
+    # unknown, the body and the call are as before.
+    started = world_time.for_text(body.content, None, body.properties)
+    if started is not None:
+        body = body.model_copy(
+            update={"properties": world_time.record(dict(body.properties or {}), started)}
+        )
+    return await store.store(
+        body,
+        embedding=embedding,
+        trust_tier=tier,
+        extraction_tier="manual",
+        **world_time.store_kwargs(started),
+    )
 
 
 @router.post(

@@ -53,6 +53,15 @@ class ExtractedFact:
     """The owner's form field this fact fills, ``topic.field`` (core/slots.py): a firm,
     current, single value such as ``work.employer`` or ``home.city``; None otherwise.
     A new value for a slot replaces the old one."""
+    leads_to: list[str] = field(default_factory=list)
+    """The content of other facts of the same message this fact led to, as the
+    local model proposed it (extraction/llm.py, only with ingest_typed_links).
+    Only a proposal: services/memory/typed_links.py links it when the owner's
+    words hold a sequence cue ("so", "then", "அதனால்")."""
+    valid_from: str | None = None
+    """YYYY-MM-DD the model says it started being true (only asked for with
+    ``settings.ingest_world_time``). A proposal: it is kept only when a rule
+    agrees (extraction/world_time.py ``from_model``)."""
 
 
 # ---------------------------------------------------------------------------

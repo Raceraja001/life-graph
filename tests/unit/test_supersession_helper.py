@@ -108,9 +108,15 @@ def test_missing_rows_and_the_same_row_are_refused():
     assert m.status == "active" and m.supersedes is None
 
 
-def test_the_world_change_seam_is_not_built_yet():
-    with pytest.raises(NotImplementedError):
-        supersession.apply("t1", _mem(), _mem(), why="test", world_change=True)
+def test_world_change_without_a_known_start_writes_no_world_end():
+    # The seam is built now (ADR step 5, tests/unit/test_supersession_tiers.py).
+    # A new fact with no world time of its own still ends nothing.
+    old, new = _mem(), _mem()
+    new.valid_from = new.created_at = NOW
+
+    assert supersession.apply("t1", old, new, why="test", world_change=True)
+
+    assert old.valid_until is None and "valid_until_by" not in old.properties
 
 
 def test_undo_round_trip_restores_the_old_memory():
