@@ -236,6 +236,7 @@ class TestYieldCount:
 
     @pytest.mark.asyncio
     async def test_decision_and_procedure_candidates_still_count(self, harness):
+        harness.capture_evt.surface = "cli"  # decisions come only from SELF surfaces
         harness.capture_evt.content = "I decided to use PostgreSQL for the graph store."
         harness.manager.store_facts.return_value = [_memory("Uses PostgreSQL")]
 
@@ -273,6 +274,7 @@ class TestFailureIsolation:
             async def extract(self, _content, *, capture=False):
                 raise RuntimeError("spaCy model missing")
 
+        harness.capture_evt.surface = "cli"  # decisions come only from SELF surfaces
         harness.capture_evt.content = "I decided to use PostgreSQL for the graph store."
         monkeypatch.setattr(
             "life_graph.api.dependencies.get_extraction_pipeline", lambda: _BoomPipeline()
@@ -612,3 +614,56 @@ class TestClaudeCodeSessions:
         await harness.run()
 
         assert harness.capture_evt.status == "processed"
+
+
+class TestDecisionsOnlyFromTheOwnersWords:
+    """Decision candidates come only from SELF-tier captures, like commitments.
+
+    "We decided to ..." in a forwarded mail, a shared page or an agent's
+    output is someone else's choice, not the owner's
+    (docs/design/adr-m8-ingestion-structure.md §3.5, §5.4).
+    """
+
+    async def _decision_events(self, harness, *, surface, trust_tier=None):
+        emit = AsyncMock()
+        processors = CaptureProcessors(bus=SimpleNamespace(emit=emit))
+        harness.capture_evt.surface = surface
+        harness.capture_evt.trust_tier = trust_tier
+        harness.capture_evt.content = "We decided to move the whole team to Postgres next week."
+
+        await processors._on_capture_received(
+            Event(
+                type=EventType.CAPTURE_RECEIVED,
+                payload={
+                    "capture_event_id": str(harness.capture_evt.id),
+                    "tenant_id": "acme",
+                    "modality": "text",
+                },
+                source="test",
+            )
+        )
+        return [c for c in emit.await_args_list if c.args[0] == EventType.DECISION_CANDIDATE]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("surface", ["unknown_surface", "api", "mcp", "watcher", "whatsapp"])
+    async def test_an_outside_surface_makes_no_candidate(self, harness, surface):
+        assert await self._decision_events(harness, surface=surface) == []
+
+    @pytest.mark.asyncio
+    async def test_an_agents_verified_output_makes_no_candidate(self, harness):
+        assert await self._decision_events(harness, surface="assistant_message") == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("surface", ["cli", "telegram", "chat", "dashboard"])
+    async def test_the_owners_own_surface_still_makes_one(self, harness, surface):
+        events = await self._decision_events(harness, surface=surface)
+        assert len(events) == 1
+        assert events[0].args[1]["tenant_id"] == "acme"
+
+    @pytest.mark.asyncio
+    async def test_a_stricter_stored_tier_wins_over_a_self_surface(self, harness):
+        """Forwarded text typed into a SELF surface but stored as EXTERNAL."""
+        events = await self._decision_events(
+            harness, surface="cli", trust_tier=TrustTier.EXTERNAL.value
+        )
+        assert events == []

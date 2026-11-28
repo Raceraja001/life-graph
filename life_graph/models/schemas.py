@@ -1056,9 +1056,21 @@ class InterviewQuestionResponse(BaseModel):
 
 # ── Judgment Engine ─────────────────────────────────────────────────────────
 
+#: Every status a decision row can have (models/judgment.py ``Decision.status``).
+DECISION_STATUSES: tuple[str, ...] = ("candidate", "decided", "reviewed", "superseded", "discarded")
+#: Statuses that state the owner's own intent. Only an owner-verified caller may
+#: create a decision in one of these; anyone else gets ``candidate``
+#: (docs/design/adr-m8-ingestion-structure.md §5.4).
+OWNER_DECISION_STATUSES: frozenset[str] = frozenset(DECISION_STATUSES) - {"candidate"}
+
 
 class DecisionCreate(BaseModel):
-    """Payload for creating a new decision."""
+    """Payload for creating a new decision.
+
+    ``status`` must be one of :data:`DECISION_STATUSES`. Anything but
+    ``candidate`` is kept only for an owner-verified caller; the route stores a
+    ``candidate`` for everyone else and says so in ``meta``.
+    """
 
     title: str = Field(..., min_length=1, description="Decision title")
     reasoning: str | None = Field(default=None, description="Why this decision was made")
@@ -1070,6 +1082,13 @@ class DecisionCreate(BaseModel):
     importance: float = Field(default=0.5, ge=0, le=1)
     capture_event_id: uuid.UUID | None = None
     review_at: datetime | None = None
+
+    @field_validator("status")
+    @classmethod
+    def _known_status(cls, value: str) -> str:
+        if value not in DECISION_STATUSES:
+            raise ValueError(f"status must be one of {', '.join(DECISION_STATUSES)}")
+        return value
 
 
 class DecisionResponse(BaseModel):
