@@ -10,7 +10,7 @@ be re-pointed; snake_case is accepted on input too.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
@@ -30,7 +30,7 @@ _OWNER = "Changing dev automation"
 BacklogStatus = Literal["new", "queued", "running", "done", "skipped", "failed"]
 
 
-def _svc():
+def _svc() -> _service.AutomationService:
     return _service.get_service()
 
 
@@ -39,13 +39,13 @@ def _refused(exc: IntakeError | ScheduleError) -> HTTPException:
 
 
 @router.get("/settings", summary="The automation settings (intake, schedules, digest, breaker)")
-async def get_settings():
+async def get_settings() -> dict[str, Any]:
     doc = await _svc().get_settings(get_current_tenant_id())
     return success_response(data=doc.dump())
 
 
 @router.put("/settings", summary="Replace the automation settings (owner)")
-async def put_settings(body: AutomationSettings, request: Request):
+async def put_settings(body: AutomationSettings, request: Request) -> dict[str, Any]:
     """Sources and jobs are upserted by id (a missing or non-UUID id gets a new
     one, and ``after`` references to a draft id are translated); ones left out
     are deleted. 400 on an unknown project/persona or a chain problem."""
@@ -61,13 +61,13 @@ async def put_settings(body: AutomationSettings, request: Request):
 async def list_backlog(
     status: BacklogStatus | None = Query(None),
     limit: int = Query(200, ge=1, le=500),
-):
+) -> dict[str, Any]:
     items = await _svc().list_backlog(get_current_tenant_id(), status, limit)
     return success_response(data={"items": items, "count": len(items)})
 
 
 @router.post("/backlog/{item_id}/start", summary="Start a backlog item now (owner)")
-async def start_item(item_id: str, request: Request):
+async def start_item(item_id: str, request: Request) -> dict[str, Any]:
     """Ignores maxConcurrent / maxPerDay and a tripped breaker; the kill switch
     applies. 404 unknown item, 409 not startable."""
     owner_only(request, _OWNER)
@@ -79,7 +79,7 @@ async def start_item(item_id: str, request: Request):
 
 
 @router.post("/backlog/{item_id}/skip", summary="Skip a new or failed backlog item (owner)")
-async def skip_item(item_id: str, request: Request):
+async def skip_item(item_id: str, request: Request) -> dict[str, Any]:
     owner_only(request, _OWNER)
     try:
         item = await _svc().skip_item(get_current_tenant_id(), item_id)
@@ -89,7 +89,7 @@ async def skip_item(item_id: str, request: Request):
 
 
 @router.post("/intake/poll", summary="Poll every enabled source now (owner)")
-async def poll_now(request: Request):
+async def poll_now(request: Request) -> dict[str, Any]:
     """Poll, sync, reconcile and start eligible items, exactly like a tick but
     with every enabled source due."""
     owner_only(request, _OWNER)
@@ -98,7 +98,7 @@ async def poll_now(request: Request):
 
 
 @router.post("/schedules/{job_id}/run", summary="Run a scheduled job now (owner)")
-async def run_now(job_id: str, request: Request):
+async def run_now(job_id: str, request: Request) -> dict[str, Any]:
     """Bypasses the breaker and the budget; the kill switch and the overlap
     check apply. 404 unknown job, 409 refused."""
     owner_only(request, _OWNER)
@@ -110,7 +110,7 @@ async def run_now(job_id: str, request: Request):
 
 
 @router.get("/schedules/{job_id}/runs", summary="A job's handled slots, newest first")
-async def list_runs(job_id: str, limit: int = Query(50, ge=1, le=200)):
+async def list_runs(job_id: str, limit: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
     try:
         items = await _svc().list_runs(get_current_tenant_id(), job_id, limit)
     except IntakeError as exc:
@@ -119,13 +119,13 @@ async def list_runs(job_id: str, limit: int = Query(50, ge=1, le=200)):
 
 
 @router.get("/breakers", summary="Circuit breaker states, tripped first")
-async def list_breakers():
+async def list_breakers() -> dict[str, Any]:
     items = await _svc().list_breakers(get_current_tenant_id())
     return success_response(data={"items": items, "count": len(items)})
 
 
 @router.post("/breakers/{key:path}/reset", summary="Reset a circuit breaker (owner)")
-async def reset_breaker(key: str, request: Request):
+async def reset_breaker(key: str, request: Request) -> dict[str, Any]:
     """``key`` is ``intake:<sourceId>`` or ``schedule:<jobId>``. 404 unknown key."""
     owner_only(request, _OWNER)
     try:
@@ -136,5 +136,5 @@ async def reset_breaker(key: str, request: Request):
 
 
 @router.get("/digest/preview", summary="The morning digest as it would be sent now")
-async def digest_preview():
+async def digest_preview() -> dict[str, Any]:
     return success_response(data=await _svc().digest_preview(get_current_tenant_id()))

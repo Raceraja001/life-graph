@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -38,7 +39,7 @@ def _uuid(value: str, what: str) -> str:
 
 
 @router.get("/pr-watch", summary="Watched pull requests of the PR feedback loop")
-async def list_pr_watches():
+async def list_pr_watches() -> dict[str, Any]:
     """Every PR the loop watches for this tenant, newest first, with the loop's
     settings (``enabled``, ``poll_minutes``, ``max_rounds``, the three toggles)."""
     async with async_session() as session:
@@ -49,7 +50,7 @@ async def list_pr_watches():
 
 
 @router.post("/pr-watch/poll", summary="Check every watched PR now (owner)")
-async def poll_pr_watches(request: Request):
+async def poll_pr_watches(request: Request) -> dict[str, Any]:
     """Discover new PRs to watch and check each one now, ignoring the poll
     interval (one round in flight and the round limit still hold). Returns the
     outcome counts; ``enabled: false`` when the loop is off."""
@@ -59,7 +60,7 @@ async def poll_pr_watches(request: Request):
 
 
 @router.post("/pr-watch/{task_id}/stop", summary="Stop watching a task's PR (owner)")
-async def stop_pr_watch(task_id: str, request: Request):
+async def stop_pr_watch(task_id: str, request: Request) -> dict[str, Any]:
     """The watch goes to ``stopped`` and is never resumed for this task."""
     owner_only(request, "Stopping the PR feedback loop")
     _uuid(task_id, "task_id")
@@ -105,7 +106,7 @@ def _arena_error(exc: _arena.ArenaError) -> HTTPException:
 
 
 @router.post("/arena", status_code=202, summary="Start an arena race (owner)")
-async def create_arena(body: ArenaCreate, request: Request):
+async def create_arena(body: ArenaCreate, request: Request) -> dict[str, Any]:
     """Queue one dev task per racer, the same instruction, each pinned to its
     driver/account and never auto-opened or auto-merged. 409 when the arena is
     off; 422 for an unknown driver or account, or fewer than 2 / more than 5."""
@@ -134,7 +135,7 @@ async def create_arena(body: ArenaCreate, request: Request):
 
 
 @router.get("/arena/{arena_id}", summary="An arena race, its racers side by side")
-async def get_arena(arena_id: str):
+async def get_arena(arena_id: str) -> dict[str, Any]:
     """Each racer's status/stage, diff size, verification, cost, rounds, time,
     its approval and its driver's scorecard; ``status`` is ``racing``,
     ``ready_to_pick`` or ``decided``."""
@@ -147,7 +148,7 @@ async def get_arena(arena_id: str):
 
 
 @router.post("/arena/{arena_id}/pick", summary="Pick the arena's winner (owner)")
-async def pick_arena_winner(arena_id: str, body: ArenaPick, request: Request):
+async def pick_arena_winner(arena_id: str, body: ArenaPick, request: Request) -> dict[str, Any]:
     """The other racers still running are cancelled and their pending approvals
     rejected; the winner's ``driver_pr`` approval stays pending for the owner
     to approve as usual. 409 when already decided or the winner has not landed."""

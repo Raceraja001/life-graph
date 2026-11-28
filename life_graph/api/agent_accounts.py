@@ -19,7 +19,7 @@ Prefix: /kernel/agent-accounts. Spec: docs/specs/agent-drivers.md, "Phase 3b
 from __future__ import annotations
 
 import time
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -58,7 +58,7 @@ class AccountCreate(BaseModel):
     identity: str | None = Field(
         None, max_length=254, description="The login's email/org; stored masked + hashed only"
     )
-    properties: dict = Field(
+    properties: dict[str, Any] = Field(
         default_factory=dict, description="Non-secret: vertex project/region, model"
     )
 
@@ -70,7 +70,7 @@ class AccountUpdate(BaseModel):
     enabled: bool | None = None
     priority: int | None = Field(None, ge=0, le=10_000)
     identity: str | None = Field(None, max_length=254, description="Empty string clears it")
-    properties: dict | None = None
+    properties: dict[str, Any] | None = None
 
 
 class SecretSet(BaseModel):
@@ -102,14 +102,14 @@ _KNOWN = (LookupError, ValueError)
 
 
 @router.get("", summary="List agent accounts (no secrets, no paths)")
-async def list_accounts(driver: DriverName | None = None):
+async def list_accounts(driver: DriverName | None = None) -> dict[str, Any]:
     async with async_session() as session:
         rows = await service.list_accounts(session, get_current_tenant_id(), driver)
         return success_response(data={"accounts": [service.to_dict(r) for r in rows]})
 
 
 @router.get("/limits", summary="Latest plan-limit windows of every account")
-async def all_limits(driver: DriverName | None = None):
+async def all_limits(driver: DriverName | None = None) -> dict[str, Any]:
     tenant = get_current_tenant_id()
     async with async_session() as session:
         rows = await service.list_accounts(session, tenant, driver)
@@ -121,7 +121,7 @@ async def all_limits(driver: DriverName | None = None):
 
 
 @router.put("/pool/{driver}", summary="Set a driver's pool order (owner)")
-async def set_pool(driver: DriverName, body: PoolOrder, request: Request):
+async def set_pool(driver: DriverName, body: PoolOrder, request: Request) -> dict[str, Any]:
     owner_only(request, _OWNER)
     async with async_session() as session:
         try:
@@ -136,7 +136,7 @@ async def set_pool(driver: DriverName, body: PoolOrder, request: Request):
 
 
 @router.get("/{account_id}", summary="One agent account")
-async def get_account(account_id: str):
+async def get_account(account_id: str) -> dict[str, Any]:
     async with async_session() as session:
         try:
             row = await service.get_account(session, get_current_tenant_id(), account_id)
@@ -146,7 +146,7 @@ async def get_account(account_id: str):
 
 
 @router.get("/{account_id}/home", summary="The account's CLI home, for sign-in (owner)")
-async def get_home(account_id: str, request: Request):
+async def get_home(account_id: str, request: Request) -> dict[str, Any]:
     owner_only(request, _OWNER)
     async with async_session() as session:
         try:
@@ -161,14 +161,14 @@ async def get_limits(
     account_id: str,
     request: Request,
     refresh: bool = Query(False, description="Codex only: read live via codex app-server (owner)"),
-):
+) -> dict[str, Any]:
     tenant = get_current_tenant_id()
     async with async_session() as session:
         try:
             row = await service.get_account(session, tenant, account_id)
         except _KNOWN as exc:
             raise _errors(exc) from None
-        probe: dict | None = None
+        probe: dict[str, Any] | None = None
         if refresh:
             owner_only(request, _OWNER)
             probe = await _refresh(session, tenant, row)
@@ -179,7 +179,7 @@ async def get_limits(
         return success_response(data=payload)
 
 
-def _limits_payload(row, windows) -> dict:  # noqa: ANN001
+def _limits_payload(row: Any, windows: list[Any]) -> dict[str, Any]:
     observed = [w.observed_at for w in windows if w.observed_at]
     data = {
         "account_id": str(row.id),
@@ -198,7 +198,7 @@ def _limits_payload(row, windows) -> dict:  # noqa: ANN001
     return data
 
 
-async def _refresh(session, tenant: str, row) -> dict:  # noqa: ANN001
+async def _refresh(session: Any, tenant: str, row: Any) -> dict[str, Any]:
     """The opt-in Codex probe for one subscription account; recorded on success."""
     if row.driver != "codex":
         return {"kind": "unavailable", "reason": "only Codex limits can be read live (U4)"}
@@ -236,7 +236,7 @@ async def _refresh(session, tenant: str, row) -> dict:  # noqa: ANN001
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Create an agent account (owner)")
-async def create_account(body: AccountCreate, request: Request):
+async def create_account(body: AccountCreate, request: Request) -> dict[str, Any]:
     owner_only(request, _OWNER)
     async with async_session() as session:
         try:
@@ -259,7 +259,7 @@ async def create_account(body: AccountCreate, request: Request):
 
 
 @router.patch("/{account_id}", summary="Change an account's name, order, identity (owner)")
-async def update_account(account_id: str, body: AccountUpdate, request: Request):
+async def update_account(account_id: str, body: AccountUpdate, request: Request) -> dict[str, Any]:
     owner_only(request, _OWNER)
     async with async_session() as session:
         try:
@@ -281,17 +281,17 @@ async def update_account(account_id: str, body: AccountUpdate, request: Request)
 
 
 @router.post("/{account_id}/enable", summary="Put the account back in its pool (owner)")
-async def enable_account(account_id: str, request: Request):
+async def enable_account(account_id: str, request: Request) -> dict[str, Any]:
     return await update_account(account_id, AccountUpdate(enabled=True), request)
 
 
 @router.post("/{account_id}/disable", summary="Take the account out of its pool (owner)")
-async def disable_account(account_id: str, request: Request):
+async def disable_account(account_id: str, request: Request) -> dict[str, Any]:
     return await update_account(account_id, AccountUpdate(enabled=False), request)
 
 
 @router.post("/{account_id}/cooldown/reset", summary="End a cooldown now (owner)")
-async def reset_cooldown(account_id: str, request: Request):
+async def reset_cooldown(account_id: str, request: Request) -> dict[str, Any]:
     owner_only(request, _OWNER)
     async with async_session() as session:
         try:
@@ -304,7 +304,7 @@ async def reset_cooldown(account_id: str, request: Request):
 
 
 @router.put("/{account_id}/secret", summary="Set the API key — write-only, into the vault (owner)")
-async def set_secret(account_id: str, body: SecretSet, request: Request):
+async def set_secret(account_id: str, body: SecretSet, request: Request) -> dict[str, Any]:
     owner_only(request, _OWNER)
     async with async_session() as session:
         try:
@@ -317,7 +317,7 @@ async def set_secret(account_id: str, body: SecretSet, request: Request):
 
 
 @router.delete("/{account_id}/secret", summary="Revoke the API key (owner)")
-async def clear_secret(account_id: str, request: Request):
+async def clear_secret(account_id: str, request: Request) -> dict[str, Any]:
     owner_only(request, _OWNER)
     async with async_session() as session:
         try:
@@ -334,7 +334,7 @@ async def delete_account(
     account_id: str,
     request: Request,
     wipe_home: bool = Query(False, description="Also delete its CLI home (and the login in it)"),
-):
+) -> dict[str, Any]:
     owner_only(request, _OWNER)
     async with async_session() as session:
         try:

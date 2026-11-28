@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -41,7 +42,7 @@ class DriverInfo(BaseModel):
     billing: str = "api"
     # Readiness detail from drivers that probe a CLI (codex, gemini): enabled,
     # installed, binary, version, logged_in, hint. None for the others.
-    detail: dict | None = None
+    detail: dict[str, Any] | None = None
 
 
 class DriverStatResponse(BaseModel):
@@ -384,7 +385,7 @@ async def create_dev_task(body: DevTaskCreate, request: Request):
             start=not body.queue,
             timeout_seconds=body.timeout_seconds,
             properties={"requested_by": resolver(request)},
-            **({"depends_on": body.depends_on} if body.depends_on else {}),
+            depends_on=body.depends_on or None,
         )
     except DependencyError as exc:
         raise HTTPException(status_code=422, detail=f"{exc.code}: {exc}") from exc
@@ -520,7 +521,7 @@ async def put_presence(body: PresenceUpdate):
 
 
 @router.get("/tasks/parked", summary="Dev tasks parked until a plan limit resets")
-async def list_parked_dev_tasks():
+async def list_parked_dev_tasks() -> dict[str, Any]:
     """Tasks whose driver stayed rate limited with no agent account left, on an
     autonomy policy with ``wait_for_reset`` (docs/specs/agent-drivers.md,
     "Phase 3b part 2"). Each carries ``park = {resume_at, resets_at, reason,
@@ -691,7 +692,9 @@ class ContinueRequest(BaseModel):
     "/tasks/{task_id}/continue",
     summary="Continue a finished dev task in its own session and worktree (owner)",
 )
-async def continue_dev_task(task_id: str, body: ContinueRequest, request: Request):
+async def continue_dev_task(
+    task_id: str, body: ContinueRequest, request: Request
+) -> dict[str, Any]:
     """Resume the task's CLI session (same driver, account and worktree) with
     the feedback, then verify and land as usual: the task's branch moves, its
     pending PR approval is updated or a new one pushes to the open PR -- never
@@ -715,7 +718,7 @@ async def continue_dev_task(task_id: str, body: ContinueRequest, request: Reques
     "/tasks/{task_id}/resume",
     summary="Resume a parked dev task now, without waiting for its reset (owner)",
 )
-async def resume_parked_dev_task(task_id: str, request: Request):
+async def resume_parked_dev_task(task_id: str, request: Request) -> dict[str, Any]:
     """A parked task goes to the front of the queue at once (e.g. after the
     owner added an account). 409 when it is not parked."""
     owner_only(request, "Resuming a parked dev task")
@@ -790,7 +793,7 @@ async def get_dev_task_diff(task_id: str):
     "/tasks/{task_id}/review-stages",
     summary="Every review-stage result of a dev task, and the latest per stage",
 )
-async def get_dev_task_review_stages(task_id: str):
+async def get_dev_task_review_stages(task_id: str) -> dict[str, Any]:
     """The owner's review stages as they ran on this task's last dispatch
     (docs/specs/agent-drivers.md, "Autonomy policy"): ``results`` in order,
     re-reviews after a review-fix round included (``fix_round`` > 0), and
@@ -809,7 +812,7 @@ async def get_dev_task_review_stages(task_id: str):
 
 
 @router.get("/tasks/{task_id}/risk", summary="The risk report of a dev task's change")
-async def get_dev_task_risk(task_id: str):
+async def get_dev_task_risk(task_id: str) -> dict[str, Any]:
     """Block/warn findings with file and line for the change the task landed
     (services/dev/risk_report.py). Matched values are never stored. 404 when
     the task landed nothing (no report)."""
