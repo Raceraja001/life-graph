@@ -9,6 +9,9 @@ Builds context packets from the Life Graph substrate:
 
 Token budget: 6k default, truncate in reverse priority order.
 Privacy: external drivers don't get memories/preferences on private tasks.
+Scope: memories are project-scoped, fail-closed (:func:`memory_in_scope`).
+A packet for a project carries only memories attributed to that project; a
+packet with no project carries no memory attributed to any project.
 """
 
 from __future__ import annotations
@@ -16,17 +19,164 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, any_, func, or_, select
 
 from life_graph.core.trust import fence_untrusted, is_excluded_from_agents, is_untrusted
 from life_graph.drivers.base import ContextPacket
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.sql.elements import ColumnElement
 
 logger = logging.getLogger(__name__)
+
+# ── Project scoping of packet memories ─────────────────────────────────
+#
+# A memory row has no project column; producers record the project in
+# ``properties`` (and older skills only as a tag, services/skill_distiller.py
+# ``skill_project``). These are every key a producer uses for it today.
+#: ``properties`` keys holding the registry id of a project.
+_PROJECT_ID_KEYS = ("project_id",)
+#: ``properties`` keys holding a project's name (Claude Code hook: ``project``).
+_PROJECT_NAME_KEYS = ("project", "project_name")
+#: ``properties`` keys holding a filesystem path inside a project.
+_PROJECT_PATH_KEYS = ("cwd", "repo_path", "project_path")
+#: ``properties`` keys holding a repository as ``owner/name`` (or a bare name).
+_PROJECT_REPO_KEYS = ("repo",)
+_ATTRIBUTION_KEYS = _PROJECT_ID_KEYS + _PROJECT_NAME_KEYS + _PROJECT_PATH_KEYS + _PROJECT_REPO_KEYS
+_TAG_PREFIX = "project:"
+# "unknown" is what a producer writes when it could not tell (skill_project).
+_NO_PROJECT = frozenset({"", "unknown", "none", "null"})
+
+
+def _norm_name(value: object) -> str:
+    return str(value or "").strip().lower()
+
+
+def _norm_path(value: object) -> str:
+    return str(value or "").strip().replace("\\", "/").rstrip("/")
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectScope:
+    """The project a packet is built for, as the registry knows it."""
+
+    project_id: str
+    names: frozenset[str]
+    path: str
+
+    @classmethod
+    def from_project(cls, project_id: uuid.UUID, project_context: dict) -> ProjectScope:
+        """Build from the registry row ``_load_project`` returned."""
+        path = _norm_path(project_context.get("path"))
+        names = {_norm_name(project_context.get("name"))}
+        if path:
+            names.add(_norm_name(path.rsplit("/", 1)[-1]))
+        return cls(str(project_id), frozenset(names - _NO_PROJECT), path)
+
+    def path_matches(self, value: str) -> bool:
+        return bool(self.path) and (value == self.path or value.startswith(self.path + "/"))
+
+    def repo_matches(self, value: str) -> bool:
+        return _norm_name(value.rsplit("/", 1)[-1]) in self.names
+
+
+def _claims(props: dict[str, Any]) -> list[tuple[str, str]]:
+    """The project attributions a memory's ``properties`` make, as (kind, value)."""
+    out: list[tuple[str, str]] = []
+    for kind, keys in (
+        ("id", _PROJECT_ID_KEYS),
+        ("name", _PROJECT_NAME_KEYS),
+        ("path", _PROJECT_PATH_KEYS),
+        ("repo", _PROJECT_REPO_KEYS),
+    ):
+        for key in keys:
+            raw = props.get(key)
+            if raw is None or _norm_name(raw) in _NO_PROJECT:
+                continue
+            out.append((kind, _norm_path(raw) if kind == "path" else str(raw).strip()))
+    return out
+
+
+def _claim_matches(scope: ProjectScope, kind: str, value: str) -> bool:
+    if kind == "id":
+        return value.lower() == scope.project_id.lower()
+    if kind == "name":
+        return _norm_name(value) in scope.names
+    if kind == "path":
+        return scope.path_matches(value)
+    return scope.repo_matches(value)
+
+
+def memory_in_scope(
+    properties: dict[str, Any] | None,
+    tags: list[str] | None,
+    scope: ProjectScope | None,
+) -> bool:
+    """Whether a memory may enter a driver packet built for *scope*. Fail-closed.
+
+    With a project (a dev task): the memory must be attributed to that same
+    project, by registry id, name, path or repo in ``properties`` or by a
+    project tag, and no attribution may name a different project. A memory
+    with no project attribution is left out: it is not context for this
+    repository (incident 2026-11-28: a race-app task was handed apptx-v2's git
+    conflict alerts, because every tenant memory competed on importance alone).
+
+    Without a project: only memories that name no project at all go in.
+    """
+    props = properties if isinstance(properties, dict) else {}
+    claims = _claims(props)
+    tag_list = [str(t) for t in (tags or [])]
+    prefixed = [t[len(_TAG_PREFIX) :] for t in tag_list if t.lower().startswith(_TAG_PREFIX)]
+    if scope is None:
+        return not claims and not prefixed
+    if any(not _claim_matches(scope, kind, value) for kind, value in claims):
+        return False
+    if any(_norm_name(name) not in scope.names for name in prefixed):
+        return False
+    if claims or prefixed:
+        return True
+    # Older skill rows carry their project only as a bare tag.
+    return any(_norm_name(t) in scope.names for t in tag_list)
+
+
+def _scope_clause(memory: Any, scope: ProjectScope | None) -> ColumnElement[bool]:
+    """SQL pre-filter mirroring :func:`memory_in_scope`, so the top-k is drawn
+    from in-scope rows. :func:`memory_in_scope` re-checks every row."""
+    props = memory.properties
+    if scope is None:
+        blank = sorted(_NO_PROJECT)
+        return and_(
+            *(
+                or_(
+                    props[key].astext.is_(None),
+                    func.lower(func.trim(props[key].astext)).in_(blank),
+                )
+                for key in _ATTRIBUTION_KEYS
+            )
+        )
+    names = sorted(scope.names)
+    conds: list[ColumnElement[bool]] = [
+        func.lower(props[key].astext) == scope.project_id.lower() for key in _PROJECT_ID_KEYS
+    ]
+    if names:
+        conds += [func.lower(props[key].astext).in_(names) for key in _PROJECT_NAME_KEYS]
+        conds += [func.lower(props[key].astext).in_(names) for key in _PROJECT_REPO_KEYS]
+        conds += [
+            func.lower(props[key].astext).like(f"%/{name}")
+            for key in _PROJECT_REPO_KEYS
+            for name in names
+        ]
+        conds += [any_(memory.tags) == name for name in names]
+        conds += [any_(memory.tags) == f"{_TAG_PREFIX}{name}" for name in names]
+    if scope.path:
+        for key in _PROJECT_PATH_KEYS:
+            conds.append(props[key].astext == scope.path)
+            conds.append(props[key].astext.startswith(scope.path + "/", autoescape=True))
+    return or_(*conds)
 
 
 def render_memory_block(memories: list[dict]) -> str:
@@ -93,7 +243,13 @@ class ContextPacketBuilder:
         project_context = await self._load_project(tenant_id, project_id, session)
         procedures = await self._load_procedures(tenant_id, task_type, session)
         preferences = await self._load_preferences(tenant_id, session, project_id)
-        memories = await self._load_memories(tenant_id, instruction, session)
+        scope = ProjectScope.from_project(project_id, project_context) if project_id else None
+        if project_id and not project_context:
+            # The project is not in this tenant's registry: nothing can be
+            # matched to it, so no memory is (fail-closed).
+            memories: list[dict] = []
+        else:
+            memories = await self._load_memories(tenant_id, instruction, session, scope=scope)
         calibration_profile = await self._load_calibration_profile(tenant_id, session)
 
         packet = ContextPacket(
@@ -277,10 +433,13 @@ class ContextPacketBuilder:
         tenant_id: str,
         instruction: str,
         session: AsyncSession,
+        *,
+        scope: ProjectScope | None = None,
     ) -> list[dict]:
-        """Load recent relevant memories.
+        """Load recent relevant memories, scoped to the packet's project.
 
-        For now, loads the most recent high-importance memories.
+        For now, loads the most recent high-importance memories among those
+        :func:`memory_in_scope` admits for *scope*.
         Future: semantic search using instruction embedding.
 
         Returns:
@@ -294,6 +453,7 @@ class ContextPacketBuilder:
                 .where(
                     Memory.tenant_id == tenant_id,
                     Memory.status == "active",
+                    _scope_clause(Memory, scope),
                 )
                 .order_by(
                     Memory.importance.desc(),
@@ -316,6 +476,7 @@ class ContextPacketBuilder:
                 }
                 for m in memories
                 if not is_excluded_from_agents(m.trust_tier)
+                and memory_in_scope(m.properties, m.tags, scope)
             ]
         except Exception:
             logger.warning("Failed to load memories", exc_info=True)
