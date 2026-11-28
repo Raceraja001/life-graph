@@ -583,7 +583,14 @@ class PostgresMemoryStore:
         # Raw SQL for the tsvector column: it is GENERATED, not mapped in the ORM.
         raw_sql = text(f"""
             WITH vector_candidates AS (
-                SELECT id, row_number() OVER (ORDER BY embedding <=> :query_embedding) AS rk
+                -- Ties broken by content, then id (#458): equal distances or
+                -- equal keyword scores were ordered by whatever row order the
+                -- plan returned, so the same question could rank differently.
+                -- The CTE's own ORDER BY stays distance-only (index scan).
+                SELECT id, md5(content) AS h,
+                       row_number() OVER (
+                           ORDER BY embedding <=> :query_embedding, md5(content), id
+                       ) AS rk
                 FROM memories
                 WHERE embedding IS NOT NULL
                   AND tenant_id = :tenant_id
@@ -600,7 +607,7 @@ class PostgresMemoryStore:
                 FROM unnest(CAST(:terms AS text[])) AS w
             ),
             keyword_matches AS MATERIALIZED (
-                SELECT id, content_tsv,
+                SELECT id, content_tsv, md5(content) AS h,
                        ts_rank_cd(content_tsv, to_tsquery('english', :tsquery), 32) AS tr
                 FROM memories
                 WHERE tenant_id = :tenant_id
@@ -612,7 +619,7 @@ class PostgresMemoryStore:
             -- Every memory holding a word matches the OR query, so counting
             -- these per word is the word's document frequency.
             word_hits AS MATERIALIZED (
-                SELECT km.id, km.tr, qt.tq
+                SELECT km.id, km.tr, km.h, qt.tq
                 FROM keyword_matches km
                 JOIN query_terms qt ON numnode(qt.tq) > 0 AND km.content_tsv @@ qt.tq
             ),
@@ -625,14 +632,14 @@ class PostgresMemoryStore:
                   AND status = ANY(:statuses){extra}
             ),
             bm25_matches AS (
-                SELECT wh.id, row_number() OVER (
+                SELECT wh.id, wh.h, row_number() OVER (
                            ORDER BY sum(ln(1 + (s.n - wd.df + 0.5) / (wd.df + 0.5))) DESC,
-                                    max(wh.tr) DESC
+                                    max(wh.tr) DESC, wh.h, wh.id
                        ) AS rk
                 FROM word_hits wh
                 JOIN word_df wd ON wd.tq = wh.tq
                 CROSS JOIN searchable s
-                GROUP BY wh.id
+                GROUP BY wh.id, wh.h
                 ORDER BY rk
                 LIMIT :pool
             )
@@ -645,7 +652,7 @@ class PostgresMemoryStore:
                        AS hybrid_score
             FROM vector_candidates v
             FULL OUTER JOIN bm25_matches b ON v.id = b.id
-            ORDER BY hybrid_score DESC
+            ORDER BY hybrid_score DESC, COALESCE(v.h, b.h), COALESCE(v.id, b.id)
             LIMIT :result_limit
         """)
 
