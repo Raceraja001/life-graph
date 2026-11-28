@@ -293,7 +293,7 @@ accounts:
   - key: work
     display_name: Logimax
     host: imap.gmail.com
-    username: service@logimaxindia.com
+    username: someone@work.example.com
     auth: app_password     # not a Workspace admin: OAuth would need an External app
     exposure: local_only   # employer data: cloud chat and off-machine delivery get counts only
 # secrets: ~/.config/life-graph/connectors/raja/personal-gmail.secret, …/work.secret

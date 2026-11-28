@@ -140,12 +140,12 @@ def test_git_author_filter_matches_any_identity_by_name_or_email():
 
         def traverse_commits(self):
             return [
-                commit("raja4lmx", "raja@logimaxindia.com"),
-                commit("Race", "raceraja001@gmail.com"),
+                commit("owner-work", "owner@work.example.com"),
+                commit("Race", "owner@example.com"),
                 commit("test", "test@test.com"),
             ]
 
-    result = GitAnalyzer()._mine_commits(FakeRepo, "/r", ["raceraja001@gmail.com", "raja4lmx"])
+    result = GitAnalyzer()._mine_commits(FakeRepo, "/r", ["owner@example.com", "owner-work"])
     assert result["total_commits"] == 2
     assert seen_kwargs == {"order": "reverse"}  # newest first, so the cap keeps recent habits
 
