@@ -112,6 +112,65 @@ _CHANGE_REQUIRED_TASK_TYPES = ("code", "code_change")
 # no task type that legitimately changes nothing gets a `git add -A` pass.
 _CODE_TASK_TYPES = ("code", "code_change", "bugfix", "refactor", "feature")
 
+# "No changes needed" (2026-11-28): a code run that finished normally, changed
+# nothing, and *says* there was nothing to change -- a nightly health check that
+# found the tree clean -- ends as its own outcome instead of failing Step 4c.
+# Plain rules, no model call (CHARTER invariant 1). Fail-closed: the statement
+# must be explicit and about need ("no changes are needed", "nothing to fix",
+# "already fixed"), never "all done" / "tests pass" (task ade60cc6 claimed
+# success with an empty diff); and a question, an edit claim or a refusal in
+# the same output disqualifies it.
+NO_CHANGES_OUTCOME = "no_changes"
+_NO_CHANGE_STATEMENT = re.compile(
+    r"\bno\s+(?:further\s+|code\s+|source\s+|file\s+)?(?:changes?|fix(?:es)?|edits?)"
+    r"\s+(?:(?:is|are|was|were)\s+)?(?:needed|required|necessary|warranted)\b"
+    r"|\bnothing\s+(?:(?:in|here|that)\s+\S+\s+)?(?:to|needs?\s+to\s+be|needed\s+to\s+be)"
+    r"\s+(?:fix(?:ed)?|change(?:d)?|do(?:ne)?|update(?:d)?)\b"
+    r"|\bnothing\s+(?:needs|needed|required)\s+(?:fixing|changing|changes?)\b"
+    r"|\balready\s+(?:been\s+)?(?:fixed|resolved|implemented|in\s+place|up\s+to\s+date)\b",
+    re.IGNORECASE,
+)
+_EDIT_CLAIM = re.compile(
+    r"\b(?:I|I've|I\s+have|we|we've)\s+(?:also\s+|now\s+|just\s+)?"
+    r"(?:added|changed|updated|modified|edited|created|wrote|implemented|refactored|renamed|"
+    r"deleted|removed|fixed|patched|applied)\b"
+    r"|^\s*(?:[-*\u2022]\s+|\d+[.)]\s+)?(?:Added|Changed|Updated|Modified|Edited|Created|Wrote|"
+    r"Implemented|Refactored|Renamed|Deleted|Removed|Fixed|Patched)\b",
+    re.MULTILINE,
+)
+_REFUSAL = re.compile(
+    r"\b(?:can(?:no|')t|cannot|unable\s+to|won't|will\s+not|not\s+(?:allowed|permitted)|"
+    r"permission|denied|blocked)\b",
+    re.IGNORECASE,
+)
+
+
+def states_no_change_needed(output: str | None) -> bool:
+    """Whether a run's final message says, explicitly, that nothing needed changing.
+
+    True only for an explicit statement of no need (see ``_NO_CHANGE_STATEMENT``)
+    with no question, no claim of having edited something and no refusal in the
+    same text -- each of those means the run did not conclude "nothing to do".
+    """
+    text = (output or "").strip()
+    if not text or not _NO_CHANGE_STATEMENT.search(text):
+        return False
+    lines = text.splitlines()
+    if any(ln.rstrip().endswith("?") or re.search(r"\?\s+\S", ln) for ln in lines):
+        return False
+    return not (_EDIT_CLAIM.search(text) or _REFUSAL.search(text))
+
+
+def is_no_changes(result: DriverResult | None) -> bool:
+    """Whether *result* is the "no changes needed" outcome (Step 4c)."""
+    return bool(
+        result is not None
+        and not result.success
+        and not result.error
+        and (result.metadata or {}).get("outcome") == NO_CHANGES_OUTCOME
+    )
+
+
 # `diff --git a/<pre> b/<post>`, with git's optional quoting of paths that
 # contain whitespace. Non-greedy so the ` b/` separator wins over a path that
 # happens to contain " b/" itself.
@@ -398,7 +457,8 @@ class TaskDispatcher(
         3. Select driver, then the Governor budget gate       (_budget_gate)
         4. Dispatch in the resolved workdir                   (_run_driver)
            4b. worktree .git link intact                      (_check_worktree_link)
-           4c. a code task changed some file                  (_check_files_changed)
+           4c. a code task changed some file, or said nothing
+               needed changing ("no changes needed")           (_check_files_changed)
         5. Run verifier chain, auto-fix once                  (_verify_result)
         6. Unverifiable, bounce once, plan spec, or second opinion
            6b. Land the verified work on a branch             (_land_verified_work)
@@ -1108,7 +1168,10 @@ class TaskDispatcher(
         await self._observe_files_changed(run)
         # Run health (owner opt-in, max_nudges): an edit run that only described
         # a plan or asked a question gets "carry it out now" before failing here.
-        await self._nudge_until_changed(run, run.task_type in _CHANGE_REQUIRED_TASK_TYPES)
+        # A run that says there was nothing to change is not nudged.
+        change_required = run.task_type in _CHANGE_REQUIRED_TASK_TYPES
+        concluded = run.result is not None and states_no_change_needed(run.result.output)
+        await self._nudge_until_changed(run, change_required and not concluded)
         result = run.result
         if run.tracker:
             run.tracker.record_stage("files_checked")
@@ -1119,6 +1182,28 @@ class TaskDispatcher(
             and run.worktree is not None
             and not run.files_changed
         ):
+            return
+        if states_no_change_needed(result.output):
+            # Finished normally (success = the CLI exited cleanly: no crash,
+            # timeout, auth/rate-limit failure or refusal) and said there was
+            # nothing to change. Not a success -- nothing is verified, landed
+            # or approved, so the verifier chain and Step 6b are skipped as for
+            # a failure -- and not a failure: no error, its own outcome, the
+            # agent's message kept as the summary (services/dev/tasks.py maps
+            # it to status "completed", stage "no_changes").
+            logger.info("Task %s: no changes needed (the run said so)", run.task_id)
+            run.result = DriverResult(
+                success=False,
+                output=result.output,
+                error=None,
+                cost_usd=result.cost_usd,
+                duration_ms=result.duration_ms,
+                metadata={
+                    **(result.metadata or {}),
+                    "outcome": NO_CHANGES_OUTCOME,
+                    "stop_reason": "no_change_needed",
+                },
+            )
             return
         logger.warning("Task %s: the run changed no files", run.task_id)
         run.result = DriverResult(
@@ -1660,7 +1745,12 @@ class TaskDispatcher(
         result = run.result
         if run.spec_text:
             result.metadata = {**(result.metadata or {}), "spec": run.spec_text}
-        await self._record_stats(run.tenant_id, run.driver.name, run.task_type, result, run.session)
+        if not is_no_changes(result):
+            # driver_stats counts landed vs failed; "nothing needed changing"
+            # is neither, so it must not lower the driver's trust score.
+            await self._record_stats(
+                run.tenant_id, run.driver.name, run.task_type, result, run.session
+            )
 
         await self._emit(
             EventType.DRIVER_RESULT,
@@ -1671,6 +1761,7 @@ class TaskDispatcher(
                 "cost_usd": result.cost_usd,
                 "duration_ms": result.duration_ms,
                 "landed_branch": (result.metadata or {}).get("landed_branch"),
+                "outcome": (result.metadata or {}).get("outcome"),
             },
         )
 

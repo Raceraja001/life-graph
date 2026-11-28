@@ -52,7 +52,7 @@
 - GIVEN a poll fails (command error, timeout, invalid JSON, project gone) THEN it is logged and stored on the source (`lastError`), the other sources still run, nothing is started for it.
 - GIVEN `new` items WHEN the tick starts work THEN at most `maxConcurrent − (items queued/running)` and `maxPerDay − (items started since tenant-local midnight)` are started, oldest first, skipping sources whose breaker is tripped, and only when the **start gate** returns no reason. An automatic start queues the task (`start=False`: unattended, so the dispatcher's own budget checks apply again when it runs).
 - GIVEN an item is started THEN it is claimed first (`status new|failed|skipped → queued` compare-and-set, `started_at`, `properties.started_by`) and a dev task is created through `create_dev_task` with `properties.origin = "intake"`, `properties.automation = {kind: "intake", source_id, backlog_id, external_key, mode}`, the source's persona (default `code-fixer-local`), and the mode: `plan` → a plan task (`task_type plan`, `spec_first`, `verify_chain ["no_diff_in_plan"]`); `ask` and `auto` → a normal code task (whether anything is auto-approved is decided by the autonomy policy, never by intake). The task's instruction is title + body + `Source: <url>` + "Make a focused change; keep it minimal; make the tests pass." (≤ 8000). A start that throws marks the item `failed` (reason) and counts for the breaker.
-- GIVEN items `queued`/`running` WHEN the tick syncs THEN each takes its status from its task: `queued`/`parked` → queued; `running`, or finished and waiting for the owner (`awaiting_pr`, `pr_open`, `awaiting_merge`, `needs_review`, a pending plan) → running; `merged`, `landed`, a plan approved (`completed`) → `done`; failed / cancelled / `pr_rejected` / `closed` / task gone → `failed` (with a reason; restartable). Each outcome also feeds the source's breaker.
+- GIVEN items `queued`/`running` WHEN the tick syncs THEN each takes its status from its task: `queued`/`parked` → queued; `running`, or finished and waiting for the owner (`awaiting_pr`, `pr_open`, `awaiting_merge`, `needs_review`, a pending plan) → running; `merged`, `landed`, a plan approved (`completed`) → `done`; failed / cancelled / `pr_rejected` / `closed` / task gone → `failed` (with a reason; restartable). Each outcome also feeds the source's breaker. *(2026-11-28)* "No changes needed" (status `completed`, stage `no_changes`, see agent-drivers.md's 2026-11-28 amendment) → `skipped` with reason `no changes needed: <the agent's message>` — restartable, not a failure, and no "merged" issue comment.
 - **Reconcile** GIVEN a source polled this round WHEN an item of it has a task still queued/running/parked AND the issue is closed (`gh issue view <n> --repo <r> --json state` = `CLOSED`) / the TODO (path + line hash, line moves ignored) is gone from the base branch / a newer run of the workflow passed on the base branch (`gh run list --workflow <w> --status success --limit 1` id > the item's run id) / the intention is no longer active THEN the task is cancelled (`request_cancel`) and the item marked `skipped` with the reason. A lookup that fails leaves the item alone.
 - GIVEN `commentOnIssue: true` on a `github_issues` source THEN one comment each is posted when the item is picked up, when its PR exists, and when it is done (each stage recorded **before** posting, so a failure never repeats it). Off by default: intake is otherwise read-only.
 - **Owner actions**: "Start now" (`new`/`failed`/`skipped`) ignores `maxConcurrent`, `maxPerDay` and a tripped breaker, starts at once (interactive, `requested_by` recorded), and is refused only by the kill switch (409), an unknown item (404) or a source that no longer exists (409). "Skip" works on `new`/`failed` items only (queued/running ones are reconciled, not skipped).
@@ -74,6 +74,7 @@
 - GIVEN a task of that key fails (status `failed`, reason = its error; or stage `needs_review` = checks failed twice, not a pending plan) or a start throws THEN the reason is **normalised** (ISO times / clock times → `<time>`, UUIDs, prefixed ids, 7+ hex → `<id>`, paths → `<path>`, digits → `#`, whitespace folded, ≤ 300) and: same as the last reason → count + 1; different → count 1. Each task is counted once (`counted`, newest 50).
 - GIVEN the count reaches the threshold THEN the key **trips** (`tripped_at`), automatic starts for it stop, and a notice is published once: title `Automation paused: <label> — <reason>` (label = the source's name, else `<Kind> · <project>`; the job's name), as a notification (priority `important`), Web Push and Telegram.
 - GIVEN a success (the task finished its work, e.g. after a manual "Start now"/"Run now") THEN the count resets and the key un-trips. A cancelled task counts neither way.
+- *(2026-11-28)* GIVEN a task ends as "no changes needed" (status `completed`, stage `no_changes`: it finished normally and said nothing needed changing) THEN it is a **success** for the breaker (count reset), not a failure: a nightly health check that finds the tree clean is the job working, and the failures before it are no longer consecutive. (Neutral was rejected: three clean nights between two identical failures would otherwise still trip it.) A chained job may follow it (`no_changes` is a finished stage).
 - GIVEN `POST …/breakers/{key}/reset` THEN count 0, not tripped (404 for an unknown key).
 - GIVEN `enabled: false` THEN nothing is recorded and nothing is tripped.
 
@@ -81,6 +82,7 @@
 
 - GIVEN `digest {enabled (default **false**), time "HH:MM" (default 08:00)}` WHEN the tenant-local time reaches `time` THEN the night-shift report (`services/night_shift.report` + `lines`) for the window since the previous digest (else the last 24 h) is built, today's date is claimed in `dev_automation_settings.state` (once per local day; a worker started late sends that day's digest late, once), and unless it was a quiet night (no lines: nothing merged, waiting, failed or queued) it is published as `dev:automation:notice` (`kind: digest`): a notification, Web Push (`/m`) and Telegram. Title `Night shift: <head line>`, body the head line + up to 20 lines. Replaces race-app's digest.
 - `GET …/digest/preview` builds the same for now without recording or sending.
+- *(2026-11-28)* Runs that ended as "no changes needed" are listed on their own lines, `no changes needed: <title> — <the agent's message, ≤ 160 chars>`, never under failed; the head line gains `, N checked with no changes needed` when there are any, and `Digest` gains `noChanges` (count) and `report.no_changes` (rows). Such a night is not quiet.
 
 ---
 
@@ -281,10 +283,11 @@ Reads: any tenant caller. Writes: **owner only** (403 otherwise).
  "trippedAt": "…", "updatedAt": "…"}
 
 // Digest
-{"from": "…", "to": "…", "merged": 2, "needsYou": 1, "failed": 0, "queued": 3,
+{"from": "…", "to": "…", "merged": 2, "needsYou": 1, "failed": 0, "noChanges": 1, "queued": 3,
  "lines": ["merged: Fix login — https://github.com/…/pull/9", "waiting: … — auto-merge is off"],
  "summary": "2 merged, 1 waiting for you, 0 failed, 3 queued", "quiet": false,
- "report": {"since": "…", "merged": […], "waiting": […], "failed": […], "queued": 3}}
+ "report": {"since": "…", "merged": […], "waiting": […], "failed": […], "no_changes": […],
+            "queued": 3}}
 ```
 
 ### Events

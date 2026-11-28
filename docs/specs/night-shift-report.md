@@ -23,13 +23,19 @@ queued. Plain code over dev tasks and approvals; no model call.
   *(test)*
 - **AC-6** `GET /api/v1/kernel/drivers/night-shift?hours=24` returns the same report as data.
   *(integration test)*
+- **AC-7** *(2026-11-28)* A task that settled as "no changes needed" (status `completed`, stage
+  `no_changes`: it finished normally and said nothing needed changing) is listed under
+  `no_changes` with the agent's message (one line, ≤ 160 chars) as its `reason` — never under
+  `failed`. `lines` adds `no changes needed: <title> — <reason>` and, when there are any,
+  `, N checked with no changes needed` on the head line. *(test:
+  `tests/unit/test_no_changes_outcome.py`)*
 
 ## Design
 
 `services/night_shift.py`:
 
 - `report(session, tenant_id, since)` → `{since, merged: [...], waiting: [...], failed: [...],
-  queued: n}`, each item `{id, title, stage, pr_url, reason}`. Built from
+  no_changes: [...], queued: n}`, each item `{id, title, stage, pr_url, reason}`. Built from
   `dev_tasks.list_dev_tasks` (the same stages the dashboard shows); for a waiting task the reason
   comes from the pending approval's payload through `change_policy.auto_gate`; for a failed task
   from `failure_causes.classify`.

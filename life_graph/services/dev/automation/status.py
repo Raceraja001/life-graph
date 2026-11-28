@@ -3,7 +3,7 @@
 A *view* is the dev task's API shape (``services/dev/tasks.serialize``):
 ``status`` (queued / running / parked / completed / failed / cancelled) and
 ``stage`` (awaiting_pr, pr_open, awaiting_merge, merged, closed, pr_rejected,
-needs_review, landed, …).
+needs_review, landed, no_changes, …).
 """
 
 from __future__ import annotations
@@ -16,8 +16,23 @@ ACTIVE_STATUSES = frozenset({"queued", "running", "parked"})
 #: or merged (race-app: "awaiting approval or completed"). A success for the
 #: breaker, and what a chained job waits for.
 FINISHED_STAGES = frozenset(
-    {"awaiting_pr", "pr_open", "awaiting_merge", "merged", "landed", "completed"}
+    {"awaiting_pr", "pr_open", "awaiting_merge", "merged", "landed", "completed", "no_changes"}
 )
+#: Status ``completed``, stage ``no_changes`` (services/dev/tasks.NO_CHANGES): the
+#: run finished normally and said nothing needed changing (a nightly health check
+#: that found the tree clean). Not a failure: it is in :data:`FINISHED_STAGES`, so
+#: the breaker counts it as a success (it resets the count -- the failures before
+#: it were not consecutive any more) and a chained job may follow it.
+NO_CHANGES_STAGE = "no_changes"
+
+
+def no_changes(view: dict[str, Any] | None) -> bool:
+    """Whether the task ended as "no changes needed"."""
+    return (
+        bool(view)
+        and (view or {}).get("status") == "completed"
+        and (view or {}).get("stage") == NO_CHANGES_STAGE
+    )
 
 
 def _planned(view: dict[str, Any]) -> bool:
@@ -58,7 +73,8 @@ def item_status_for(view: dict[str, Any] | None) -> tuple[str, str | None]:
 
     queued / parked → queued; running, or finished and waiting for the owner
     (PR to approve, open, to merge; needs review) → running; merged, landed or
-    completed without a PR → done; failed / cancelled / PR rejected or closed /
+    completed without a PR → done; "no changes needed" → skipped (nothing was
+    done, nothing failed: restartable, and no "merged" issue comment); failed / cancelled / PR rejected or closed /
     missing → failed (an owner can start it again).
     """
     if not view:
@@ -68,6 +84,10 @@ def item_status_for(view: dict[str, Any] | None) -> tuple[str, str | None]:
         return "queued", None
     if status == "running":
         return "running", None
+    if no_changes(view):
+        summary = " ".join(str((view or {}).get("output") or "").split())
+        reason = "no changes needed" + (f": {summary}" if summary else "")
+        return "skipped", reason[:500]
     if stage in ("merged", "landed", "completed") and status == "completed":
         return "done", None
     if status == "failed":
