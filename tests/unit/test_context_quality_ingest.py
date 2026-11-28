@@ -168,7 +168,12 @@ def test_the_replay_extractor_parses_the_recording_and_counts_a_miss():
     msg = next(m for m in FX["messages"] if m["id"] == "m_promotion")
     ext = ci._replay_class()({msg["said"]: msg["raw"]})
     facts = asyncio.run(ext._extract_local(msg["said"]))
-    assert [f.slot for f in facts] == ["work.title", "work.salary"]
+    # The slots the recorded reply names (they depend on the recording model,
+    # so they are read from the fixture, not pinned here).
+    recorded = [f.get("slot") for f in json.loads(msg["raw"])["facts"]]
+    assert len(facts) == len(recorded) >= 2
+    assert [f.slot for f in facts] == recorded
+    assert "work.title" in recorded
     assert asyncio.run(ext._extract_local("never recorded")) == []
     assert ext.misses == ["never recorded"] and ext.replayed == 1
 

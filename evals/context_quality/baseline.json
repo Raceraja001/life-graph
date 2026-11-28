@@ -86,5 +86,95 @@
       "abstention_accuracy": 1.0
     }
   },
-  "change_detection_recall": 1.0
+  "change_detection_recall": 1.0,
+  "ingest": {
+    "about": "Floors for the ingest arm (the world built by the save path, all four M8 ingestion flags on, recorded extractor output), recorded from a real run. Not a target: the gaps are what ingestion does not write yet.",
+    "by_category": {
+      "O": {
+        "precision": 0.2843,
+        "recall": 0.6667,
+        "current_vs_historical": 0.9091,
+        "temporal": 0.9286,
+        "relationship_both_ends": 0.0,
+        "conflict_recall": 0.3333,
+        "provenance_coverage": 0.7843,
+        "origin_accuracy": 0.7438,
+        "field_accuracy": 0.4286,
+        "abstention_accuracy": 0.9
+      },
+      "A": {
+        "precision": 0.0926,
+        "recall": 0.75,
+        "provenance_coverage": 0.8241,
+        "origin_accuracy": 0.7753,
+        "field_accuracy": 0.75,
+        "abstention_accuracy": 0.6
+      },
+      "B": {
+        "precision": 0.1471,
+        "recall": 0.5714,
+        "current_vs_historical": 0.6667,
+        "temporal": 0.6667,
+        "relationship_both_ends": 0.5,
+        "conflict_recall": 0.0,
+        "provenance_coverage": 0.8137,
+        "origin_accuracy": 0.7952,
+        "field_accuracy": 0.0,
+        "abstention_accuracy": 0.8
+      },
+      "C": {
+        "precision": 0.1359,
+        "recall": 0.6667,
+        "current_vs_historical": 0.8571,
+        "temporal": 0.8571,
+        "conflict_recall": 0.25,
+        "provenance_coverage": 0.8544,
+        "origin_accuracy": 0.7045,
+        "field_accuracy": 0.75,
+        "abstention_accuracy": 0.8
+      },
+      "D": {
+        "precision": 0.1136,
+        "recall": 0.75,
+        "current_vs_historical": 0.5,
+        "temporal": 0.5,
+        "relationship_both_ends": 1.0,
+        "conflict_recall": 0.0,
+        "provenance_coverage": 0.75,
+        "origin_accuracy": 0.8333,
+        "abstention_accuracy": 0.75
+      },
+      "E": {
+        "precision": 0.1385,
+        "recall": 0.8333,
+        "current_vs_historical": 0.8571,
+        "temporal": 0.875,
+        "relationship_both_ends": 0.0,
+        "provenance_coverage": 0.7846,
+        "origin_accuracy": 0.7647,
+        "abstention_accuracy": 1.0
+      },
+      "F": {
+        "precision": 0.1942,
+        "recall": 0.8667,
+        "temporal": 1.0,
+        "relationship_both_ends": 0.6667,
+        "conflict_recall": 1.0,
+        "provenance_coverage": 0.7573,
+        "origin_accuracy": 0.7436,
+        "abstention_accuracy": 0.8
+      },
+      "G": {
+        "precision": 0.0738,
+        "recall": 0.4,
+        "conflict_recall": 0.0,
+        "provenance_coverage": 0.8115,
+        "origin_accuracy": 0.798,
+        "field_accuracy": 0.1333,
+        "abstention_accuracy": 0.8333
+      }
+    },
+    "change_detection_recall": 0.7143,
+    "forbidden_as_current_max": 29
+  }
 }
