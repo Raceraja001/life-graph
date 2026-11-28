@@ -5,7 +5,7 @@ str(exc)`` → 404), so rewording a message changed the API. A service raises
 one of these instead, and main.py maps each type to its status with one
 handler; a route that catches one can read ``status_code`` off it.
 
-All three subclass ``ValueError``: every existing ``except ValueError`` around
+All of them subclass ``ValueError``: every existing ``except ValueError`` around
 a service call keeps catching them, so converting a raise site is safe for
 callers that are not routes (workers, tools, other services).
 
@@ -41,6 +41,13 @@ class ConflictError(DomainError):
 
     status_code = 409
     code = "CONFLICT"
+
+
+class ForbiddenError(DomainError):
+    """The caller may not do this, e.g. a move only the owner may make (403)."""
+
+    status_code = 403
+    code = "FORBIDDEN"
 
 
 # PostgreSQL SQLSTATEs (https://www.postgresql.org/docs/current/errcodes-appendix.html).

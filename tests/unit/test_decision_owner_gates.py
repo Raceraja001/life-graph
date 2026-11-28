@@ -192,7 +192,9 @@ async def test_supersede_with_a_same_tenant_replacement_works():
     old, new = _decision("A"), _decision("A")
     bus = SimpleNamespace(emit=AsyncMock())
 
-    await JudgmentService(_Session(old, new), bus).supersede_decision("A", old.id, new.id)
+    await JudgmentService(_Session(old, new), bus).supersede_decision(
+        "A", old.id, new.id, by="owner", owner=True
+    )
 
     assert old.status == "superseded"
     assert old.superseded_by == new.id

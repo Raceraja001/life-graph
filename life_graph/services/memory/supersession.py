@@ -24,6 +24,13 @@ must stay ``False`` until then.
 It writes no approval and emits no event. Each caller still files its own
 contradiction approval, as before.
 
+Decisions follow (ADR M8 §5.4, only with ``settings.decision_lifecycle``):
+after an applied supersede the caller awaits :func:`mirror_decisions`, and
+after an undo :func:`undo_decision_mirror` (:func:`restore_replaced_by` does
+it itself). A *candidate* decision linked to the old memory is then
+superseded by the new memory's decision, and the undo takes it back. With
+the setting off both return at once and read nothing.
+
 Callers keep their own rules through parameters: which old and new statuses
 are allowed (``old_statuses`` / ``new_statuses``), whether the new memory is
 activated, and whether the rows are locked while they are read (:func:`load`).
@@ -41,6 +48,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select, text
 
 from life_graph.models.db import Memory
+from life_graph.services import decision_lifecycle
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -192,6 +200,33 @@ def undo(tenant_id: str, old: Memory | None, new: Memory | None) -> bool:
     return True
 
 
+async def mirror_decisions(
+    session: AsyncSession, tenant_id: str, old: Memory | None, new: Memory | None
+) -> bool:
+    """After :func:`apply` of *old* by *new*: the linked candidate decision follows.
+
+    services/decision_lifecycle.py ``mirror_memory_supersede``; does nothing
+    unless ``settings.decision_lifecycle``. Same session, so the decision
+    moves in the memory supersede's own transaction.
+    """
+    if old is None or new is None:
+        return False
+    return await decision_lifecycle.mirror_memory_supersede(session, tenant_id, old.id, new.id)
+
+
+async def undo_decision_mirror(
+    session: AsyncSession, tenant_id: str, *, old_id: Any = None, new_id: Any = None
+) -> int:
+    """After :func:`undo`: the decisions that mirrored that supersede move back.
+
+    services/decision_lifecycle.py ``undo_memory_mirror``; does nothing unless
+    ``settings.decision_lifecycle``.
+    """
+    return await decision_lifecycle.undo_memory_mirror(
+        session, tenant_id, old_memory_id=old_id, new_memory_id=new_id
+    )
+
+
 async def restore_replaced_by(session: AsyncSession, tenant_id: str, new_id: Any) -> None:
     """Bring back every memory of *tenant_id* that *new_id* replaced.
 
@@ -212,3 +247,4 @@ async def restore_replaced_by(session: AsyncSession, tenant_id: str, new_id: Any
         ),
         {"id": new_id, "t": tenant_id},
     )
+    await undo_decision_mirror(session, tenant_id, new_id=new_id)

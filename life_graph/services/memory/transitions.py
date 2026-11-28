@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import MemoryUpdate
+from life_graph.services import decision_lifecycle
 
 if TYPE_CHECKING:
     import uuid
@@ -163,6 +164,9 @@ async def transition(
         else:
             updated = await store.update(memory_id, MemoryUpdate(status="active"))
         await settle_contradictions(memory_id, approved=True)
+        # The owner's Keep of a linked decision memory confirms the decision
+        # (settings.decision_lifecycle; an auto-keep never comes through here).
+        await decision_lifecycle.follow_memory_review(row.tenant_id, memory_id, action, decided_by)
         await learn_names(row)
         try:
             await event_bus.emit(
@@ -185,6 +189,7 @@ async def transition(
     else:
         updated = await store.update(memory_id, MemoryUpdate(status="rejected"))
     await settle_contradictions(memory_id, approved=False)
+    await decision_lifecycle.follow_memory_review(row.tenant_id, memory_id, action, decided_by)
     try:
         await event_bus.emit(
             EventType.MEMORY_REJECTED,

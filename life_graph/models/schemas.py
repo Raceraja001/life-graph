@@ -10,7 +10,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+)
 
 # ── Memory ────────────────────────────────────────────────────────────────────
 
@@ -1111,8 +1118,24 @@ class DecisionResponse(BaseModel):
     decided_at: datetime | None
     review_at: datetime | None
     reviewed_at: datetime | None
+    superseded_at: datetime | None = None
     properties: dict[str, Any]
     created_at: datetime
+
+
+class DecisionSupersede(BaseModel):
+    """Payload for ``POST /judgment/decisions/{id}/supersede``.
+
+    ``replaced_by`` (also accepted as ``by``, the ADR's name) is the decision
+    that replaces this one. Who is superseding is never read from the body:
+    the server records the caller (api/approval_identity.py).
+    """
+
+    replaced_by: uuid.UUID = Field(
+        ...,
+        validation_alias=AliasChoices("replaced_by", "by"),
+        description="The decision that replaces this one",
+    )
 
 
 class PredictionCreate(BaseModel):

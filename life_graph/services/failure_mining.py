@@ -1,7 +1,7 @@
 """Monthly failure-pattern mining (Judgment Engine, Story 6).
 
 One LLM pass per month over a tenant's *failed* decisions (predictions that
-resolved incorrect, or decisions that were reversed/superseded) to surface
+resolved incorrect, or decided decisions later superseded) to surface
 recurring failure trajectories — e.g. "side projects abandoned around week 6".
 
 The **instances-cited-or-dropped rule** is the trust guarantee: a pattern is
@@ -16,7 +16,7 @@ import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from life_graph.core.budget import BudgetCategory
 from life_graph.models.db import Decision, Memory, Prediction
@@ -30,7 +30,13 @@ MIN_INSTANCES = 3
 # Estimated cost of the single monthly LLM mining pass (actual token cost is not
 # individually metered here; a fixed estimate keeps the Governor's ledger honest).
 ESTIMATED_MINING_COST_USD = 0.05
-_FAILURE_STATUSES = ("superseded", "abandoned", "reversed")
+#: A decision the owner changed course on. Only "superseded" is a status
+#: anything writes (models.schemas.DECISION_STATUSES): a reversal is recorded
+#: as a supersede, and "abandoned" has no status of its own. "discarded" is
+#: not a failure: it means the owner said it was never a decision. Until
+#: 2026-11-28 this also listed "abandoned" and "reversed", which nothing
+#: writes, so they matched nothing.
+_FAILURE_STATUSES = ("superseded",)
 
 
 class FailurePatternMiner:
@@ -59,7 +65,13 @@ class FailurePatternMiner:
                 .where(
                     Decision.tenant_id == tenant_id,
                     or_(
-                        Decision.status.in_(_FAILURE_STATUSES),
+                        # A superseded candidate was never decided, so it is
+                        # no failed decision (ADR M8 §5.4: the system's mirror
+                        # of a memory supersede moves candidates only).
+                        and_(
+                            Decision.status.in_(_FAILURE_STATUSES),
+                            Decision.decided_at.is_not(None),
+                        ),
                         Decision.id.in_(incorrect_ids),
                     ),
                 )

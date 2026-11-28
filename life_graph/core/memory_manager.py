@@ -332,6 +332,7 @@ class MemoryManager:
                     new_memory_id[:8],
                 )
                 return
+            await supersession.mirror_decisions(session, tenant_id, old, new)
             await session.commit()
 
         logger.info(
