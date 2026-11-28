@@ -293,6 +293,8 @@ class MemoryManager:
         old_memory_id: str,
         new_memory_id: str,
         reason: str,
+        *,
+        world_change: bool = False,
     ) -> None:
         """Mark an old memory as superseded by a new one.
 
@@ -306,7 +308,9 @@ class MemoryManager:
         Both memories are preserved in history for audit trail. The writes are
         services/memory/supersession.py ``apply``, in one transaction with both
         rows locked. Any old status is replaced, as before (the targets were
-        active when found). Both rows must be this tenant's.
+        active when found). Both rows must be this tenant's. ``world_change``
+        (only the high tier, flag ``ingest_supersession_tiers``) also ends the
+        old fact's world time at the new one's known start (supersession.apply).
 
         Args:
             old_memory_id: UUID string of the memory being superseded.
@@ -325,7 +329,9 @@ class MemoryManager:
             )
             if old is None:
                 raise ValueError(f"Memory {old_memory_id} not found")
-            if not supersession.apply(tenant_id, old, new, why=reason, old_statuses=None):
+            if not supersession.apply(
+                tenant_id, old, new, why=reason, old_statuses=None, world_change=world_change
+            ):
                 logger.warning(
                     "Supersede %s → %s refused: the new memory is not this tenant's",
                     old_memory_id[:8],
@@ -370,6 +376,12 @@ class MemoryManager:
         time and the snapshot would read it as a real world time
         (snapshot.world_time_known). Moved to *said*, it equals the recorded
         time again, which is how "no world time" is spelled.
+
+        With ``ingest_supersession_tiers`` on, a replaced late value also gets
+        the newer memory's known world start as its ``valid_until`` (marked
+        ``valid_until_by = "supersession"``, so an undo clears it), the same
+        rule as supersession.apply: a correction or an unknown start ends
+        nothing.
         """
         from sqlalchemy import update
 
@@ -391,6 +403,17 @@ class MemoryManager:
                     "superseded_at": datetime.now(UTC).isoformat(),
                 },
             }
+            if settings.ingest_supersession_tiers:
+                newer = await self._store.retrieve(uuid.UUID(history_of))
+                end = supersession.world_end(
+                    stored, newer, old_valid_from=values.get("valid_from", valid_from)
+                )
+                if end is not None:
+                    values["valid_until"] = end
+                    values["properties"] = {
+                        **values["properties"],
+                        "valid_until_by": supersession.VALID_UNTIL_BY,
+                    }
         async with async_session() as session:
             await session.execute(
                 update(Memory)
@@ -608,6 +631,15 @@ class MemoryManager:
         same_slot = await self._same_slot_active(fact.slot) if fact.slot else []
         slot_ids = {old for old, _ in same_slot}
         other_clashes = [t for t in auto_supersede_targets if str(t[0]) not in slot_ids]
+        tiers_on = settings.ingest_supersession_tiers
+        if tiers_on:
+            # ADR §5.2 S2: a detector hit is a change only for the same subject.
+            props_of = {str(m.id): getattr(m, "properties", None) for m, _ in candidates}
+            other_clashes = [
+                t
+                for t in other_clashes
+                if supersession.same_subject(fact.subject, props_of.get(str(t[0])))
+            ]
         auto_supersede_targets = other_clashes + same_slot
         # Said earlier than it arrived (core/said_at.py): what it clashes with
         # may be newer, and an old value never replaces a newer one.
@@ -678,12 +710,26 @@ class MemoryManager:
         # 2026-10-22 it was applied here for pending memories too, so an
         # unreviewed extraction could retire an active memory, and rejecting
         # the new memory never brought the old one back.
-        for old_id, reason in auto_supersede_targets:
-            if active_now:
-                await self.supersede(old_id, str(stored.id), reason)
-            await self._queue_contradiction_approval(
-                old_id, str(stored.id), reason, applied=active_now
+        if tiers_on:
+            await self._supersede_by_tier(
+                fact,
+                trust_tier,
+                stored,
+                auto_supersede_targets,
+                slot_ids=slot_ids,
+                active_now=active_now,
+                candidates=candidates,
+                context=context,
+                said=said,
+                found={c.existing_memory_id for c in contradictions},
             )
+        else:
+            for old_id, reason in auto_supersede_targets:
+                if active_now:
+                    await self.supersede(old_id, str(stored.id), reason)
+                await self._queue_contradiction_approval(
+                    old_id, str(stored.id), reason, applied=active_now
+                )
         if active_now and (fact.slot or auto_supersede_targets):
             # The owner's form changed: rebuild the always-loaded card on next use.
             from life_graph.services import profile_card
@@ -693,6 +739,66 @@ class MemoryManager:
 
         return stored
 
+    async def _supersede_by_tier(
+        self,
+        fact: ExtractedFact,
+        trust_tier: str | None,
+        stored: Memory,
+        targets: list[tuple[str, str]],
+        *,
+        slot_ids: set[str],
+        active_now: bool,
+        candidates: list[tuple[Memory, float]],
+        context: dict[str, Any] | None,
+        said: datetime | None,
+        found: set[str],
+    ) -> None:
+        """ADR M8 §5.2 confidence tiers (flag ``ingest_supersession_tiers``).
+
+        - High: a same-slot change in the owner's own firm words at confidence
+          0.9 or more (supersession.slot_tier). Applied at once, ending the old
+          fact's world time on a real world change, with an ``applied: true``
+          approval: one tap undoes it.
+        - Medium: a detector hit, or a same-slot change that is not high.
+          Nothing changes; an ``applied: false`` approval waits for the owner.
+        - Low: a possible update (supersession.possible_updates). A review
+          item only, at most 5 a day (supersession.file_possible_update).
+        - Outside text makes no low item, and never reaches high.
+        """
+        new_id = str(stored.id)
+        for old_id, reason in targets:
+            tier = "medium"
+            if str(old_id) in slot_ids:
+                tier = supersession.slot_tier(
+                    new_active=active_now,
+                    trust_tier=trust_tier,
+                    confidence=fact.confidence,
+                    polarity=fact.polarity,
+                    certainty=fact.certainty,
+                )
+            if tier == "high":
+                await self.supersede(old_id, new_id, reason, world_change=True)
+            await self._queue_contradiction_approval(
+                old_id, new_id, reason, applied=tier == "high", confidence=tier
+            )
+        low = supersession.possible_updates(
+            content=fact.content,
+            subject=fact.subject,
+            changes_over_time=fact.changes_over_time,
+            slot=fact.slot,
+            trust_tier=trust_tier,
+            context=context,
+            candidates=candidates,
+            taken={str(t[0]) for t in targets} | slot_ids | found,
+            low=settings.contradiction_similarity_threshold,
+            high=settings.dedup_threshold,
+        )
+        if said and low:
+            # An old value never replaces a newer one, not even as a suggestion.
+            low, _ = await self._older_and_newer(low, said)
+        for old_id, reason in low:
+            await supersession.file_possible_update(get_current_tenant_id(), old_id, new_id, reason)
+
     async def _queue_contradiction_approval(
         self,
         old_id: str,
@@ -700,12 +806,14 @@ class MemoryManager:
         reason: str,
         *,
         applied: bool = True,
+        confidence: str | None = None,
     ) -> None:
         """Record a supersede as a contradiction approval.
 
         ``applied`` says whether the supersede already happened (approve
         confirms, reject undoes) or is only suspected (approve applies it,
-        reject leaves the old memory as it is).
+        reject leaves the old memory as it is). ``confidence`` (the ADR §5.2
+        tier, only with ``ingest_supersession_tiers`` on) goes in the payload.
 
         Additive and non-blocking: any failure here is logged, never raised,
         so contradiction handling can't break ingestion.
@@ -747,6 +855,7 @@ class MemoryManager:
                             "memory_id_old": str(old_id),
                             "memory_id_new": str(new_id),
                             "applied": applied,
+                            **({"confidence": confidence} if confidence else {}),
                         },
                     )
                 )
